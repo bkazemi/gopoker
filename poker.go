@@ -308,23 +308,6 @@ func assemble_best_hand(table *Table, player *Player) {
   cards_sort(&cards)
   bestcard := len(cards)
 
-  // royal flush search
-  if cards[bestcard-1].numvalue == C_ACE {
-    suit     := cards[bestcard-1].suit
-    lastcard := C_ACE
-    is_rf    := true
-    for _, card := range cards[bestcard-6:bestcard-1] {
-      if card.numvalue != lastcard-1 || card.suit != suit {
-        is_rf = false
-        break
-      }
-    }
-    if is_rf {
-      player.hand.rank = R_ROYALFLUSH
-      return
-    }
-  }
-
   // get all the pairs/threes/fours into one slice
   // NOTE: ascending order
   var matching_cards Cards
@@ -429,8 +412,6 @@ func assemble_best_hand(table *Table, player *Player) {
 
   // straight flush/straight search function //
   got_straight := func(cards *Cards, player *Player, high int, acelow bool) (bool) {
-    if len(player.hand.cards) > 0 {panic("before straight is the CULPRIT!!!")}
-
     straight_flush := true
     if acelow {
     // check ace to 5
@@ -456,7 +437,11 @@ func assemble_best_hand(table *Table, player *Player) {
       }
     }
     if straight_flush {
-      player.hand.rank = R_STRAIGHTFLUSH
+      if (*cards)[high].numvalue == C_ACE {
+        player.hand.rank = R_ROYALFLUSH
+      } else {
+        player.hand.rank = R_STRAIGHTFLUSH
+      }
     } else {
       player.hand.rank = R_STRAIGHT
     }
@@ -467,9 +452,8 @@ func assemble_best_hand(table *Table, player *Player) {
   }
 
   if len(matching_cards) == 0 {
-  /* best possible hands with no matches in order:
-   * straight flush, flush, straight or high card.
-   */
+   // best possible hands with no matches in order:
+   // royal flush, straight flush, flush, straight or high card.
     // XXX: make better
     // we check for best straight first to reduce cycles
     for i := 1; i < 4; i++ {
@@ -535,8 +519,8 @@ func assemble_best_hand(table *Table, player *Player) {
   // remove duplicate card (by number) for easy straight search
   unique_cards  := Cards{}
 
-  if have_flush { // !! FIXME !!
-  // check for possible straight flush suit
+  if have_flush {
+  // check for possible RF/straight flush suit
     cardmap := make(map[int]int) // key == num, val == suit
     for _, card := range cards {
       mappedsuit, found := cardmap[card.numvalue];
@@ -563,8 +547,7 @@ func assemble_best_hand(table *Table, player *Player) {
            "impossible number of unique cards")
   }
 
-  if len(player.hand.cards) > 0 { panic ("b4 straight block\n")}
-  // straight search //
+  // RF, SF and straight search //
   if len(unique_cards) >= 5 {
     unique_bestcard := len(unique_cards)
     iter := unique_bestcard - 4
