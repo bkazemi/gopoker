@@ -418,7 +418,7 @@ func assemble_best_hand(table *Table, player *Player) {
       if suit_struct.cnt >= 5 { // NOTE: it's only possible to get one flush
         player.hand.rank  = R_FLUSH
         if (add_to_cards) {
-		player.hand.cards = append(player.hand.cards, suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct)]...)
+		player.hand.cards = append(player.hand.cards, suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct.cards)]...)
         }
         return true, suit
       }
