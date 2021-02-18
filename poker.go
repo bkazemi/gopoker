@@ -590,7 +590,7 @@ func assemble_best_hand(table *Table, player *Player) {
       player.hand.cards = append(cards[lowpairidx:lowpairidx+2],
                                  cards[highpairidx:highpairidx+2]...)
       kicker := top_cards(cards, 1, []int{cards[highpairidx].numvalue,
-                                           cards[lowpairidx ].numvalue})
+                                          cards[lowpairidx ].numvalue})
       player.hand.cards = append(kicker, player.hand.cards...)
     } else {
       player.hand.rank = R_PAIR
