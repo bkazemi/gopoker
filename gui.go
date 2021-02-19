@@ -96,7 +96,7 @@ func init_cards(cards Cards) (cardImgMap_t, error) {
 
 // called in main()
 func gui_init(table *Table) error {
-  cardImgMap, err := init_cards(table.community)
+  cardImgMap, err := init_cards(table.deck.cards)
   if err != nil {
     return err
   }
