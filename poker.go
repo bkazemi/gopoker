@@ -116,7 +116,7 @@ type Deck struct {
 }
 
 func (deck *Deck) Init() error {
-  var cards   [52]Card
+  var cards    [52]Card
   var curcard *Card
 
   deck.cardarray = &cards
@@ -211,7 +211,7 @@ func (table *Table) PrintCommunity() {
   fmt.Println()
 }
 
-func (table *Table) PrintSortedCommunity() {
+func (table *Table) CLI_PrintSortedCommunity() {
   fmt.Printf("sorted: ")
   for _, card := range table._comsorted {
     fmt.Printf(" [%s]", card.name)
@@ -224,7 +224,7 @@ func (table *Table) SortCommunity() {
   cards_sort(&table._comsorted)
 }
 
-func (table *Table) DoFlop() {
+func (table *Table) CLI_DoFlop() {
   for i := 0; i < 3; i++ {
     table.AddToCommunity(table.deck.Pop())
   }
@@ -232,13 +232,13 @@ func (table *Table) DoFlop() {
   table.SortCommunity()
 }
 
-func (table *Table) DoTurn() {
+func (table *Table) CLI_DoTurn() {
   table.AddToCommunity(table.deck.Pop())
   table.PrintCommunity()
   table.SortCommunity()
 }
 
-func (table *Table) DoRiver() {
+func (table *Table) CLI_DoRiver() {
   table.AddToCommunity(table.deck.Pop())
   table.PrintCommunity()
   table.SortCommunity()
@@ -267,7 +267,7 @@ func check_ties(players []Player, cardidx int) []Player {
   return check_ties(best, cardidx-1)
 }
 
-func (table *Table) BestHand() {
+func (table *Table) CLI_BestHand() {
 
   for _, player := range table.players {
     assemble_best_hand(table, &player)
@@ -691,11 +691,13 @@ func main() {
     return
   }
 
-  deck.Shuffle()
+  gui_init(table)
+
+  /*deck.Shuffle()
   table.Deal()
-  table.DoFlop()
-  table.DoTurn()
-  table.DoRiver()
-  table.PrintSortedCommunity()
-  table.BestHand()
+  table.CLI_DoFlop()
+  table.CLI_DoTurn()
+  table.CLI_DoRiver()
+  table.CLI_PrintSortedCommunity()
+  table.CLI_BestHand()*/
 }
