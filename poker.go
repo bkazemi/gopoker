@@ -111,19 +111,18 @@ func (player *Player) Init(name string) error {
 }
 
 type Deck struct {
-  pos        uint
-  cardarray *[52]Card
+  pos   uint
+  cards Cards
 }
 
 func (deck *Deck) Init() error {
-  var cards    [52]Card
   var curcard *Card
 
-  deck.cardarray = &cards
+  deck.cards = make(Cards, 52, 52) // 52 cards in a poker deck
 
   for suit := S_CLUB; suit <= S_SPADE; suit++ {
     for c_num := C_TWO; c_num <= C_ACE; c_num++ {
-        curcard          = &deck.cardarray[deck.pos]
+        curcard          = deck.cards[deck.pos]
         curcard.numvalue = c_num
         curcard.suit     = suit
         if err := card_num2str(curcard); err != nil {
@@ -132,8 +131,7 @@ func (deck *Deck) Init() error {
         deck.pos++
     }
   }
-  deck.pos       = 0
-  deck.cardarray = &cards
+  deck.pos = 0
 
   return nil
 }
@@ -143,12 +141,8 @@ func (deck *Deck) Shuffle() {
   rand.Seed(time.Now().UnixNano())
   for i := 0; i < 52; i++ {
     randidx := rand.Intn(52)
-    /*tmp      = deck.cardarray[i]
-    // swap current card w/ random one in deck
-      deck.cardarray[i]       = deck.cardarray[randidx]
-      deck.cardarray[randidx] = tmp*/
     // swap
-    deck.cardarray[randidx], deck.cardarray[i] = deck.cardarray[i], deck.cardarray[randidx]
+    deck.cards[randidx], deck.cards[i] = deck.cards[i], deck.cards[randidx]
   }
   deck.pos = 0
 }
@@ -156,7 +150,7 @@ func (deck *Deck) Shuffle() {
 // "remove" card from deck (functionally)
 func (deck *Deck) Pop() *Card {
   deck.pos++
-  return &deck.cardarray[deck.pos-1]
+  return deck.cards[deck.pos-1]
 }
 
 type Table struct {
