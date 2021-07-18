@@ -3,11 +3,12 @@
 package main
 
 import (
-  "fmt"
   "io/ioutil"
   "path/filepath"
   "strconv"
   "regexp"
+
+  "time"
 
   _ "image/png"
 
@@ -16,8 +17,9 @@ import (
 )
 
 const (
-  screenWidth, screenHeight = 640, 480
+  screenWidth, screenHeight = 1280, 720
 )
+
 
 // all items drawn to the screen
 type screenObject struct {
@@ -36,6 +38,7 @@ func init_cards(cards Cards) (cardImgMap_t, error) {
 
   cardImgMap := make(cardImgMap_t)
 
+  // suit offsets in deck slice
   clubPos    := S_CLUB     + 0
   diamondPos := clubPos    + (C_ACE - 1)
   heartPos   := diamondPos + (C_ACE - 1)
@@ -94,15 +97,96 @@ func init_cards(cards Cards) (cardImgMap_t, error) {
   return cardImgMap, nil
 }
 
-// called in main()
-func gui_init(table *Table) error {
+type Game struct {
+  table     *Table
+  cardImgMap cardImgMap_t
+  mode       Mode
+}
+
+type Mode int
+
+const (
+  M_INIT   Mode = iota
+  M_BET
+  M_DOFLOP
+  M_DOTURN
+  M_DORIVER
+  M_BESTHAND
+  M_GAMEOVER
+)
+
+func (g *Game) Update() error {
+  switch g.mode {
+  case M_INIT:
+    g.table.deck.Shuffle()
+    g.table.Deal()
+    g.mode = M_DOFLOP
+    return nil
+  case M_DOFLOP:
+    g.table.CLI_DoFlop()
+    g.mode = M_DOTURN
+    return nil
+  case M_DOTURN:
+    g.table.CLI_DoTurn()
+    g.mode = M_DORIVER
+  case M_DORIVER:
+    g.table.CLI_DoRiver()
+    g.mode = M_BESTHAND
+  case M_BESTHAND:
+    g.table.CLI_PrintSortedCommunity()
+    g.table.CLI_BestHand()
+    g.mode = M_GAMEOVER
+  case M_GAMEOVER:
+    // TODO
+    time.Sleep(100 * time.Millisecond)
+  }
+
+  return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+  if len(g.table.community) == 0 {
+    return
+  }
+  com1Op := &ebiten.DrawImageOptions{}
+  com1Op.GeoM.Translate(0, 3)
+  screen.DrawImage(g.cardImgMap[g.table.community[0]].img, com1Op)
+  com2Op := &ebiten.DrawImageOptions{}
+  com2Op.GeoM.Translate(150, 3)
+  screen.DrawImage(g.cardImgMap[g.table.community[1]].img, com2Op)
+  com3Op := &ebiten.DrawImageOptions{}
+  com3Op.GeoM.Translate(300, 3)
+  screen.DrawImage(g.cardImgMap[g.table.community[2]].img, com3Op)
+  if len(g.table.community) > 3 {
+    com4Op := &ebiten.DrawImageOptions{}
+    com4Op.GeoM.Translate(450, 3)
+    screen.DrawImage(g.cardImgMap[g.table.community[3]].img, com4Op)
+  }
+  if len(g.table.community) > 4 {
+    com5Op := &ebiten.DrawImageOptions{}
+    com5Op.GeoM.Translate(600, 3)
+    screen.DrawImage(g.cardImgMap[g.table.community[4]].img, com5Op)
+  }
+
+  return
+}
+
+func (g *Game) Layout(ow, oh int) (int, int) {
+  return screenWidth, screenHeight
+}
+
+func gui_run(table *Table) error {
   cardImgMap, err := init_cards(table.deck.cards)
   if err != nil {
     return err
   }
 
-  for k, v := range cardImgMap {
-    fmt.Printf("%v -> %v\n", k, v)
+  game := &Game{ table: table, cardImgMap: cardImgMap }
+  ebiten.SetWindowSize(screenWidth, screenHeight)
+  ebiten.SetWindowTitle("gopoker")
+
+  if err := ebiten.RunGame(game); err != nil {
+    return err
   }
 
   return nil

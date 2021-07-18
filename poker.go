@@ -9,44 +9,44 @@ import (
 )
 
 // ranks
-var (
-  R_MUCK          = -1
-  R_HIGHCARD      =  0
-  R_PAIR          =  1
-  R_2PAIR         =  2
-  R_THREES        =  3
-  R_STRAIGHT      =  4
-  R_FLUSH         =  5
-  R_FULLHOUSE     =  6
-  R_FOURS         =  7
-  R_STRAIGHTFLUSH =  8
-  R_ROYALFLUSH    =  9
+const (
+  R_MUCK     = iota - 1
+  R_HIGHCARD
+  R_PAIR
+  R_2PAIR
+  R_THREES
+  R_STRAIGHT
+  R_FLUSH
+  R_FULLHOUSE
+  R_FOURS
+  R_STRAIGHTFLUSH
+  R_ROYALFLUSH
 )
 
 // cards
-var (
-  C_ACELOW = 1
-  C_TWO    = 2
-  C_THREE  = 3
-  C_FOUR   = 4
-  C_FIVE   = 5
-  C_SIX    = 6
-  C_SEVEN  = 7
-  C_EIGHT  = 8
-  C_NINE   = 9
-  C_TEN    = 10
-  C_JACK   = 11
-  C_QUEEN  = 12
-  C_KING   = 13
-  C_ACE    = 14
+const (
+  C_ACELOW = iota + 1
+  C_TWO
+  C_THREE
+  C_FOUR
+  C_FIVE
+  C_SIX
+  C_SEVEN
+  C_EIGHT
+  C_NINE
+  C_TEN
+  C_JACK
+  C_QUEEN
+  C_KING
+  C_ACE
 )
 
 // suits
-var (
-  S_CLUB    = 0
-  S_DIAMOND = 1
-  S_HEART   = 2
-  S_SPADE   = 3
+const (
+  S_CLUB    = iota
+  S_DIAMOND
+  S_HEART
+  S_SPADE
 )
 
 type Card struct {
@@ -116,21 +116,20 @@ type Deck struct {
 }
 
 func (deck *Deck) Init() error {
-  var curcard *Card
-
   deck.cards = make(Cards, 52, 52) // 52 cards in a poker deck
 
   for suit := S_CLUB; suit <= S_SPADE; suit++ {
     for c_num := C_TWO; c_num <= C_ACE; c_num++ {
-        curcard          = deck.cards[deck.pos]
-        curcard.numvalue = c_num
-        curcard.suit     = suit
-        if err := card_num2str(curcard); err != nil {
+      curcard := &Card{ suit: suit, numvalue: c_num }
+      if err := card_num2str(curcard); err != nil {
           return err
-        }
-        deck.pos++
+      }
+
+      deck.cards[deck.pos] = curcard
+      deck.pos++
     }
   }
+
   deck.pos = 0
 
   return nil
@@ -304,11 +303,7 @@ func assemble_best_hand(table *Table, player *Player) {
 
   // get all the pairs/threes/fours into one slice
   // NOTE: ascending order
-  var matching_cards Cards
-  var cur_card *Card = cards[0]
-  cur_card_idx      := 0
-  cur_match_num     := 0
-
+  //
   // this struct keeps a slice of the match type indexes
   // in ascending order
   var match_hands struct {
@@ -317,53 +312,56 @@ func assemble_best_hand(table *Table, player *Player) {
     pairs  []uint
   }
 
-  // XXX messy.
-  for i, card := range cards[1:] {
-    if card.numvalue == cur_card.numvalue {
-      if i == 0 || i == cur_card_idx+1 { // need this or first card in pairing wont get in
-        matching_cards = append(matching_cards, cur_card)
-        cur_match_num = 2
+  matching_cards := false
+
+  // NOTE: double loop not optimal, readability trade-off okay for given slice size
+  for i := 0; i < len(cards)-1; {
+    match_num := 1
+
+    for _, adj_card := range cards[i+1:] {
+      if cards[i].numvalue == adj_card.numvalue {
+        match_num++
       } else {
-        cur_match_num++
-      }
-      matching_cards = append(matching_cards, card)
-      if i != len(cards[1:])-1 { // need for last elemnt
-        continue
+        break
       }
     }
-    var matchmemb *[]uint
-    switch cur_match_num {
-    case 4:
-      matchmemb = &match_hands.fours
-    case 3:
-      matchmemb = &match_hands.threes
-    case 2:
-      matchmemb = &match_hands.pairs
-    }
-    if matchmemb != nil {
-      if cur_card_idx == 0 && matching_cards[0] != cards[1] {
-        *matchmemb = append(*matchmemb, uint(0))
-     } else {
-        *matchmemb = append(*matchmemb, uint(cur_card_idx+1))
+
+    if match_num > 1 {
+      if !matching_cards {
+        matching_cards = true
       }
+
+      var matchmemb *[]uint
+      switch match_num {
+      case 4:
+        matchmemb = &match_hands.fours
+      case 3:
+        matchmemb = &match_hands.threes
+      case 2:
+        matchmemb = &match_hands.pairs
+      }
+      *matchmemb = append(*matchmemb, uint(i))
+
+      i += match_num
+    } else {
+      i++
     }
-    cur_card      = card
-    cur_card_idx  = i
-    cur_match_num = 0
   }
 
   // used for tie breakers
   // this func assumes the card slice is sorted and ret will be <= 5
-  top_cards := func (cards Cards, num int, except []int) Cards {
+  top_cards := func(cards Cards, num int, except []int) Cards {
     ret := make(Cards, 0, 5)
+
     assert(len(cards) <= 7, "too many cards in top_cards()")
+
     for i := len(cards)-1; i >= 0; i-- {
       skip := false
       if len(ret) == num {
         return ret
       }
-      for _, except_num := range except {
-        if cards[i].numvalue == except_num {
+      for _, except_numvalue := range except {
+        if cards[i].numvalue == except_numvalue {
           skip = true
           break
         }
@@ -394,8 +392,8 @@ func assemble_best_hand(table *Table, player *Player) {
     for suit, suit_struct := range suits {
       if suit_struct.cnt >= 5 { // NOTE: it's only possible to get one flush
         player.hand.rank  = R_FLUSH
-        if (add_to_cards) {
-		player.hand.cards = append(player.hand.cards, suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct.cards)]...)
+        if add_to_cards {
+          player.hand.cards = append(player.hand.cards, suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct.cards)]...)
         }
         return true, suit
       }
@@ -445,7 +443,7 @@ func assemble_best_hand(table *Table, player *Player) {
     return true
   }
 
-  if len(matching_cards) == 0 {
+  if !matching_cards {
    // best possible hands with no matches in order:
    // royal flush, straight flush, flush, straight or high card.
     // XXX: make better
@@ -477,7 +475,8 @@ func assemble_best_hand(table *Table, player *Player) {
 
   // fours search //
   if match_hands.fours != nil {
-    foursidx := int(match_hands.fours[len(match_hands.fours)-1])
+    foursidx := int(match_hands.fours[0]) // 0 because it's impossible to
+                                          // get fours twice
     kicker := &Card{}
     for i := bestcard-1; i >= 0; i-- { // kicker search
       if cards[i].numvalue > cards[foursidx].numvalue {
@@ -487,7 +486,7 @@ func assemble_best_hand(table *Table, player *Player) {
     }
    assert(kicker != nil, "fours: kicker == nil")
    player.hand.rank  = R_FOURS
-   player.hand.cards = append(Cards{kicker}, player.hand.cards...)
+   player.hand.cards = append(Cards{kicker}, cards[foursidx:foursidx+4]...)
    return
   }
 
@@ -500,7 +499,8 @@ func assemble_best_hand(table *Table, player *Player) {
     player.hand.rank = R_FULLHOUSE
     pairidx   := int(match_hands.pairs [len(match_hands.pairs )-1])
     threesidx := int(match_hands.threes[len(match_hands.threes)-1])
-    player.hand.cards = append(cards[pairidx:pairidx+2], cards[threesidx:threesidx+3]...)
+    player.hand.cards = append(player.hand.cards, cards[pairidx:pairidx+2]...)
+    player.hand.cards = append(player.hand.cards, cards[threesidx:threesidx+3]...)
     assert(len(player.hand.cards) == 5, fmt.Sprintf("%d", len(player.hand.cards)))
     return
   }
@@ -581,8 +581,10 @@ func assemble_best_hand(table *Table, player *Player) {
       player.hand.rank   = R_2PAIR
       highpairidx := int(match_hands.pairs[len(match_hands.pairs)-1])
       lowpairidx  := int(match_hands.pairs[len(match_hands.pairs)-2])
-      player.hand.cards = append(cards[lowpairidx:lowpairidx+2],
-                                 cards[highpairidx:highpairidx+2]...)
+
+      player.hand.cards = append(player.hand.cards, cards[lowpairidx:lowpairidx+2]...)
+      player.hand.cards = append(player.hand.cards, cards[highpairidx:highpairidx+2]...)
+
       kicker := top_cards(cards, 1, []int{cards[highpairidx].numvalue,
                                           cards[lowpairidx ].numvalue})
       player.hand.cards = append(kicker, player.hand.cards...)
@@ -674,24 +676,36 @@ func assert(cond bool, msg string) {
   }
 }
 
-func main() {
-	deck := &Deck{}
+func runGame() {
+  deck := &Deck{}
   if err := deck.Init(); err != nil {
+    fmt.Printf("deck.Init() err: %v\n", err)
     return
   }
 
   table := &Table{ numplayers: 6 }
   if err := table.Init(deck); err != nil {
+    fmt.Printf("table.Init() err: %v\n", err)
     return
   }
 
-  gui_init(table)
+  if true { // TODO: implement CLI only mode
+    deck.Shuffle()
+    table.Deal()
+    table.CLI_DoFlop()
+    table.CLI_DoTurn()
+    table.CLI_DoRiver()
+    table.CLI_PrintSortedCommunity()
+    table.CLI_BestHand()
+  }
+  if false {
+    if err := gui_run(table); err != nil {
+      fmt.Printf("gui_run() err: %v\n", err)
+      return
+    }
+  }
+}
 
-  /*deck.Shuffle()
-  table.Deal()
-  table.CLI_DoFlop()
-  table.CLI_DoTurn()
-  table.CLI_DoRiver()
-  table.CLI_PrintSortedCommunity()
-  table.CLI_BestHand()*/
+func main() {
+  runGame()
 }
