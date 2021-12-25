@@ -2,6 +2,14 @@ package main
 
 import (
   "fmt"
+  "flag"
+  "net"
+  "bufio"
+  "bytes"
+  "encoding/gob"
+  "io"
+  "os"
+  "strconv"
   "sort"
   "errors"
   "math/rand"
@@ -50,23 +58,43 @@ const (
 )
 
 type Card struct {
-  name     string
-  fullname string
-  suit     int
-  numvalue int
+  Name     string
+  FullName string
+  Suit     int
+  NumValue int // numeric value of card
 }
 
 type Cards []*Card
 
+type Hole struct {
+  IsSuited bool
+  Suit int
+  IsPair bool
+  CombinedNumValue int
+  Cards Cards
+}
+
+func (hole *Hole) FillHoleInfo() {
+  if hole.Cards[0].NumValue == hole.Cards[1].NumValue {
+    hole.IsPair = true
+  }
+
+  if hole.Cards[0].Suit == hole.Cards[1].Suit {
+    hole.IsSuited = true
+    hole.Suit = hole.Cards[0].Suit
+  }
+
+  hole.CombinedNumValue = hole.Cards[0].NumValue + hole.Cards[1].NumValue
+}
+
 type Hand struct {
-  rank      int
-  kicker    int
-  cards     Cards
-  numvalue  int
+  Rank      int
+  Kicker    int
+  Cards     Cards
 }
 
 func (hand *Hand) RankName() string {
-  switch hand.rank {
+  switch hand.Rank {
   case R_MUCK:
     return "muck"
   case R_HIGHCARD:
@@ -94,18 +122,25 @@ func (hand *Hand) RankName() string {
   }
 }
 
-type Player struct {
-  name      string
-  chipcount uint
-  hole      Cards
-  hand     *Hand
+type Call struct {
+  Choice int
+  Amount int
 }
 
-func (player *Player) Init(name string) error {
-  player.name       = name
-  player.hole       = make(Cards, 0, 2)
-  player.hand       = &Hand{ rank: R_MUCK }
-  player.hand.cards = make(Cards, 0, 5)
+type Player struct {
+  Name      string
+  IsCPU     bool
+  ChipCount uint
+  Hole     *Hole
+  Hand     *Hand
+  Call      Call
+}
+
+func (player *Player) Init(name string, isCPU bool) error {
+  player.Name  = name
+  player.IsCPU = isCPU
+  player.Hole  = &Hole{ Cards: make(Cards, 0, 2) }
+  player.Hand  = &Hand{ Rank: R_MUCK, Cards: make(Cards, 0, 5) }
 
   return nil
 }
@@ -120,7 +155,7 @@ func (deck *Deck) Init() error {
 
   for suit := S_CLUB; suit <= S_SPADE; suit++ {
     for c_num := C_TWO; c_num <= C_ACE; c_num++ {
-      curcard := &Card{ suit: suit, numvalue: c_num }
+      curcard := &Card{ Suit: suit, NumValue: c_num }
       if err := card_num2str(curcard); err != nil {
           return err
       }
@@ -153,31 +188,32 @@ func (deck *Deck) Pop() *Card {
 }
 
 type Table struct {
-  deck       *Deck     // deck of cards
-  community   Cards    // community cards
-  _comsorted  Cards    // sorted community cards
-  pot         uint     // table pot
-  ante        uint     // current ante
-  bigblind   *Player   // current big blind
-  smallblind *Player   // current small blind
-  players     []Player // array of players at table
-  numplayers  uint     // number of total players
+  deck        *Deck     // deck of cards
+  Community    Cards    // community cards
+  _comsorted   Cards    // sorted community cards
+  Pot          uint     // table pot
+  Ante         uint     // current ante
+  BigBlind    *Player   // current big blind
+  SmallBlind  *Player   // current small blind
+  players      []Player // array of players at table
+  NumPlayers   uint     // number of total possible players
+  NumConnected uint     // number of people (players+spectators) currently at table (online mode)
 }
 
-func (table *Table) Init(deck *Deck) error {
+func (table *Table) Init(deck *Deck, CPUPlayers []bool) error {
   table.deck       = deck
-  table.ante       = 10
+  table.Ante       = 10
 
   // allocate slices
-  table.community  = make(Cards, 0, 5)
+  table.Community  = make(Cards, 0, 5)
   table._comsorted = make(Cards, 0, 5)
-  table.players    = make([]Player, table.numplayers, 6) // 2 players min, 6 max
+  table.players    = make([]Player, table.NumPlayers, 7) // 2 players min, 7 max
 
-  table.bigblind   = &table.players[0]
-  table.smallblind = &table.players[1]
+  table.BigBlind   = &table.players[0]
+  table.SmallBlind = &table.players[1]
 
-  for i := uint(0); i < table.numplayers; i++ {
-    table.players[i].Init(fmt.Sprintf("p%d", i))
+  for i := uint(0); i < table.NumPlayers; i++ {
+    table.players[i].Init(fmt.Sprintf("p%d", i), CPUPlayers[i])
   }
 
   return nil
@@ -185,21 +221,22 @@ func (table *Table) Init(deck *Deck) error {
 
 func (table *Table) Deal() {
   for i := 0; i < len(table.players); i++ {
-     hole := &table.players[i].hole
-    *hole  = append(*hole, table.deck.Pop())
-    *hole  = append(*hole, table.deck.Pop())
+    hole       := table.players[i].Hole
+    hole.Cards  = append(hole.Cards, table.deck.Pop())
+    hole.Cards  = append(hole.Cards, table.deck.Pop())
+    hole.FillHoleInfo()
   }
 }
 
 func (table *Table) AddToCommunity(card *Card) {
-  table.community  = append(table.community, card)
+  table.Community  = append(table.Community, card)
   table._comsorted = append(table._comsorted, card)
 }
 
 // print name of current community cards to stdout
 func (table *Table) PrintCommunity() {
-  for _, card := range table.community {
-    fmt.Printf(" [%s]", card.name)
+  for _, card := range table.Community {
+    fmt.Printf(" [%s]", card.Name)
   }
   fmt.Println()
 }
@@ -207,7 +244,7 @@ func (table *Table) PrintCommunity() {
 func (table *Table) CLI_PrintSortedCommunity() {
   fmt.Printf("sorted: ")
   for _, card := range table._comsorted {
-    fmt.Printf(" [%s]", card.name)
+    fmt.Printf(" [%s]", card.Name)
   }
   fmt.Println()
 }
@@ -248,10 +285,10 @@ func check_ties(players []Player, cardidx int) []Player {
   best := []Player{ players[0] }
   for _, player := range players[1:] {
     //fmt.Printf("p %v against %v\n", player.hand.cards[cardidx].name, players[0].hand.cards[cardidx].name)
-    if player.hand.cards[cardidx].numvalue == best[0].hand.cards[cardidx].numvalue {
+    if player.Hand.Cards[cardidx].NumValue == best[0].Hand.Cards[cardidx].NumValue {
       //fmt.Printf("ct: idx %v: %v == %v\n", cardidx, player.hand.cards[cardidx].numvalue, players[0].hand.cards[cardidx].numvalue )
       best = append(best, player)
-    } else if player.hand.cards[cardidx].numvalue > best[0].hand.cards[cardidx].numvalue {
+    } else if player.Hand.Cards[cardidx].NumValue > best[0].Hand.Cards[cardidx].NumValue {
         //fmt.Printf("ct: idx %v: %v > %v\n", cardidx, player.hand.cards[cardidx].numvalue, players[0].hand.cards[cardidx].numvalue )
         best = []Player{ player }
     }
@@ -264,15 +301,15 @@ func (table *Table) CLI_BestHand() {
 
   for _, player := range table.players {
     assemble_best_hand(table, &player)
-    fmt.Printf("%s [%4s][%4s] => %-15s (rank %d)\n", player.name,
-               player.hole[0].name, player.hole[1].name,
-               player.hand.RankName(), player.hand.rank)
+    fmt.Printf("%s [%4s][%4s] => %-15s (rank %d)\n", player.Name,
+               player.Hole.Cards[0].Name, player.Hole.Cards[1].Name,
+               player.Hand.RankName(), player.Hand.Rank)
   }
   best_players := []Player{ table.players[0] }
   for _, player := range table.players[1:] {
-    if player.hand.rank == best_players[0].hand.rank {
+    if player.Hand.Rank == best_players[0].Hand.Rank {
       best_players = append(best_players, player)
-    } else if player.hand.rank > best_players[0].hand.rank {
+    } else if player.Hand.Rank > best_players[0].Hand.Rank {
         best_players = []Player{ player }
     }
   }
@@ -283,21 +320,21 @@ func (table *Table) CLI_BestHand() {
     // split pot
     fmt.Printf("split pot between ")
     for _, player := range tied_players {
-      fmt.Printf("%s ", player.name)
+      fmt.Printf("%s ", player.Name)
     } ; fmt.Printf("\r\n")
-    fmt.Printf("winning hand => %s\n", tied_players[0].hand.RankName())
+    fmt.Printf("winning hand => %s\n", tied_players[0].Hand.RankName())
   } else {
-    fmt.Printf("\n%s wins with %s\n", tied_players[0].name, tied_players[0].hand.RankName())
+    fmt.Printf("\n%s wins with %s\n", tied_players[0].Name, tied_players[0].Hand.RankName())
   }
   // print the best hand
-  for _, card := range tied_players[0].hand.cards {
-      fmt.Printf("[%4s]", card.name)
+  for _, card := range tied_players[0].Hand.Cards {
+      fmt.Printf("[%4s]", card.Name)
     } ; fmt.Println()
 }
 
 // hand matching logic unoptimized
 func assemble_best_hand(table *Table, player *Player) {
-  cards := append(table.community, player.hole...)
+  cards := append(table.Community, player.Hole.Cards...)
   cards_sort(&cards)
   bestcard := len(cards)
 
@@ -319,7 +356,7 @@ func assemble_best_hand(table *Table, player *Player) {
     match_num := 1
 
     for _, adj_card := range cards[i+1:] {
-      if cards[i].numvalue == adj_card.numvalue {
+      if cards[i].NumValue == adj_card.NumValue {
         match_num++
       } else {
         break
@@ -361,7 +398,7 @@ func assemble_best_hand(table *Table, player *Player) {
         return ret
       }
       for _, except_numvalue := range except {
-        if cards[i].numvalue == except_numvalue {
+        if cards[i].NumValue == except_numvalue {
           skip = true
           break
         }
@@ -381,19 +418,19 @@ func assemble_best_hand(table *Table, player *Player) {
     suits := make(map[int]*_suitstruct)
 
     for _, card := range cards {
-      suits[card.suit] = &_suitstruct{ cards: Cards{} }
+      suits[card.Suit] = &_suitstruct{ cards: Cards{} }
     }
     // count each suit
     for _, card := range cards {
-      suits[card.suit].cnt++
-      suits[card.suit].cards = append(suits[card.suit].cards, card)
+      suits[card.Suit].cnt++
+      suits[card.Suit].cards = append(suits[card.Suit].cards, card)
     }
     // search for flush
     for suit, suit_struct := range suits {
       if suit_struct.cnt >= 5 { // NOTE: it's only possible to get one flush
-        player.hand.rank  = R_FLUSH
+        player.Hand.Rank  = R_FLUSH
         if add_to_cards {
-          player.hand.cards = append(player.hand.cards, suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct.cards)]...)
+          player.Hand.Cards = append(player.Hand.Cards, suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct.cards)]...)
         }
         return true, suit
       }
@@ -407,12 +444,12 @@ func assemble_best_hand(table *Table, player *Player) {
     straight_flush := true
     if acelow {
     // check ace to 5
-      acesuit := (*cards)[len(*cards)-1].suit
+      acesuit := (*cards)[len(*cards)-1].Suit
       for i := 1; i <= high; i++ {
-        if (*cards)[i].suit != acesuit {
+        if (*cards)[i].Suit != acesuit {
           straight_flush = false
         }
-        if (*cards)[i].numvalue != (*cards)[i-1].numvalue+1 {
+        if (*cards)[i].NumValue != (*cards)[i-1].NumValue+1 {
           return false
         }
       }
@@ -420,25 +457,25 @@ func assemble_best_hand(table *Table, player *Player) {
       low := high-4
       for i := high; i > low; i-- {
         //fmt.Printf("h %d L %d ci %d ci-1 %d\n", high, low, i, i-1)
-        if (*cards)[i].suit != (*cards)[i-1].suit+1 {
+        if (*cards)[i].Suit != (*cards)[i-1].Suit+1 {
           straight_flush = false
         }
-        if (*cards)[i].numvalue != (*cards)[i-1].numvalue+1 {
+        if (*cards)[i].NumValue != (*cards)[i-1].NumValue+1 {
           return false
         }
       }
     }
     if straight_flush {
-      if (*cards)[high].numvalue == C_ACE {
-        player.hand.rank = R_ROYALFLUSH
+      if (*cards)[high].NumValue == C_ACE {
+        player.Hand.Rank = R_ROYALFLUSH
       } else {
-        player.hand.rank = R_STRAIGHTFLUSH
+        player.Hand.Rank = R_STRAIGHTFLUSH
       }
     } else {
-      player.hand.rank = R_STRAIGHT
+      player.Hand.Rank = R_STRAIGHT
     }
-    player.hand.cards = append(player.hand.cards, (*cards)[high-4:high+1]...)
-    assert(len(player.hand.cards) == 5, fmt.Sprintf("%d", len(player.hand.cards)))
+    player.Hand.Cards = append(player.Hand.Cards, (*cards)[high-4:high+1]...)
+    assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
     return true
   }
@@ -453,23 +490,23 @@ func assemble_best_hand(table *Table, player *Player) {
         return
       }
     }
-    if cards[len(cards)-1].numvalue == C_ACE &&
+    if cards[len(cards)-1].NumValue == C_ACE &&
        got_straight(&cards, player, 4, true) {
       return
     }
-    if player.hand.rank == R_STRAIGHTFLUSH {
+    if player.Hand.Rank == R_STRAIGHTFLUSH {
       return
     }
     have_flush, _ := got_flush(cards, player, true)
-    if have_flush || player.hand.rank == R_STRAIGHT {
+    if have_flush || player.Hand.Rank == R_STRAIGHT {
       return
     }
     // muck
-    player.hand.rank   = R_HIGHCARD
-    player.hand.cards  = append(player.hand.cards, cards[bestcard-1],
+    player.Hand.Rank   = R_HIGHCARD
+    player.Hand.Cards  = append(player.Hand.Cards, cards[bestcard-1],
                                 cards[bestcard-2], cards[bestcard-3],
                                 cards[bestcard-4], cards[bestcard-5])
-    assert(len(player.hand.cards) == 5, fmt.Sprintf("%d", len(player.hand.cards)))
+    assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
     return
   }
 
@@ -479,14 +516,14 @@ func assemble_best_hand(table *Table, player *Player) {
                                           // get fours twice
     kicker := &Card{}
     for i := bestcard-1; i >= 0; i-- { // kicker search
-      if cards[i].numvalue > cards[foursidx].numvalue {
+      if cards[i].NumValue > cards[foursidx].NumValue {
         kicker = cards[i]
         break
       }
     }
    assert(kicker != nil, "fours: kicker == nil")
-   player.hand.rank  = R_FOURS
-   player.hand.cards = append(Cards{kicker}, cards[foursidx:foursidx+4]...)
+   player.Hand.Rank  = R_FOURS
+   player.Hand.Cards = append(Cards{kicker}, cards[foursidx:foursidx+4]...)
    return
   }
 
@@ -496,12 +533,12 @@ func assemble_best_hand(table *Table, player *Player) {
   // impossible to have both at the same time and searching for the fullhouse
   // first saves some cycles+space
   if match_hands.threes != nil && match_hands.pairs != nil {
-    player.hand.rank = R_FULLHOUSE
+    player.Hand.Rank = R_FULLHOUSE
     pairidx   := int(match_hands.pairs [len(match_hands.pairs )-1])
     threesidx := int(match_hands.threes[len(match_hands.threes)-1])
-    player.hand.cards = append(player.hand.cards, cards[pairidx:pairidx+2]...)
-    player.hand.cards = append(player.hand.cards, cards[threesidx:threesidx+3]...)
-    assert(len(player.hand.cards) == 5, fmt.Sprintf("%d", len(player.hand.cards)))
+    player.Hand.Cards = append(player.Hand.Cards, cards[pairidx:pairidx+2]...)
+    player.Hand.Cards = append(player.Hand.Cards, cards[threesidx:threesidx+3]...)
+    assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
     return
   }
 
@@ -517,13 +554,13 @@ func assemble_best_hand(table *Table, player *Player) {
   // check for possible RF/straight flush suit
     cardmap := make(map[int]int) // key == num, val == suit
     for _, card := range cards {
-      mappedsuit, found := cardmap[card.numvalue];
-      if found && mappedsuit != suit && card.suit == suit {
-        cardmap[card.numvalue] = card.suit
-        assert(unique_cards[len(unique_cards)-1].numvalue == card.numvalue, "unique_cards problem")
+      mappedsuit, found := cardmap[card.NumValue];
+      if found && mappedsuit != suit && card.Suit == suit {
+        cardmap[card.NumValue] = card.Suit
+        assert(unique_cards[len(unique_cards)-1].NumValue == card.NumValue, "unique_cards problem")
         unique_cards[len(unique_cards)-1] = card // should _always_ be last card
       } else if !found {
-        cardmap[card.numvalue] = card.suit
+        cardmap[card.NumValue] = card.Suit
         unique_cards = append(unique_cards, card)
       }
     }
@@ -532,8 +569,8 @@ func assemble_best_hand(table *Table, player *Player) {
   } else {
     cardmap := make(map[int]bool)
     for _, card := range cards {
-      if _, val := cardmap[card.numvalue]; !val {
-        cardmap[card.numvalue] = true
+      if _, val := cardmap[card.NumValue]; !val {
+        cardmap[card.NumValue] = true
         unique_cards = append(unique_cards, card)
       }
     }
@@ -548,13 +585,13 @@ func assemble_best_hand(table *Table, player *Player) {
     //fmt.Printf("iter %v len(uc) %d\n)", iter, len(unique_cards))
     for i := 1; i <= iter; i++ {
       if got_straight(&unique_cards, player, unique_bestcard-i, false) {
-        assert(len(player.hand.cards) == 5, fmt.Sprintf("%d", len(player.hand.cards)))
+        assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
         return
       }
     }
-    if unique_cards[unique_bestcard-1].numvalue == C_ACE &&
+    if unique_cards[unique_bestcard-1].NumValue == C_ACE &&
        got_straight(&unique_cards, player, 4, true) {
-      assert(len(player.hand.cards) == 5, fmt.Sprintf("%d", len(player.hand.cards)))
+      assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
       return
     }
   }
@@ -566,40 +603,40 @@ func assemble_best_hand(table *Table, player *Player) {
     threeslice := make(Cards, 0, 3)
     threeslice  = append(threeslice, cards[firstcard:firstcard+3]...)
 
-    kickers := top_cards(cards, 2, []int{cards[firstcard].numvalue})
+    kickers := top_cards(cards, 2, []int{cards[firstcard].NumValue})
     // order => [kickers][threes]
     kickers = append(kickers, threeslice...)
 
-    player.hand.rank  = R_THREES
-    player.hand.cards = kickers
+    player.Hand.Rank  = R_THREES
+    player.Hand.Cards = kickers
     return
   }
 
   // two pair & pair search
   if match_hands.pairs != nil {
     if len(match_hands.pairs) > 1 {
-      player.hand.rank   = R_2PAIR
+      player.Hand.Rank   = R_2PAIR
       highpairidx := int(match_hands.pairs[len(match_hands.pairs)-1])
       lowpairidx  := int(match_hands.pairs[len(match_hands.pairs)-2])
 
-      player.hand.cards = append(player.hand.cards, cards[lowpairidx:lowpairidx+2]...)
-      player.hand.cards = append(player.hand.cards, cards[highpairidx:highpairidx+2]...)
+      player.Hand.Cards = append(player.Hand.Cards, cards[lowpairidx:lowpairidx+2]...)
+      player.Hand.Cards = append(player.Hand.Cards, cards[highpairidx:highpairidx+2]...)
 
-      kicker := top_cards(cards, 1, []int{cards[highpairidx].numvalue,
-                                          cards[lowpairidx ].numvalue})
-      player.hand.cards = append(kicker, player.hand.cards...)
+      kicker := top_cards(cards, 1, []int{cards[highpairidx].NumValue,
+                                          cards[lowpairidx ].NumValue})
+      player.Hand.Cards = append(kicker, player.Hand.Cards...)
     } else {
-      player.hand.rank = R_PAIR
+      player.Hand.Rank = R_PAIR
       pairidx := match_hands.pairs[0]
-      kickers := top_cards(cards, 3, []int{cards[pairidx].numvalue})
-      player.hand.cards = append(kickers, cards[pairidx:pairidx+2]...)
+      kickers := top_cards(cards, 3, []int{cards[pairidx].NumValue})
+      player.Hand.Cards = append(kickers, cards[pairidx:pairidx+2]...)
     }
     return
   }
 
   // muck
-  player.hand.rank   = R_HIGHCARD
-  player.hand.cards = append(player.hand.cards, cards[bestcard-1],
+  player.Hand.Rank   = R_HIGHCARD
+  player.Hand.Cards = append(player.Hand.Cards, cards[bestcard-1],
                              cards[bestcard-2], cards[bestcard-3],
                              cards[bestcard-4], cards[bestcard-5])
 
@@ -608,7 +645,7 @@ func assemble_best_hand(table *Table, player *Player) {
 
 func cards_sort(cards *Cards) error {
   sort.Slice((*cards), func(i, j int) bool {
-    return (*cards)[i].numvalue < (*cards)[j].numvalue
+    return (*cards)[i].NumValue < (*cards)[j].NumValue
   })
 
   return nil
@@ -616,7 +653,7 @@ func cards_sort(cards *Cards) error {
 
 func card_num2str(card *Card) error {
   var name, suit, suit_full string
-  switch card.numvalue {
+  switch card.NumValue {
   case C_TWO:
     name  = "2"
   case C_THREE:
@@ -645,11 +682,11 @@ func card_num2str(card *Card) error {
     name = "A"
   default:
     fmt.Println("card_num2str(): BUG")
-    fmt.Printf("c: %s %d %d\n", card.name, card.numvalue, card.suit)
+    fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
     return errors.New("card_num2str")
   }
 
-  switch card.suit {
+  switch card.Suit {
   case S_CLUB:
     suit  = "♣"
     suit_full = "clubs"
@@ -664,8 +701,8 @@ func card_num2str(card *Card) error {
     suit_full = "spades"
   }
 
-  card.name     = name + " "    + suit
-  card.fullname = name + " of " + suit_full
+  card.Name     = name + " "    + suit
+  card.FullName = name + " of " + suit_full
 
   return nil
 }
@@ -676,36 +713,301 @@ func assert(cond bool, msg string) {
   }
 }
 
-func runGame() {
-  deck := &Deck{}
-  if err := deck.Init(); err != nil {
-    fmt.Printf("deck.Init() err: %v\n", err)
-    return
-  }
+const (
+  NETDATA_CLOSE = iota
+  NETDATA_NEWCONN
+  NETDATA_CLIENTEXITED
+  NETDATA_STARTGAME
+  NETDATA_DOFLOP
+  NETDATA_DOTURN
+  NETDATA_DORIVER
+  NETDATA_BESTHAND
+)
 
-  table := &Table{ numplayers: 6 }
-  if err := table.Init(deck); err != nil {
-    fmt.Printf("table.Init() err: %v\n", err)
-    return
-  }
+type NetData struct {
+  Request     int
+  Response    int
+  Table      *Table     
+  PlayerData *Player
+}
 
-  if true { // TODO: implement CLI only mode
-    deck.Shuffle()
-    table.Deal()
-    table.CLI_DoFlop()
-    table.CLI_DoTurn()
-    table.CLI_DoRiver()
-    table.CLI_PrintSortedCommunity()
-    table.CLI_BestHand()
+func (netData *NetData) Init() {
+  return
+}
+
+func sendData(data *NetData, writeConn *bufio.Writer) {
+    var gobBuf bytes.Buffer
+    enc := gob.NewEncoder(&gobBuf)
+    
+    enc.Encode(data)
+
+    writeConn.Write(gobBuf.Bytes())
+    writeConn.Flush()
+}
+
+func serverCloseConn(conn net.Conn) {
+  fmt.Printf("<= closing conn to %s\n", conn.RemoteAddr().String())
+  conn.Close()
+}
+
+func runServer(table *Table, port string) (err error) {
+  listen, err := net.Listen("tcp", port)
+  if err != nil {
+    return err
   }
-  if false {
-    if err := gui_run(table); err != nil {
-      fmt.Printf("gui_run() err: %v\n", err)
-      return
+  defer listen.Close()
+
+  connectedClientMap := make(map[*net.Conn]*bufio.Writer)
+
+  sendResponseToAll := func(data *NetData) {
+    for _, clientWriter := range connectedClientMap {
+      if clientWriter != nil {
+        sendData(data, clientWriter)
+      }
     }
   }
+
+  removeClient := func(conn *net.Conn) {
+    netData := NetData{
+        Response: NETDATA_CLIENTEXITED,
+        Table:    table,
+    }
+
+    delete(connectedClientMap, conn)
+
+    table.NumConnected--
+    sendResponseToAll(&netData)
+  }
+
+  fmt.Printf("starting server on port %v\n", port)
+
+  for {
+    conn, err := listen.Accept()
+    if err != nil {
+      return err
+    }
+
+    table.NumConnected++
+    /*if table.NumConnected < table.NumPlayers {
+      connectedPlayers = append(connectedPlayers, &conn)
+    }*/
+
+    go func(conn net.Conn) {
+      defer serverCloseConn(conn)
+
+      var (
+        readBuf   = make([]byte, 4096)
+        readConn  = bufio.NewReader(conn)
+        writeConn = bufio.NewWriter(conn)
+      )
+
+      fmt.Printf("=> new conn from %s\n", conn.RemoteAddr().String())
+
+      connectedClientMap[&conn] = writeConn
+
+      netData := NetData{
+        Response: NETDATA_NEWCONN,
+        Table:    table,
+      }
+
+      for {
+        n, err := readConn.Read(readBuf); if err != nil {
+          if err == io.EOF {
+            removeClient(&conn)
+            return
+          }
+
+          fmt.Printf("runServer(): readConn err: %v\n", err)
+          removeClient(&conn)
+
+          return
+	      }
+
+        rawData := bytes.NewReader(readBuf[:n])
+
+        switch err {
+        case io.EOF:
+          fmt.Println("EOF 2")
+          return
+        case nil:
+          gob.NewDecoder(rawData).Decode(&netData)
+
+          if (netData.Request == NETDATA_NEWCONN) {
+            sendResponseToAll(&netData)
+          } else {
+            switch netData.Request {
+            case NETDATA_CLIENTEXITED:
+              removeClient(&conn)
+              return
+            case NETDATA_STARTGAME:
+              table.Deal()
+            case NETDATA_DOFLOP:
+              table.CLI_DoFlop()
+            default:
+              panic("bad request: " + strconv.Itoa(netData.Request))
+            }
+
+            sendData(&netData, writeConn)
+          }
+        default:
+          fmt.Printf("srv recv err: %s\n", err)
+          return
+        }
+      }
+    }(conn)
+  }
+
+  return nil
+}
+
+type FrontEnd interface {
+  InputChan()  chan *NetData
+  OutputChan() chan *NetData
+  Init()       error
+  Run()        error
+  Finish()     chan error
+}
+
+func runClient(addr string, isGUI bool) (err error) {
+  conn, err := net.Dial("tcp", addr)
+  if err != nil {
+    return err
+  }
+  defer conn.Close()
+
+  var (
+        readBuf   = make([]byte, 4096)
+        readConn  = bufio.NewReader(conn)
+        writeConn = bufio.NewWriter(conn)
+  )
+
+   var frontEnd FrontEnd
+   if isGUI {
+     ;//frontEnd := runGUI()
+   } else { // CLI mode
+     frontEnd = &CLI{}
+     if err := frontEnd.Init(); err != nil {
+       return err
+     }
+   }
+
+  fmt.Printf("connected to %s\n", addr)
+
+  go func () {
+    sendData(&NetData{ Request: NETDATA_NEWCONN }, writeConn)
+
+    for {
+      var n int
+      if n, err = readConn.Read(readBuf); err != nil {
+        frontEnd.Finish() <- err
+        return
+      }
+
+      rawData := bytes.NewReader(readBuf[:n])
+
+      netData := &NetData{}
+      dec := gob.NewDecoder(rawData)
+      dec.Decode(&netData)
+      frontEnd.InputChan() <- netData
+
+      /*var gobBuf bytes.Buffer
+      enc := gob.NewEncoder(&gobBuf)
+
+      enc.Encode(frontEnd.OutputChan())
+
+      writeConn.Write(gobBuf.Bytes())
+      writeConn.Flush()*/
+    }
+  }()
+
+  if err := frontEnd.Run(); err != nil {
+    return err
+  }
+
+  return nil
+}
+
+func runGame(opts *options) (err error) {
+  if opts.serverMode != "" {
+    deck := &Deck{}
+    if err := deck.Init(); err != nil {
+      return err
+    }
+
+    table := &Table{ NumPlayers: 3 } // FIXME: tmp
+    if err := table.Init(deck, []bool{false, false, false}); err != nil {
+      return err
+    }
+
+    deck.Shuffle()
+
+    if err := runServer(table, "localhost:" + opts.serverMode); err != nil {
+      return err
+    }
+
+    if false { // TODO: implement CLI only mode
+      deck.Shuffle()
+      table.Deal()
+      table.CLI_DoFlop()
+      table.CLI_DoTurn()
+      table.CLI_DoRiver()
+      table.CLI_PrintSortedCommunity()
+      table.CLI_BestHand()
+    }
+  } else if opts.connect != "" { // client mode
+    if err := runClient(opts.connect, opts.gui); err != nil {
+      return err
+    }
+  } else { // offline game
+    ;
+  }
+
+  /*if false {
+    if err := gui_run(table); err != nil {
+      fmt.Printf("gui_run() err: %v\n", err)
+      return nil
+    }
+  }*/
+ 
+  return nil
+}
+
+type options struct {
+  serverMode string
+  connect    string
+  gui        bool
 }
 
 func main() {
-  runGame()
+  processName, err := os.Executable()
+  if err != nil {
+    processName = "gopoker"
+  }
+
+  usage := "usage: " + processName + " [options]"
+
+  var (
+    serverMode string
+    connect    string
+    gui        bool
+  )
+  flag.Usage = func() {
+    fmt.Println(usage)
+    flag.PrintDefaults()
+  }
+  flag.StringVar(&serverMode, "s", "", "host a poker table on <port>")
+  flag.StringVar(&connect, "c", "", "connect to a gopoker table")
+  flag.BoolVar(&gui, "g", false, "run with a GUI")
+  flag.Parse()
+
+  opts := &options{
+    serverMode: serverMode,
+    connect:    connect,
+    gui:        gui,
+  }
+
+  if err := runGame(opts); err != nil {
+    fmt.Println(err)
+    return
+  }
 }

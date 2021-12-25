@@ -145,27 +145,27 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-  if len(g.table.community) == 0 {
+  if len(g.table.Community) == 0 {
     return
   }
   com1Op := &ebiten.DrawImageOptions{}
   com1Op.GeoM.Translate(0, 3)
-  screen.DrawImage(g.cardImgMap[g.table.community[0]].img, com1Op)
+  screen.DrawImage(g.cardImgMap[g.table.Community[0]].img, com1Op)
   com2Op := &ebiten.DrawImageOptions{}
   com2Op.GeoM.Translate(150, 3)
-  screen.DrawImage(g.cardImgMap[g.table.community[1]].img, com2Op)
+  screen.DrawImage(g.cardImgMap[g.table.Community[1]].img, com2Op)
   com3Op := &ebiten.DrawImageOptions{}
   com3Op.GeoM.Translate(300, 3)
-  screen.DrawImage(g.cardImgMap[g.table.community[2]].img, com3Op)
-  if len(g.table.community) > 3 {
+  screen.DrawImage(g.cardImgMap[g.table.Community[2]].img, com3Op)
+  if len(g.table.Community) > 3 {
     com4Op := &ebiten.DrawImageOptions{}
     com4Op.GeoM.Translate(450, 3)
-    screen.DrawImage(g.cardImgMap[g.table.community[3]].img, com4Op)
+    screen.DrawImage(g.cardImgMap[g.table.Community[3]].img, com4Op)
   }
-  if len(g.table.community) > 4 {
+  if len(g.table.Community) > 4 {
     com5Op := &ebiten.DrawImageOptions{}
     com5Op.GeoM.Translate(600, 3)
-    screen.DrawImage(g.cardImgMap[g.table.community[4]].img, com5Op)
+    screen.DrawImage(g.cardImgMap[g.table.Community[4]].img, com5Op)
   }
 
   return
