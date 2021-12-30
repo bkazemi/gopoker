@@ -123,18 +123,18 @@ func (g *Game) Update() error {
     g.mode = M_DOFLOP
     return nil
   case M_DOFLOP:
-    g.table.CLI_DoFlop()
+    g.table.DoFlop()
     g.mode = M_DOTURN
     return nil
   case M_DOTURN:
-    g.table.CLI_DoTurn()
+    g.table.DoTurn()
     g.mode = M_DORIVER
   case M_DORIVER:
-    g.table.CLI_DoRiver()
+    g.table.DoRiver()
     g.mode = M_BESTHAND
   case M_BESTHAND:
-    g.table.CLI_PrintSortedCommunity()
-    g.table.CLI_BestHand()
+    g.table.PrintSortedCommunity()
+    g.table.BestHand()
     g.mode = M_GAMEOVER
   case M_GAMEOVER:
     // TODO
