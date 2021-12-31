@@ -134,7 +134,7 @@ func (g *Game) Update() error {
     g.mode = M_BESTHAND
   case M_BESTHAND:
     g.table.PrintSortedCommunity()
-    g.table.BestHand()
+    //g.table.BestHand()
     g.mode = M_GAMEOVER
   case M_GAMEOVER:
     // TODO
