@@ -3,6 +3,7 @@ package main
 import (
   "fmt"
   "strconv"
+  "strings"
 
   "github.com/gdamore/tcell/v2"
   "github.com/rivo/tview"
@@ -12,6 +13,8 @@ type CLI struct {
   app               *tview.Application
   pages             *tview.Pages
   gameGrid          *tview.Grid
+
+  yourName           string
 
   bet                uint
  
@@ -23,7 +26,7 @@ type CLI struct {
   yourInfoFlex,
   otherPlayersFlex   *tview.Flex
 
-  otherPlayersFlexMap map[string]*tview.TextView
+  playersTextViewMap  map[string]*tview.TextView
 
   actionsFlex        *tview.Flex
   actionsForm        *tview.Form
@@ -96,13 +99,17 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
 }
 
 func (cli *CLI) addNewPlayer(player *Player) {
+  if player.Name == cli.yourName {
+    return
+  }
+
   textView := tview.NewTextView()
 
   textView.SetTextAlign(tview.AlignCenter).
            SetBorder(true).
            SetTitle(player.Name)
 
-  cli.otherPlayersFlexMap[player.Name] = textView
+  cli.playersTextViewMap[player.Name] = textView
 
   cli.otherPlayersFlex.AddItem(textView, 0, 1, false)
 
@@ -110,11 +117,34 @@ func (cli *CLI) addNewPlayer(player *Player) {
 }
 
 func (cli *CLI) removePlayer(player *Player) {
-  textView := cli.otherPlayersFlexMap[player.Name]
+  if player.Name == cli.yourName {
+    return
+  }
+
+  textView := cli.playersTextViewMap[player.Name]
 
   cli.otherPlayersFlex.RemoveItem(textView)
   
   cli.app.Draw()
+}
+
+func (cli *CLI) updatePlayer(player *Player) {
+  textView := cli.playersTextViewMap[player.Name]
+
+  if player.Name == cli.yourName {
+    textView.
+      SetText("name: "           + player.Name                                      + "\n" +
+              "current action: " + player.ActionToString()                          + "\n" +
+              "chip count: "     + strconv.FormatUint(uint64(player.ChipCount), 10) + "\n")
+  } else {
+    if (textView == nil) { // XXX
+      return
+    }
+    tv := strings.Split(textView.GetText(false), "\n")
+    textView.
+      SetText(player.ActionToString()    + "\n" +
+              strings.Join(tv[1:], "\n"))
+  }
 }
 
 func (cli *CLI) Init() error {
@@ -145,8 +175,9 @@ func (cli *CLI) Init() error {
 
   cli.commView = newTextView("Community Cards", true)
 
-  cli.otherPlayersFlex    = tview.NewFlex()
-  cli.otherPlayersFlexMap = make(map[string]*tview.TextView)
+  cli.otherPlayersFlex = tview.NewFlex()
+
+  cli.playersTextViewMap = make(map[string]*tview.TextView)
 
   cli.actionsForm = tview.NewForm().
     AddInputField("bet amount", "", 20, func(inp string, lastChar rune) bool {
@@ -158,10 +189,13 @@ func (cli *CLI) Init() error {
     }, func(inp string) {
       n, err := strconv.ParseUint(inp, 10, 64)
       if err != nil {
-        panic("bad bet val: " + inp)
+        cli.bet = 0
       } else {
         cli.bet = uint(n) // XXX
       }
+    }).
+    AddButton("check", func() {
+      cli.handleButton("check")
     }).
     AddButton("call",  func() {
       cli.handleButton("call")
@@ -299,6 +333,7 @@ func cliInputLoop(cli *CLI) {
         cli.updateInfoList("# players", netData.Table)
 
         cli.addNewPlayer(netData.PlayerData)
+        cli.commView.SetText(cli.commView.GetText(false) + "\n" + netData.PlayerData.Name + " recv")
       case NETDATA_PLAYERLEFT:
         cli.removePlayer(netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)
@@ -308,10 +343,22 @@ func cliInputLoop(cli *CLI) {
         })
       case NETDATA_DEAL:
         if netData.PlayerData != nil {
+          if cli.playersTextViewMap[netData.PlayerData.Name] == nil {
+            cli.yourName = netData.PlayerData.Name
+            cli.playersTextViewMap[netData.PlayerData.Name] = cli.yourInfoView
+          }
+
+          cli.updatePlayer(netData.PlayerData)
+
           txt := cli.cards2String(netData.PlayerData.Hole.Cards)
 
           cli.holeView.SetText(txt)
         }
+      case NETDATA_PLAYERACTION:
+        assert(netData.PlayerData != nil, "PlayerData == nil")
+
+        cli.updatePlayer(netData.PlayerData)
+        cli.updateInfoList("status", netData.Table)
       case NETDATA_ROUNDOVER:
         //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
