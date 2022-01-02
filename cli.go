@@ -333,7 +333,6 @@ func cliInputLoop(cli *CLI) {
         cli.updateInfoList("# players", netData.Table)
 
         cli.addNewPlayer(netData.PlayerData)
-        cli.commView.SetText(cli.commView.GetText(false) + "\n" + netData.PlayerData.Name + " recv")
       case NETDATA_PLAYERLEFT:
         cli.removePlayer(netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)

@@ -145,8 +145,8 @@ func (player *Player) Init(name string, isCPU bool) error {
 
   player.IsVacant = true
 
-  //player.Hole  = &Hole{ Cards: make(Cards, 0, 2) }
-  //player.Hand  = &Hand{ Rank: R_MUCK, Cards: make(Cards, 0, 5) }
+  player.Action = Action{ Action: NETDATA_VACANTSEAT }
+
   player.ChipCount = 1e5 // XXX
   player.NewCards()
 
@@ -170,8 +170,14 @@ func (player *Player) ActionToString() string {
     return "check"
   case NETDATA_FOLD:
     return "fold"
-  default:
+
+  case NETDATA_VACANTSEAT:
+    return "seat is open" // XXX 
+  case NETDATA_WAITING:
     return "waiting for first action"
+
+  default:
+    return "bad player state"
   }
 }
 
@@ -335,7 +341,7 @@ func (table *Table) getOpenSeat() *Player {
     if table.players[i].IsVacant {
       table.players[i].IsVacant = false
 
-      return &table.players[i]
+      return &(table.players[i])
     }
   }
 
@@ -347,7 +353,7 @@ func (table *Table) getOccupiedSeats() []*Player {
 
   for i := uint(0); i < table.NumSeats; i++ {
     if !table.players[i].IsVacant {
-      players = append(players, &table.players[i])
+      players = append(players, &(table.players[i]))
     }
   }
 
@@ -398,28 +404,92 @@ func (table *Table) rotateBlinds() {
 
 // TODO: use a linked list?
 func (table *Table) setNextPlayerTurn() {
-
+  fmt.Printf("setNextPl called, curP: %s\n", table.curPlayer.Name)
   if table.State == TABLESTATE_NOTSTARTED {
     return
   }
 
   players := table.getNonFoldedPlayers()
 
-  if len(players) < 2 {
+  if len(players) == 1 {
     table.State = TABLESTATE_ROUNDOVER // XXX
 
     return
   }
 
+  if table.curPlayer.Action.Action == NETDATA_FOLD {
+    otherPlayers := table.getOccupiedSeats()
+
+    for i, player := range otherPlayers {
+      if player == table.curPlayer { 
+        // check successive players for a non-folder
+        for _, op := range otherPlayers[i+1:] {
+          if op.Action.Action != NETDATA_FOLD {
+            fmt.Printf("%s folded setting curP to %s\n", player.Name, op.Name)
+            table.curPlayer = op
+            break
+          } else {
+            fmt.Printf("%s FOLDED\n", player.Name)
+          }
+        }
+
+        if table.State != TABLESTATE_PLAYERRAISED &&
+           table.curPlayer == player {
+          // folder is last active player and didn't raise, betting is done
+          table.State = TABLESTATE_DONEBETTING
+          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX 
+          return
+        }
+
+        if table.State  == TABLESTATE_PLAYERRAISED &&
+           table.better == table.curPlayer           {
+        // last player did not re-raise, betting is done
+          table.State  = TABLESTATE_DONEBETTING
+          table.better = nil // XXX 
+          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX 
+          return
+        } 
+
+        if table.curPlayer == player {
+          // if curPlayers wasn't incremented, it means that all the successive
+          // players had already folded and the next active player is located [:i]
+          for _, player := range otherPlayers {
+            if player.Action.Action != NETDATA_FOLD {
+              table.curPlayer = player
+              break
+            }
+          }
+
+          assert(table.curPlayer != player, "BUG: curPlayer not incremented after a fold")
+
+          if (table.curPlayer == table.better) {
+            table.State = TABLESTATE_DONEBETTING
+            table.better = nil
+            return
+          }
+        }
+
+        return
+      }
+    }
+
+    return // XXX
+  }
+
   for i, player := range players {
     if player == table.curPlayer {
       if i == len(players)-1 {
-      // [p..., curP]
+        // [p..., curP]
+        fmt.Printf("%s is last player\n", player.Name)
+        fmt.Printf("[ ")
+        for _, p := range players {
+          fmt.Printf("%s ", p.Name)
+        } ;fmt.Println(" ]")
         table.curPlayer = players[0]
 
         if table.better == nil {
           table.State = TABLESTATE_DONEBETTING
-          table.curPlayer = table.getOccupiedSeats()[0] // XXX 
+          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX 
           return
         } else {
           fmt.Printf("better: %s\n", table.better.Name)
@@ -434,7 +504,7 @@ func (table *Table) setNextPlayerTurn() {
         // last player did not re-raise, round over
           table.State  = TABLESTATE_DONEBETTING
           table.better = nil // XXX 
-          table.curPlayer = table.getOccupiedSeats()[0] // XXX 
+          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX 
           return
       } 
       return
@@ -1145,6 +1215,9 @@ const (
   NETDATA_FOLD
   NETDATA_FLOP
 
+  NETDATA_WAITING
+  NETDATA_VACANTSEAT
+
   NETDATA_DEAL
   NETDATA_TURN
   NETDATA_RIVER
@@ -1201,7 +1274,7 @@ func runServer(table *Table, port string) (err error) {
   }
 
   removeClient := func(conn *net.Conn) {
-    netData := NetData{
+    netData := &NetData{
         Response: NETDATA_CLIENTEXITED,
         Table:    table,
     }
@@ -1209,7 +1282,7 @@ func runServer(table *Table, port string) (err error) {
     delete(connectedClientMap, conn)
 
     table.NumConnected--
-    sendResponseToAll(&netData, nil)
+    sendResponseToAll(netData, nil)
   }
 
   removePlayer := func(conn *net.Conn) {
@@ -1217,14 +1290,26 @@ func runServer(table *Table, port string) (err error) {
 
     if player != nil { // else client was a spectator
       fmt.Printf("removing %s\n", player.Name)
-      netData := NetData{
+      netData := &NetData{
         Response:   NETDATA_PLAYERLEFT,
         Table:      table,
         PlayerData: player,
       }
 
-      sendResponseToAll(&netData, connectedClientMap[conn])
+      sendResponseToAll(netData, connectedClientMap[conn])
     }
+  }
+
+  sendPlayerActionToAll := func(player *Player) {
+    fmt.Printf("%s action => %s\n", player.Name, player.ActionToString())
+
+    netData := &NetData{ 
+     Response:   NETDATA_PLAYERACTION,
+     Table:      table,
+     PlayerData: player,
+    }
+
+    sendResponseToAll(netData, nil)
   }
 
   fmt.Printf("starting server on port %v\n", port)
@@ -1276,7 +1361,13 @@ func runServer(table *Table, port string) (err error) {
           fmt.Println("!! EOF 2")
           return
         case nil:
+          // we need to set Table member to node otherwise gob will
+          // modify our table structure if a user sends that member
+          netData = NetData{ Response: NETDATA_NEWCONN, Table: nil }
+
           gob.NewDecoder(rawData).Decode(&netData)
+
+          netData.Table = table 
 
           if netData.Request == NETDATA_NEWCONN {
             sendResponseToAll(&netData, nil)
@@ -1296,6 +1387,8 @@ func runServer(table *Table, port string) (err error) {
             if player := table.getOpenSeat(); player != nil {
               fmt.Printf("adding %p as player %s\n", &conn, player.Name)
               table.NumPlayers++ // XXX racy?
+
+              player.Action.Action = NETDATA_WAITING
 
               playerMap[&conn] = player
 
@@ -1368,7 +1461,7 @@ func runServer(table *Table, port string) (err error) {
                 sendData(&netData, writeConn)
                 continue
               }
-
+              
               if err := table.PlayerAction(player, netData.PlayerData.Action); err != nil {
                 netData.Response = NETDATA_BADREQUEST
                 netData.Table    = nil
@@ -1387,17 +1480,14 @@ func runServer(table *Table, port string) (err error) {
                   netData.Response   = NETDATA_ROUNDOVER
                   netData.Table      = table
                   netData.PlayerData = nil
+
+                  sendResponseToAll(&netData, nil)
                 } else {
-                  netData.Response   = NETDATA_PLAYERACTION
-                  netData.Table      = table
-                  netData.PlayerData = player
-
-                  fmt.Printf("%s action => %s\n", netData.PlayerData.Name, netData.PlayerData.ActionToString())
+                  sendPlayerActionToAll(player)
                 }
-
-                sendResponseToAll(&netData, nil)
               } else { 
-                fmt.Printf("%s action => %s\n", netData.PlayerData.Name, netData.PlayerData.ActionToString())
+                sendPlayerActionToAll(player)
+
                 fmt.Println("** done betting...")
                 table.nextCommunityAction()
 
@@ -1416,10 +1506,12 @@ func runServer(table *Table, port string) (err error) {
 
                 sendResponseToAll(&netData, nil)
               }
-            case NETDATA_BADREQUEST:
-              panic("bad request: " + strconv.Itoa(netData.Request))
             default:
-              panic("bad request: " + strconv.Itoa(netData.Request))
+              netData.Response = NETDATA_BADREQUEST
+              netData.Msg      = "bad request"
+              netData.Table, netData.PlayerData = nil, nil
+              
+              sendData(&netData, writeConn)
             }
 
             //sendData(&netData, writeConn)
@@ -1521,8 +1613,8 @@ func runGame(opts *options) (err error) {
       return err
     }
 
-    table := &Table{ NumSeats: 3 } // FIXME: tmp
-    if err := table.Init(deck, []bool{false, false, false}); err != nil {
+    table := &Table{ NumSeats: 7 } // FIXME: tmp
+    if err := table.Init(deck, []bool{false, false, false, false, false, false, false}); err != nil {
       return err
     }
 
