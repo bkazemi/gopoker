@@ -261,6 +261,8 @@ type Table struct {
   NumPlayers   uint       // number of current players
   NumSeats     uint       // number of total possible players
 
+  WinInfo      string // XXX tmp
+
   State        TableState // current status of table
   CommState    TableState // current status of community
   NumConnected uint       // number of people (players+spectators) currently at table (online mode)
@@ -775,8 +777,15 @@ func (table *Table) finishRound() {
 }
 
 func (table *Table) BestHand(players []*Player) []*Player {
+  table.WinInfo = ""
   for _, player := range players {
     assemble_best_hand(table, player)
+
+    table.WinInfo += fmt.Sprintf("%s [%4s][%4s] => %-15s (rank %d)\n",
+            player.Name,
+            player.Hole.Cards[0].Name, player.Hole.Cards[1].Name,
+            player.Hand.RankName(), player.Hand.Rank)
+
     fmt.Printf("%s [%4s][%4s] => %-15s (rank %d)\n", player.Name,
                player.Hole.Cards[0].Name, player.Hole.Cards[1].Name,
                player.Hand.RankName(), player.Hand.Rank)
@@ -796,18 +805,23 @@ func (table *Table) BestHand(players []*Player) []*Player {
   if len(tied_players) > 1 {
     // split pot
     fmt.Printf("split pot between ")
+    table.WinInfo += "split pot between "
     for _, player := range tied_players {
       fmt.Printf("%s ", player.Name)
+      table.WinInfo += player.Name + " "
     } ; fmt.Printf("\r\n")
 
+    table.WinInfo += "\nwinning hand => " + tied_players[0].Hand.RankName() + "\n" 
     fmt.Printf("winning hand => %s\n", tied_players[0].Hand.RankName())
   } else {
+    table.WinInfo += "\n" + tied_players[0].Name + "  wins with " + tied_players[0].Hand.RankName() + "\n"
     fmt.Printf("\n%s wins with %s\n", tied_players[0].Name, tied_players[0].Hand.RankName())
   }
 
   // print the best hand
   for _, card := range tied_players[0].Hand.Cards {
       fmt.Printf("[%4s]", card.Name)
+      table.WinInfo += fmt.Sprintf("[%4s]", card.Name)
   } ; fmt.Println()
 
   return tied_players
@@ -1479,6 +1493,7 @@ func runServer(table *Table, port string) (err error) {
 
                   netData.Response   = NETDATA_ROUNDOVER
                   netData.Table      = table
+                  netData.Msg        = table.Winners[0].Name + " wins by folds"
                   netData.PlayerData = nil
 
                   sendResponseToAll(&netData, nil)
@@ -1496,6 +1511,7 @@ func runServer(table *Table, port string) (err error) {
 
                   netData.Response   = NETDATA_ROUNDOVER
                   netData.Table      = table
+                  netData.Msg        = table.WinInfo
 
                   sendResponseToAll(&netData, nil)
                   continue

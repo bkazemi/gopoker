@@ -361,6 +361,9 @@ func cliInputLoop(cli *CLI) {
       case NETDATA_ROUNDOVER:
         //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
+        cli.errorModal.SetText(netData.Msg)
+        cli.pages.SwitchToPage("error")
+        cli.app.Draw()
       case NETDATA_FLOP, NETDATA_TURN, NETDATA_RIVER:
         txt := cli.cards2String(netData.Table.Community)
 
