@@ -3,7 +3,7 @@ package main
 import (
   "fmt"
   "strconv"
-  "strings"
+  //"strings"
 
   "github.com/gdamore/tcell/v2"
   "github.com/rivo/tview"
@@ -13,6 +13,9 @@ type CLI struct {
   app               *tview.Application
   pages             *tview.Pages
   gameGrid          *tview.Grid
+
+
+  curPage            string
 
   yourName           string
 
@@ -42,6 +45,13 @@ type CLI struct {
   finish              chan error
 }
 
+// TODO: check if page exists
+func (cli *CLI) switchToPage(page string) {
+  cli.curPage = page
+
+  cli.pages.SwitchToPage(page)
+}
+
 func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
   if eventKey.Rune() == 'q' {
     cli.pages.SwitchToPage("exit")
@@ -49,7 +59,9 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
   }
 
   if eventKey.Rune() == 'b' {
-
+    if cli.curPage == "game" {
+      cli.app.SetFocus(cli.actionsForm.GetFormItem(0))
+    }
   }
 
   return eventKey
@@ -70,7 +82,7 @@ func (cli *CLI) handleButton(btn string) {
   case "start":
     req = NETDATA_STARTGAME
   case "quit":
-    cli.pages.SwitchToPage("exit")
+    cli.switchToPage("exit")
     cli.app.SetFocus(cli.exitModal)
     return
   }
@@ -92,7 +104,10 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
     cli.tableInfoList.SetItemText(1, "# open seats",
       strconv.FormatUint(uint64(table.NumSeats) - uint64(table.NumPlayers), 10))
   case "status":
-    cli.tableInfoList.SetItemText(6, "status", table.TableStateToString())
+    cli.tableInfoList.SetItemText(3, "dealer",      table.Dealer.Name)
+    cli.tableInfoList.SetItemText(4, "small blind", table.SmallBlind.Name)
+    cli.tableInfoList.SetItemText(5, "big blind",   table.BigBlind.Name)
+    cli.tableInfoList.SetItemText(6, "status",      table.TableStateToString())
   }
 
   cli.app.Draw()
@@ -140,10 +155,18 @@ func (cli *CLI) updatePlayer(player *Player) {
     if (textView == nil) { // XXX
       return
     }
-    tv := strings.Split(textView.GetText(false), "\n")
+    /*tv := strings.Split(textView.GetText(false), "\n")
     textView.
       SetText(player.ActionToString()    + "\n" +
-              strings.Join(tv[1:], "\n"))
+              strings.Join(tv[1:], "\n"))*/
+    textView.
+      SetText("current action: " + player.ActionToString() + "\n" +
+              "chip count: "     + strconv.FormatUint(uint64(player.ChipCount), 10) + "\n\n")
+
+    if (player.Hole != nil) {
+      textView.
+        SetText(textView.GetText(false) + cli.cards2String(player.Hole.Cards))
+    }
   }
 }
 
@@ -153,6 +176,8 @@ func (cli *CLI) Init() error {
   cli.gameGrid   = tview.NewGrid()
   cli.exitModal  = tview.NewModal()
   cli.errorModal = tview.NewModal()
+
+  cli.curPage    = "game"
 
   cli.inputChan  = make(chan *NetData)
   cli.outputChan = make(chan *NetData)
@@ -236,8 +261,9 @@ func (cli *CLI) Init() error {
     AddItem("# open seats", "", '-', nil).
     AddItem("# connected",  "", '-', nil).
     AddItem("buy in",       "", '-', nil).
-    AddItem("big blind",    "", '-', nil).
+    AddItem("dealer",       "", '-', nil).
     AddItem("small blind",  "", '-', nil).
+    AddItem("big blind",    "", '-', nil).
     AddItem("status",       "", '-', nil)
   cli.tableInfoList.SetBorder(true).SetTitle("Table Info")
 
@@ -257,7 +283,7 @@ func (cli *CLI) Init() error {
       case "quit":
         cli.app.Stop()
       case "cancel":
-        cli.pages.SwitchToPage("game")
+        cli.switchToPage("game")
         cli.app.SetFocus(cli.actionsForm)
       }
     })
@@ -267,7 +293,7 @@ func (cli *CLI) Init() error {
     SetDoneFunc(func(_ int, btnLabel string) {
       switch btnLabel {
       case "close":
-        cli.pages.SwitchToPage("game")
+        cli.switchToPage("game")
         cli.app.SetFocus(cli.actionsForm)
         cli.errorModal.SetText("")
       }
@@ -358,11 +384,20 @@ func cliInputLoop(cli *CLI) {
 
         cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
+      case NETDATA_SHOWHAND:
+        assert(netData.PlayerData != nil, "Playerdata == nil")
+
+        cli.updatePlayer(netData.PlayerData)
       case NETDATA_ROUNDOVER:
         //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
         cli.errorModal.SetText(netData.Msg)
-        cli.pages.SwitchToPage("error")
+        cli.switchToPage("error")
+        
+        for _, player := range netData.Table.Winners {
+          cli.updatePlayer(player)
+        }
+
         cli.app.Draw()
       case NETDATA_FLOP, NETDATA_TURN, NETDATA_RIVER:
         txt := cli.cards2String(netData.Table.Community)
@@ -375,7 +410,7 @@ func cliInputLoop(cli *CLI) {
         }
 
         cli.errorModal.SetText(netData.Msg)
-        cli.pages.SwitchToPage("error")
+        cli.switchToPage("error")
         cli.app.Draw()
       default:
         panic("bad response")

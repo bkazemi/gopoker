@@ -173,8 +173,10 @@ func (player *Player) ActionToString() string {
 
   case NETDATA_VACANTSEAT:
     return "seat is open" // XXX 
-  case NETDATA_WAITING:
+  case NETDATA_FIRSTACTION:
     return "waiting for first action"
+  case NETDATA_MIDROUNDADDITION:
+    return "waiting to add to next round"
 
   default:
     return "bad player state"
@@ -240,6 +242,7 @@ const (
   TABLESTATE_SHOWHANDS
   TABLESTATE_SPLITPOT
   TABLESTATE_ROUNDOVER
+  TABLESTATE_NEWROUND
   TABLESTATE_GAMEOVER
 )
 
@@ -251,13 +254,15 @@ type Table struct {
   Pot          uint       // table pot
   Ante         uint       // current ante TODO allow both ante & blind modes
   Bet          uint       // current bet
-  BigBlind    *Player     // current big blind
+
+  Dealer      *Player     // current dealer
   SmallBlind  *Player     // current small blind
+  BigBlind    *Player     // current big blind
 
   players      []Player   // array of players at table
   Winners      []*Player  // array of round winners
   curPlayer   *Player     // keeps track of whose turn it is
-  better      *Player
+  better      *Player     // last player to (re-)raise
   NumPlayers   uint       // number of current players
   NumSeats     uint       // number of total possible players
 
@@ -269,22 +274,27 @@ type Table struct {
 }
 
 func (table *Table) Init(deck *Deck, CPUPlayers []bool) error {
-  table.deck       = deck
-  table.Ante       = 10
+  table.deck = deck
+  table.Ante = 10
 
-  // allocate slices
-  table.Community  = make(Cards, 0, 5)
-  table._comsorted = make(Cards, 0, 5)
-  table.players    = make([]Player, table.NumSeats, 7) // 2 players min, 7 max
+  table.newCommunity()
 
-  table.BigBlind   = &table.players[0]
+  table.players = make([]Player, table.NumSeats, 7) // 2 players min, 7 max
+
+  table.Dealer     = &table.players[0]
   table.SmallBlind = &table.players[1]
+  table.BigBlind   = &table.players[2]
 
   for i := uint(0); i < table.NumSeats; i++ {
     table.players[i].Init(fmt.Sprintf("p%d", i), CPUPlayers[i])
   }
 
   return nil
+}
+
+func (table *Table) newCommunity() {
+  table.Community  = make(Cards, 0, 5)
+  table._comsorted = make(Cards, 0, 5)
 }
 
 func (table *Table) TableStateToString() string {
@@ -350,11 +360,14 @@ func (table *Table) getOpenSeat() *Player {
   return nil
 }
 
-func (table *Table) getOccupiedSeats() []*Player {
+func (table *Table) getOccupiedSeats(forCurRound bool) []*Player {
   players := make([]*Player, 0)
 
   for i := uint(0); i < table.NumSeats; i++ {
     if !table.players[i].IsVacant {
+      if forCurRound && table.players[i].Action.Action == NETDATA_MIDROUNDADDITION {
+        continue
+      }
       players = append(players, &(table.players[i]))
     }
   }
@@ -375,33 +388,70 @@ func (table *Table) getNumOpenSeats() int {
 }
 
 // TODO: use a linked list?
-func (table *Table) rotateBlinds() {
-  players := table.getOccupiedSeats()
+//
+// rotates the dealer and blinds
+func (table *Table) rotatePlayers() {
+  players := table.getOccupiedSeats(true)
 
   if table.State == TABLESTATE_NOTSTARTED || len(players) < 2 {
     return
   }
 
+  fmt.Printf("rotateBlinds(): D=%s S=%s B=%s => ",
+    table.Dealer.Name,
+    table.SmallBlind.Name,
+    table.BigBlind.Name)
+
+  defer func() {
+    fmt.Printf("D=%s S=%s B=%s\n",
+      table.Dealer.Name,
+      table.SmallBlind.Name,
+      table.BigBlind.Name)
+  }()
+
+  if len(players) == 2 {
+    if players[0] == table.Dealer {
+      table.Dealer     = players[1]
+      table.SmallBlind = table.Dealer
+      table.BigBlind   = players[0]
+    } else {
+      table.Dealer     = players[0]
+      table.SmallBlind = table.Dealer
+      table.BigBlind   = players[1]
+    }
+
+    return
+  }
+
   for i, player := range players {
-    if player == table.SmallBlind {
+    if player == table.Dealer {
       if i == len(players)-1 {
-      // [ B, u..., S ]
-        table.SmallBlind = players[0]
-        table.BigBlind   = players[1]
+      // [ S, B, u..., D] 
+        table.Dealer     = players[0]
+        table.SmallBlind = players[1]
+        table.BigBlind   = players[2]
       } else {
-        table.SmallBlind = players[i+1]
+        table.Dealer = players[i+1]
+
         if i+1 == len(players)-1 {
-        // [ S, u..., B ]
-          table.BigBlind = players[0]
+        // [ B, u..., D, S ]
+          table.SmallBlind = players[0]
+          table.BigBlind   = players[1]
+        } else if i+2 == len(players)-1 {
+        // [ u..., D, S, B ]
+          table.SmallBlind = players[i+2]
+          table.BigBlind   = players[0]
         } else {
-          table.BigBlind = players[i+2]
+          table.SmallBlind = players[i+2] 
+          table.BigBlind   = players[i+3]
         }
       }
+
       return
     }
   }
 
-  fmt.Printf("rotateBlinds(): S=%p B=%p\n", table.SmallBlind, table.BigBlind)
+  panic("BUG: rotatePlayers(): table dealer not found")
 }
 
 // TODO: use a linked list?
@@ -420,7 +470,7 @@ func (table *Table) setNextPlayerTurn() {
   }
 
   if table.curPlayer.Action.Action == NETDATA_FOLD {
-    otherPlayers := table.getOccupiedSeats()
+    otherPlayers := table.getOccupiedSeats(true)
 
     for i, player := range otherPlayers {
       if player == table.curPlayer { 
@@ -603,7 +653,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 }
 
 func (table *Table) Deal() {
-  for _, player := range table.getOccupiedSeats() {
+  for _, player := range table.getOccupiedSeats(true) {
     hole       := player.Hole
     hole.Cards  = append(hole.Cards, table.deck.Pop())
     hole.Cards  = append(hole.Cards, table.deck.Pop())
@@ -667,7 +717,7 @@ func (table *Table) nextCommunityAction() {
 
 func (table *Table) nextTableAction() {
   switch table.State {
-  case TABLESTATE_NOTSTARTED:
+  case TABLESTATE_NOTSTARTED, TABLESTATE_NEWROUND:
     table.Deal()
 
     table.CommState = TABLESTATE_PREFLOP
@@ -723,7 +773,7 @@ func check_ties(players []*Player, cardidx int) []*Player {
 func (table *Table) getNonFoldedPlayers() []*Player {
   players := make([]*Player, 0)
 
-  for _, player := range table.getOccupiedSeats() {
+  for _, player := range table.getOccupiedSeats(true) {
     if player.Action.Action != NETDATA_FOLD {
       players = append(players, player)
     }
@@ -734,20 +784,26 @@ func (table *Table) getNonFoldedPlayers() []*Player {
   return players
 }
 
-func (table *Table) roundCleanup() {
+func (table *Table) newRound() {
   table.deck.Shuffle()
 
-  for _, player := range table.getOccupiedSeats() {
-    player.NewCards()
+  for _, player := range table.getOccupiedSeats(false) {
+    if player.Action.Action != NETDATA_MIDROUNDADDITION {
+      player.NewCards()
+    }
+    player.Action.Action = NETDATA_FIRSTACTION
   }
 
-  table.better = nil
-  table.Pot    = 0 // XXX
+  table.newCommunity()
+  table.rotatePlayers()
+
+  table.better  = nil
+  table.Ante   *= 2
+  table.Pot     = 0 // XXX
+  table.State   = TABLESTATE_NEWROUND
 }
 
 func (table *Table) finishRound() {
-  defer table.roundCleanup()
-
   players := table.getNonFoldedPlayers()
 
   if (len(players) == 1) {
@@ -782,13 +838,13 @@ func (table *Table) BestHand(players []*Player) []*Player {
     assemble_best_hand(table, player)
 
     table.WinInfo += fmt.Sprintf("%s [%4s][%4s] => %-15s (rank %d)\n",
-            player.Name,
-            player.Hole.Cards[0].Name, player.Hole.Cards[1].Name,
-            player.Hand.RankName(), player.Hand.Rank)
+      player.Name,
+      player.Hole.Cards[0].Name, player.Hole.Cards[1].Name,
+      player.Hand.RankName(), player.Hand.Rank)
 
     fmt.Printf("%s [%4s][%4s] => %-15s (rank %d)\n", player.Name,
-               player.Hole.Cards[0].Name, player.Hole.Cards[1].Name,
-               player.Hand.RankName(), player.Hand.Rank)
+      player.Hole.Cards[0].Name, player.Hole.Cards[1].Name,
+      player.Hand.RankName(), player.Hand.Rank)
   }
 
   best_players := []*Player{ players[0] }
@@ -1229,7 +1285,10 @@ const (
   NETDATA_FOLD
   NETDATA_FLOP
 
-  NETDATA_WAITING
+  NETDATA_SHOWHAND
+
+  NETDATA_FIRSTACTION
+  NETDATA_MIDROUNDADDITION
   NETDATA_VACANTSEAT
 
   NETDATA_DEAL
@@ -1304,6 +1363,10 @@ func runServer(table *Table, port string) (err error) {
 
     if player != nil { // else client was a spectator
       fmt.Printf("removing %s\n", player.Name)
+      
+      player.IsVacant      = true
+      player.Action.Action = NETDATA_VACANTSEAT
+
       netData := &NetData{
         Response:   NETDATA_PLAYERLEFT,
         Table:      table,
@@ -1324,6 +1387,35 @@ func runServer(table *Table, port string) (err error) {
     }
 
     sendResponseToAll(netData, nil)
+  }
+
+  sendDeals := func() {
+    netData := &NetData{ Response: NETDATA_DEAL }
+
+    for conn, player := range playerMap {
+      netData.PlayerData = player
+
+      sendData(netData, connectedClientMap[conn])
+    }
+  }
+
+  sendHands := func() {
+    netData := &NetData{ Response: NETDATA_SHOWHAND }
+
+    for _, player := range table.getNonFoldedPlayers() {
+      netData.PlayerData = table.PublicPlayerInfo(*player)
+
+      var conn *net.Conn
+      for k, v := range playerMap {
+        if v == player {
+          conn = k
+          break
+        }
+      }
+      assert(conn != nil, "sendPlayerActionToAll(): player not in playerMap")
+
+      sendResponseToAll(netData, connectedClientMap[conn])
+    }
   }
 
   fmt.Printf("starting server on port %v\n", port)
@@ -1391,10 +1483,10 @@ func runServer(table *Table, port string) (err error) {
                 netData.Response = NETDATA_CURPLAYERS
                 netData.Table    = table
 
-                for _, player := range table.getOccupiedSeats() {
+                for _, player := range table.getOccupiedSeats(false) {
                   netData.PlayerData = table.PublicPlayerInfo(*player)
                   sendData(&netData, writeConn)
-                  time.Sleep(100 * time.Millisecond) // XXX why do i need to do this
+                  time.Sleep(50 * time.Millisecond) // XXX why do i need to do this
                 }
             }
 
@@ -1402,7 +1494,11 @@ func runServer(table *Table, port string) (err error) {
               fmt.Printf("adding %p as player %s\n", &conn, player.Name)
               table.NumPlayers++ // XXX racy?
 
-              player.Action.Action = NETDATA_WAITING
+              if table.State == TABLESTATE_NOTSTARTED {
+                player.Action.Action = NETDATA_FIRSTACTION
+              } else {
+                player.Action.Action = NETDATA_MIDROUNDADDITION
+              }
 
               playerMap[&conn] = player
 
@@ -1447,14 +1543,8 @@ func runServer(table *Table, port string) (err error) {
               } else { // start game
                 table.nextTableAction()
 
-		            for conn, player := range playerMap {
-                  netData.Response   = NETDATA_DEAL // TODO: use abstraction
-		              netData.Table      = nil
-                  netData.PlayerData = player
-
-                  sendData(&netData, connectedClientMap[conn])
-                }
-              }
+                sendDeals()
+		          }
             case NETDATA_BET, NETDATA_CALL, NETDATA_CHECK, NETDATA_FOLD:
               player := playerMap[&conn]
 
@@ -1497,28 +1587,39 @@ func runServer(table *Table, port string) (err error) {
                   netData.PlayerData = nil
 
                   sendResponseToAll(&netData, nil)
+
+                  table.newRound()
+                  table.nextTableAction()
+                  sendDeals()
                 } else {
-                  sendPlayerActionToAll(player)
+                  sendPlayerActionToAll(table.PublicPlayerInfo(*player))
                 }
               } else { 
-                sendPlayerActionToAll(player)
+                sendPlayerActionToAll(table.PublicPlayerInfo(*player))
 
                 fmt.Println("** done betting...")
                 table.nextCommunityAction()
 
                 if table.State == TABLESTATE_ROUNDOVER {
                   table.finishRound()
+                  sendHands()
 
                   netData.Response   = NETDATA_ROUNDOVER
                   netData.Table      = table
                   netData.Msg        = table.WinInfo
 
                   sendResponseToAll(&netData, nil)
+
+                  table.newRound()
+                  table.nextTableAction()
+                  sendDeals()
+
                   continue
                 }
 
-                netData.Response = table.commState2NetDataResponse()
-                netData.Table    = table
+                netData.Response   = table.commState2NetDataResponse()
+                netData.Table      = table
+                netData.PlayerData = nil
 
                 sendResponseToAll(&netData, nil)
               }
