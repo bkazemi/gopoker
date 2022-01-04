@@ -1559,7 +1559,6 @@ func runServer(table *Table, port string) (err error) {
         n, err := readConn.Read(readBuf); if err != nil {
           if err == io.EOF {
             fmt.Println("!! EOF 1")
-            return
           }
 
           fmt.Printf("runServer(): readConn err: %v\n", err)
@@ -1572,7 +1571,6 @@ func runServer(table *Table, port string) (err error) {
         switch err {
         case io.EOF:
           fmt.Println("!! EOF 2")
-          return
         case nil:
           // we need to set Table member to node otherwise gob will
           // modify our table structure if a user sends that member
