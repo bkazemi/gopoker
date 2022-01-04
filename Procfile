@@ -1,1 +1,1 @@
-web: gopoker -s 80
+web: gopoker -s $PORT
