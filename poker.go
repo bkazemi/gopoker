@@ -1559,11 +1559,10 @@ func runServer(table *Table, port string) (err error) {
         n, err := readConn.Read(readBuf); if err != nil {
           if err == io.EOF {
             fmt.Println("!! EOF 1")
-          }
-
-          fmt.Printf("runServer(): readConn err: %v\n", err)
-
-          return
+          } else {
+            fmt.Printf("runServer(): readConn err: %v\n", err)
+            return
+  	      }
 	      }
 
         rawData := bytes.NewReader(readBuf[:n])
