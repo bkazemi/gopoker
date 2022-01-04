@@ -1561,9 +1561,12 @@ func runServer(table *Table, port string) (err error) {
             fmt.Println("!! EOF 1")
           } else {
             fmt.Printf("runServer(): readConn err: %v\n", err)
-            return
   	      }
+
+          return
 	      }
+
+        fmt.Printf("recv %v bytes\n", n)
 
         rawData := bytes.NewReader(readBuf[:n])
 
@@ -1578,6 +1581,8 @@ func runServer(table *Table, port string) (err error) {
           gob.NewDecoder(rawData).Decode(&netData)
 
           netData.Table = table 
+
+          fmt.Printf("in nil, netData: %v\n", netData)
 
           if netData.Request == NETDATA_NEWCONN {
             sendResponseToAll(&netData, nil)
