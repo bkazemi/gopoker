@@ -1,1 +1,1 @@
-web: gopoker -s 777
+web: gopoker -s 80
