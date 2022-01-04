@@ -14,8 +14,9 @@ type CLI struct {
   pages             *tview.Pages
   gameGrid          *tview.Grid
 
-
   curPage            string
+
+  lastKey            rune
 
   yourName           string
 
@@ -53,16 +54,51 @@ func (cli *CLI) switchToPage(page string) {
 }
 
 func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
-  if eventKey.Rune() == 'q' {
+  key := eventKey.Rune()
+
+  if key == 'q' {
     cli.pages.SwitchToPage("exit")
     cli.app.SetFocus(cli.exitModal)
+
+    return eventKey
   }
 
-  if eventKey.Rune() == 'b' {
-    if cli.curPage == "game" {
+  if cli.curPage != "game" {
+    return eventKey
+  }
+
+  switch key {
+  case 'b':
+    if cli.lastKey == 'b' {
+      cli.lastKey = '.'
+      cli.handleButton("bet")
+    } else {
       cli.app.SetFocus(cli.actionsForm.GetFormItem(0))
     }
+  case 'c':
+    if cli.lastKey == 'c' {
+      cli.lastKey = '.'
+      cli.handleButton("check")
+    } else {
+      cli.app.SetFocus(cli.actionsForm.GetButton(0))
+    }
+  case 'r':
+    if cli.lastKey == 'r' {
+      cli.lastKey = '.'
+      cli.handleButton("raise")
+    } else {
+      cli.app.SetFocus(cli.actionsForm.GetButton(2))
+    }
+  case 'f':
+    if cli.lastKey == 'f' {
+      cli.lastKey = '.'
+      cli.handleButton("fold")
+    } else {
+      cli.app.SetFocus(cli.actionsForm.GetButton(3))
+    }
   }
+
+  cli.lastKey = key
 
   return eventKey
 }
@@ -239,6 +275,7 @@ func (cli *CLI) Init() error {
 
     _, err := strconv.ParseUint(label, 10, 64)
     if err != nil {
+      // should never happen, input is checked in accept()
       panic("bad bet val: " + label)
     }
   })

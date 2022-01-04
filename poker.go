@@ -1466,6 +1466,10 @@ func runServer(table *Table, port string) (err error) {
 
     if player != nil { // else client was a spectator
       fmt.Printf("removing %s\n", player.Name)
+
+      if tableAdmin == conn {
+        tableAdmin = nil
+      }
       
       player.IsVacant      = true
       player.Action.Action = NETDATA_VACANTSEAT
