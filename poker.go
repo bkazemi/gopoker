@@ -3,17 +3,20 @@ package main
 import (
   "fmt"
   "flag"
-  "net"
+  //"net"
   "bufio"
   "bytes"
   "encoding/gob"
-  "io"
+  //"io"
   "os"
   "strconv"
   "sort"
   "errors"
   "math/rand"
   "time"
+  "net/http"
+
+  "github.com/gorilla/websocket"
 )
 
 // ranks
@@ -1405,61 +1408,69 @@ func (netData *NetData) Init() {
   return
 }
 
-func sendData(data *NetData, writeConn *bufio.Writer) {
+func sendData(data *NetData, conn *websocket.Conn) {
   if data == nil {
     panic("sendData(): data == nil")
   }
 
-  if writeConn == nil {
-    panic("sendData(): writeConn == nil")
+  if conn == nil {
+    panic("sendData(): websocket == nil")
   }
+
+  //fmt.Printf("sending %p to %p...\n", data, conn)
 
   var gobBuf bytes.Buffer
   enc := gob.NewEncoder(&gobBuf)
 
   enc.Encode(data)
 
-  writeConn.Write(gobBuf.Bytes())
-  writeConn.Flush()
+  conn.WriteMessage(websocket.BinaryMessage, gobBuf.Bytes())
+  //writeConn.Flush()
+  
+  //fmt.Printf("finished sendData()\n")
 }
 
-func serverCloseConn(conn net.Conn) {
+func serverCloseConn(conn *websocket.Conn) {
   fmt.Printf("<= closing conn to %s\n", conn.RemoteAddr().String())
   conn.Close()
 }
 
-func runServer(table *Table, port string) (err error) {
-  listen, err := net.Listen("tcp", port)
-  if err != nil {
-    return err
-  }
-  defer listen.Close()
+func runServer(table *Table, addr string) (err error) {
+  clients := make([]*websocket.Conn, 0)
+  playerMap := make(map[*websocket.Conn]*Player)
+  var tableAdmin *websocket.Conn
 
-  connectedClientMap := make(map[*net.Conn]*bufio.Writer)
-  playerMap := make(map[*net.Conn]*Player)
-  var tableAdmin *net.Conn
-
-  sendResponseToAll := func(data *NetData, except *bufio.Writer) {
-    for _, clientWriter := range connectedClientMap {
-      if clientWriter != except {
-        sendData(data, clientWriter)
+  sendResponseToAll := func(data *NetData, except *websocket.Conn) {
+    for _, clientConn := range clients {
+      if clientConn != except {
+        sendData(data, clientConn)
       }
     }
   }
 
-  removeClient := func(conn *net.Conn) {
+  removeClient := func(conn *websocket.Conn) {
     netData := &NetData{
         Response: NETDATA_CLIENTEXITED,
         Table:    table,
     }
 
-    delete(connectedClientMap, conn)
+    clientIdx := -1
+    for i, clientConn := range clients {
+      if clientConn == conn {
+        clientIdx = i
+      }
+    }
+    if clientIdx == -1 {
+      fmt.Println("removeClient(): BUG: couldn't find a conn in clients slice")
+    } else {
+      clients = append(clients[:clientIdx], clients[clientIdx+1:]...)
+    }
 
     table.NumConnected--
     sendResponseToAll(netData, nil)
   }
 
-  removePlayer := func(conn *net.Conn) {
+  removePlayer := func(conn *websocket.Conn) {
     player := playerMap[conn]
 
     delete(playerMap, conn)
@@ -1480,7 +1491,7 @@ func runServer(table *Table, port string) (err error) {
         PlayerData: player,
       }
 
-      sendResponseToAll(netData, connectedClientMap[conn])
+      sendResponseToAll(netData, conn)
     }
   }
 
@@ -1502,7 +1513,7 @@ func runServer(table *Table, port string) (err error) {
     for conn, player := range playerMap {
       netData.PlayerData = player
 
-      sendData(netData, connectedClientMap[conn])
+      sendData(netData, conn)
     }
   }
 
@@ -1512,7 +1523,7 @@ func runServer(table *Table, port string) (err error) {
     for _, player := range table.getNonFoldedPlayers() {
       netData.PlayerData = table.PublicPlayerInfo(*player)
 
-      var conn *net.Conn
+      var conn *websocket.Conn
       for k, v := range playerMap {
         if v == player {
           conn = k
@@ -1521,233 +1532,225 @@ func runServer(table *Table, port string) (err error) {
       }
       assert(conn != nil, "sendPlayerActionToAll(): player not in playerMap")
 
-      sendResponseToAll(netData, connectedClientMap[conn])
+      sendResponseToAll(netData, conn)
     }
   }
 
-  fmt.Printf("starting server on port %v\n", port)
+  upgrader := websocket.Upgrader{}
 
-  for {
-    conn, err := listen.Accept()
+  WSCLIClient := func(w http.ResponseWriter, req *http.Request) {
+    conn, err := upgrader.Upgrade(w, req, nil)
     if err != nil {
-      return err
+      fmt.Printf("WS upgrade err %s\n", err.Error())
     }
 
-    table.NumConnected++ // XXX: racy?
+    table.NumConnected++ // XXX racy
 
-    go func(conn net.Conn) {
-      defer serverCloseConn(conn)
-      defer removeClient(&conn)
-      defer removePlayer(&conn)
+    defer serverCloseConn(conn)
+    defer removeClient(conn)
+    defer removePlayer(conn)
 
-      var (
-        readBuf   = make([]byte, 4096)
-        readConn  = bufio.NewReader(conn)
-        writeConn = bufio.NewWriter(conn)
-      )
+    /*var (
+      readBuf   = make([]byte, 4096)
+      readConn  = bufio.NewReader(req.Body)
+      writeConn = bufio.NewWriter(w)
+    )*/
 
-      fmt.Printf("=> new conn from %s\n", conn.RemoteAddr().String())
+    fmt.Printf("=> new conn from %s\n", req.Host)
 
-      connectedClientMap[&conn] = writeConn
+    netData := NetData{
+      Response: NETDATA_NEWCONN,
+      Table:    table,
+    }
 
-      netData := NetData{
-        Response: NETDATA_NEWCONN,
-        Table:    table,
+    for {
+      _, rawData, err := conn.ReadMessage()
+      if err != nil {
+        fmt.Printf("runServer(): readConn err: %v\n", err)
+
+        return
       }
 
-      for {
-        n, err := readConn.Read(readBuf); if err != nil {
-          if err == io.EOF {
-            fmt.Println("!! EOF 1")
-          } else {
-            fmt.Printf("runServer(): readConn err: %v\n", err)
-  	      }
+      fmt.Printf("recv %d bytes from %p\n", len(rawData), conn)
 
-          return
-	      }
+      // we need to set Table member to node otherwise gob will
+      // modify our table structure if a user sends that member
+      netData = NetData{ Response: NETDATA_NEWCONN, Table: nil }
 
-        fmt.Printf("recv %v bytes\n", n)
+      gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&netData)
 
-        rawData := bytes.NewReader(readBuf[:n])
+      netData.Table = table 
 
-        switch err {
-        case io.EOF:
-          fmt.Println("!! EOF 2")
-        case nil:
-          // we need to set Table member to node otherwise gob will
-          // modify our table structure if a user sends that member
-          netData = NetData{ Response: NETDATA_NEWCONN, Table: nil }
+      fmt.Printf("in nil, netData: %v\n", netData)
 
-          gob.NewDecoder(rawData).Decode(&netData)
+      if netData.Request == NETDATA_NEWCONN {
+        clients = append(clients, conn)
 
-          netData.Table = table 
+        sendResponseToAll(&netData, nil)
 
-          fmt.Printf("in nil, netData: %v\n", netData)
+        // send current player info to this client
+        if table.NumConnected > 1 {
+            netData.Response = NETDATA_CURPLAYERS
+            netData.Table    = table
 
-          if netData.Request == NETDATA_NEWCONN {
-            sendResponseToAll(&netData, nil)
-
-            // send current player info to this client
-            if table.NumConnected > 1 {
-                netData.Response = NETDATA_CURPLAYERS
-                netData.Table    = table
-
-                for _, player := range table.getOccupiedSeats() {
-                  netData.PlayerData = table.PublicPlayerInfo(*player)
-                  sendData(&netData, writeConn)
-                  time.Sleep(50 * time.Millisecond) // XXX why do i need to do this
-                }
-            }
-
-            if player := table.getOpenSeat(); player != nil {
-              fmt.Printf("adding %p as player %s\n", &conn, player.Name)
-              table.NumPlayers++ // XXX racy?
-
-              if table.State == TABLESTATE_NOTSTARTED {
-                player.Action.Action = NETDATA_FIRSTACTION
-              } else {
-                player.Action.Action = NETDATA_MIDROUNDADDITION
-              }
-
-              playerMap[&conn] = player
-
-              if table.curPlayer == nil {
-                table.curPlayer = player
-              }
-
-              netData.Response   = NETDATA_NEWPLAYER
-              netData.Table      = table
+            for _, player := range table.getOccupiedSeats() {
               netData.PlayerData = table.PublicPlayerInfo(*player)
-
-              sendResponseToAll(&netData, writeConn)
+              sendData(&netData, conn)
+              time.Sleep(50 * time.Millisecond) // XXX why do i need to do this
             }
+        }
 
-            if tableAdmin == nil {
-              tableAdmin = &conn
-              sendData(&NetData{ Response: NETDATA_MAKEADMIN }, writeConn)
-            }
+        if player := table.getOpenSeat(); player != nil {
+          fmt.Printf("adding %p as player %s\n", &conn, player.Name)
+          table.NumPlayers++ // XXX racy?
+
+          if table.State == TABLESTATE_NOTSTARTED {
+            player.Action.Action = NETDATA_FIRSTACTION
           } else {
-            switch netData.Request {
-            case NETDATA_CLIENTEXITED:
-              return
-            case NETDATA_STARTGAME:
-              if &conn != tableAdmin {
-                netData.Response = NETDATA_BADREQUEST
-                netData.Msg      = "only the table admin can do that"
-                netData.Table    = nil
+            player.Action.Action = NETDATA_MIDROUNDADDITION
+          }
 
-                sendData(&netData, writeConn)
-              } else if table.NumConnected < 2 {
-                netData.Response = NETDATA_BADREQUEST
-                netData.Msg      = "not enough players to start"
-                netData.Table    = nil
+          playerMap[conn] = player
 
-                sendData(&netData, writeConn)
-              } else if table.State != TABLESTATE_NOTSTARTED {
-                netData.Response = NETDATA_BADREQUEST
-                netData.Msg      = "this game has already started"
-                netData.Table    = nil
+          if table.curPlayer == nil {
+            table.curPlayer = player
+          }
 
-                sendData(&netData, writeConn)
-              } else { // start game
-                table.nextTableAction()
+          netData.Response   = NETDATA_NEWPLAYER
+          netData.Table      = table
+          netData.PlayerData = table.PublicPlayerInfo(*player)
 
-                sendDeals()
-		          }
-            case NETDATA_BET, NETDATA_CALL, NETDATA_CHECK, NETDATA_FOLD:
-              player := playerMap[&conn]
+          sendResponseToAll(&netData, conn)
+        }
 
-              if player == nil {
-                netData.Response = NETDATA_BADREQUEST
-                netData.Msg      = "you are not a player"
-                netData.Table    = nil
+        if tableAdmin == nil {
+          tableAdmin = conn
+          sendData(&NetData{ Response: NETDATA_MAKEADMIN }, conn)
+        }
+      } else {
+        switch netData.Request {
+        case NETDATA_CLIENTEXITED:
+          return
+        case NETDATA_STARTGAME:
+          if conn != tableAdmin {
+            netData.Response = NETDATA_BADREQUEST
+            netData.Msg      = "only the table admin can do that"
+            netData.Table    = nil
 
-                sendData(&netData, writeConn)
-                continue
-              }
+            sendData(&netData, conn)
+          } else if table.NumConnected < 2 {
+            netData.Response = NETDATA_BADREQUEST
+            netData.Msg      = "not enough players to start"
+            netData.Table    = nil
 
-              if player != table.curPlayer {
-                netData.Response = NETDATA_BADREQUEST
-                netData.Msg      = "it's not your turn"
-                netData.Table    = nil
+            sendData(&netData, conn)
+          } else if table.State != TABLESTATE_NOTSTARTED {
+            netData.Response = NETDATA_BADREQUEST
+            netData.Msg      = "this game has already started"
+            netData.Table    = nil
 
-                sendData(&netData, writeConn)
-                continue
-              }
-              
-              if err := table.PlayerAction(player, netData.PlayerData.Action); err != nil {
-                netData.Response = NETDATA_BADREQUEST
-                netData.Table    = nil
-                netData.Msg      = err.Error()
+            sendData(&netData, conn)
+          } else { // start game
+            table.nextTableAction()
 
-                sendData(&netData, writeConn)
+            sendDeals()
+          }
+        case NETDATA_BET, NETDATA_CALL, NETDATA_CHECK, NETDATA_FOLD:
+          player := playerMap[conn]
 
-                continue
-              } else if table.State != TABLESTATE_DONEBETTING {
-                if table.State == TABLESTATE_ROUNDOVER {
-                // all other players folded before all comm cards were dealt
-                  table.finishRound()
-                  fmt.Printf("winner # %d\n", len(table.Winners))
-                  fmt.Println(table.Winners[0].Name + " wins by folds")
+          if player == nil {
+            netData.Response = NETDATA_BADREQUEST
+            netData.Msg      = "you are not a player"
+            netData.Table    = nil
 
-                  netData.Response   = NETDATA_ROUNDOVER
-                  netData.Table      = table
-                  netData.Msg        = table.Winners[0].Name + " wins by folds"
-                  netData.PlayerData = nil
+            sendData(&netData, conn)
+            continue
+          }
 
-                  sendResponseToAll(&netData, nil)
+          if player != table.curPlayer {
+            netData.Response = NETDATA_BADREQUEST
+            netData.Msg      = "it's not your turn"
+            netData.Table    = nil
 
-                  table.newRound()
-                  table.nextTableAction()
-                  sendDeals()
-                } else {
-                  sendPlayerActionToAll(table.PublicPlayerInfo(*player))
-                }
-              } else { 
-                sendPlayerActionToAll(table.PublicPlayerInfo(*player))
+            sendData(&netData, conn)
+            continue
+          }
+          
+          if err := table.PlayerAction(player, netData.PlayerData.Action); err != nil {
+            netData.Response = NETDATA_BADREQUEST
+            netData.Table    = nil
+            netData.Msg      = err.Error()
 
-                fmt.Println("** done betting...")
-                table.nextCommunityAction()
+            sendData(&netData, conn)
 
-                if table.State == TABLESTATE_ROUNDOVER {
-                  table.finishRound()
-                  sendHands()
+            continue
+          } else if table.State != TABLESTATE_DONEBETTING {
+            if table.State == TABLESTATE_ROUNDOVER {
+            // all other players folded before all comm cards were dealt
+              table.finishRound()
+              fmt.Printf("winner # %d\n", len(table.Winners))
+              fmt.Println(table.Winners[0].Name + " wins by folds")
 
-                  netData.Response   = NETDATA_ROUNDOVER
-                  netData.Table      = table
-                  netData.Msg        = table.WinInfo
+              netData.Response   = NETDATA_ROUNDOVER
+              netData.Table      = table
+              netData.Msg        = table.Winners[0].Name + " wins by folds"
+              netData.PlayerData = nil
 
-                  sendResponseToAll(&netData, nil)
+              sendResponseToAll(&netData, nil)
 
-                  table.newRound()
-                  table.nextTableAction()
-                  sendDeals()
+              table.newRound()
+              table.nextTableAction()
+              sendDeals()
+            } else {
+              sendPlayerActionToAll(table.PublicPlayerInfo(*player))
+            }
+          } else { 
+            sendPlayerActionToAll(table.PublicPlayerInfo(*player))
 
-                  continue
-                }
+            fmt.Println("** done betting...")
+            table.nextCommunityAction()
 
-                netData.Response   = table.commState2NetDataResponse()
-                netData.Table      = table
-                netData.PlayerData = nil
+            if table.State == TABLESTATE_ROUNDOVER {
+              table.finishRound()
+              sendHands()
 
-                sendResponseToAll(&netData, nil)
-              }
-            default:
-              netData.Response = NETDATA_BADREQUEST
-              netData.Msg      = "bad request"
-              netData.Table, netData.PlayerData = nil, nil
-              
-              sendData(&netData, writeConn)
+              netData.Response   = NETDATA_ROUNDOVER
+              netData.Table      = table
+              netData.Msg        = table.WinInfo
+
+              sendResponseToAll(&netData, nil)
+
+              table.newRound()
+              table.nextTableAction()
+              sendDeals()
+
+              continue
             }
 
-            //sendData(&netData, writeConn)
+            netData.Response   = table.commState2NetDataResponse()
+            netData.Table      = table
+            netData.PlayerData = nil
+
+            sendResponseToAll(&netData, nil)
           }
         default:
-          fmt.Printf("srv recv err: %s\n", err)
-          return
+          netData.Response = NETDATA_BADREQUEST
+          netData.Msg      = "bad request"
+          netData.Table, netData.PlayerData = nil, nil
+          
+          sendData(&netData, conn)
         }
-      }
-    }(conn)
+        //sendData(&netData, writeConn)
+      } // else{} end
+    } //for loop end
+  } // func end
+    
+  fmt.Printf("starting sern %v\n", addr)
+
+  http.HandleFunc("/cli", WSCLIClient)
+
+  if err := http.ListenAndServe(addr, nil); err != nil {
+    return err
   }
 
   return nil
@@ -1762,46 +1765,52 @@ type FrontEnd interface {
 }
 
 func runClient(addr string, isGUI bool) (err error) {
-  conn, err := net.Dial("tcp", addr)
+  fmt.Printf("connecting to %s ...\n", addr)
+  conn, _, err := websocket.DefaultDialer.Dial(addr, nil)
   if err != nil {
     return err
   }
 
-  defer conn.Close()
+  defer func() {
+    fmt.Println("closing connection")
+    err := conn.WriteMessage(websocket.CloseMessage,
+                             websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+    if err != nil {
+      fmt.Printf("write close err: %s\n", err.Error())
+      return
+    }
 
-  var (
-        readBuf   = make([]byte, 4096)
-        readConn  = bufio.NewReader(conn)
-        writeConn = bufio.NewWriter(conn)
-  )
+    select {
+    case <-time.After(time.Second * 5):
+    }
+    return
+  }()
 
-   var frontEnd FrontEnd
-   if isGUI {
-     ;//frontEnd := runGUI()
-   } else { // CLI mode
-     frontEnd = &CLI{}
+  var frontEnd FrontEnd
+  if isGUI {
+    ;//frontEnd := runGUI()
+  } else { // CLI mode
+    frontEnd = &CLI{}
 
-     if err := frontEnd.Init(); err != nil {
-       return err
-     }
-   }
+    if err := frontEnd.Init(); err != nil {
+      return err
+    }
+  }
 
   fmt.Printf("connected to %s\n", addr)
 
   go func () {
-    sendData(&NetData{ Request: NETDATA_NEWCONN }, writeConn)
+    sendData(&NetData{ Request: NETDATA_NEWCONN }, conn)
 
     for {
-      var n int
-      if n, err = readConn.Read(readBuf); err != nil {
+      _, data, err := conn.ReadMessage()
+      if err != nil {
         frontEnd.Finish() <- err
         return
       }
 
-      rawData := bytes.NewReader(readBuf[:n])
-
       netData := &NetData{}
-      dec := gob.NewDecoder(rawData)
+      dec := gob.NewDecoder(bytes.NewReader(data))
       dec.Decode(&netData)
       frontEnd.InputChan() <- netData
 
@@ -1819,8 +1828,10 @@ func runClient(addr string, isGUI bool) (err error) {
   go func() {
     for {
       select {
+      case err := <-frontEnd.Finish():
+        fmt.Printf("%s\n", err.Error())
       case netData := <-frontEnd.OutputChan():
-        sendData(netData, writeConn)
+        sendData(netData, conn)
       }
     }
   }()
