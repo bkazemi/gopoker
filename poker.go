@@ -9,12 +9,17 @@ import (
   "encoding/gob"
   //"io"
   "os"
+  "strings"
   "strconv"
   "sort"
   "errors"
   "math/rand"
   "time"
   "net/http"
+  "sync"
+
+  "golang.org/x/text/language"
+  "golang.org/x/text/message"
 
   "github.com/gorilla/websocket"
 )
@@ -139,6 +144,7 @@ type Player struct {
   ChipCount uint
   Hole     *Hole
   Hand     *Hand
+  PreHand   Hand // XXX tmp
   Action    Action
 }
 
@@ -148,17 +154,33 @@ func (player *Player) Init(name string, isCPU bool) error {
 
   player.IsVacant = true
 
-  player.Action = Action{ Action: NETDATA_VACANTSEAT }
-
   player.ChipCount = 1e5 // XXX
   player.NewCards()
+
+  player.Action = Action{ Action: NETDATA_VACANTSEAT }
 
   return nil
 }
 
 func (player *Player) NewCards() {
-  player.Hole  = &Hole{ Cards: make(Cards, 0, 2) }
-  player.Hand  = &Hand{ Rank: R_MUCK, Cards: make(Cards, 0, 5) }
+  player.Hole = &Hole{ Cards: make(Cards, 0, 2) }
+  player.Hand = &Hand{ Rank: R_MUCK, Cards: make(Cards, 0, 5) }
+}
+
+func (player *Player) Clear() {
+  player.IsVacant = true
+
+  player.ChipCount = 1e5 // XXX
+  player.NewCards()
+
+  player.Action.Amount = 0
+  player.Action.Action = NETDATA_VACANTSEAT
+}
+
+func (player *Player) ChipCountToString() string {
+  p := message.NewPrinter(language.English)
+
+  return p.Sprintf("%d", player.ChipCount)
 }
 
 func (player *Player) ActionToString() string {
@@ -274,6 +296,8 @@ type Table struct {
   State        TableState // current status of table
   CommState    TableState // current status of community
   NumConnected uint       // number of people (players+spectators) currently at table (online mode)
+
+  mtx          sync.Mutex
 }
 
 func (table *Table) Init(deck *Deck, CPUPlayers []bool) error {
@@ -309,6 +333,7 @@ func (table *Table) TableStateToString() string {
   switch table.State {
   case TABLESTATE_NOTSTARTED:
     return "waiting for start"
+
   case TABLESTATE_PREFLOP:
     return "pre flop"
   case TABLESTATE_FLOP:
@@ -317,18 +342,25 @@ func (table *Table) TableStateToString() string {
     return "turn"
   case TABLESTATE_RIVER:
     return "river"
+
   case TABLESTATE_ROUNDS:
     return "betting rounds"
+  case TABLESTATE_ROUNDOVER:
+    return "round over"
+  case TABLESTATE_NEWROUND:
+    return "new round"
+  case TABLESTATE_GAMEOVER:
+    return "game over"
+
   case TABLESTATE_PLAYERRAISED:
     return "player raised"
   case TABLESTATE_DONEBETTING:
     return "finished betting"
   case TABLESTATE_SHOWHANDS:
     return "showing hands"
-  case TABLESTATE_ROUNDOVER:
-    return "round over"
-  case TABLESTATE_GAMEOVER:
-    return "game over"
+  case TABLESTATE_SPLITPOT:
+    return "split pot"
+
   default:
     return "BUG: bad table state"
   }
@@ -357,9 +389,13 @@ func (table *Table) PublicPlayerInfo(player Player) *Player {
 }
 
 func (table *Table) getOpenSeat() *Player {
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
+
   for _, seat := range table.players {
     if seat.IsVacant {
       seat.IsVacant = false
+      table.NumPlayers++
 
       return seat
     }
@@ -405,22 +441,15 @@ func (table *Table) getActiveSeats() []*Player {
   return seats
 }
 
-func (table *Table) getNumOpenSeats() int {
-  num := 0
-
-  for _, seat := range table.players {
-    if seat.IsVacant {
-      num++
-    }
-  }
-
-  return num
+func (table *Table) GetNumOpenSeats() uint {
+  return table.NumSeats - table.NumPlayers
 }
 
 func (table *Table) addNewPlayers() {
   for _, player := range table.players {
     if !player.IsVacant &&
         player.Action.Action == NETDATA_MIDROUNDADDITION {
+      fmt.Printf("adding new player: %s\n", player.Name)
       player.Action.Action = NETDATA_FIRSTACTION
     }
   }
@@ -432,10 +461,11 @@ func (table *Table) addNewPlayers() {
 func (table *Table) reorderPlayers() {
   defer func() {
     fmt.Printf("reorderPlayers(): setting curPlayer to %s\n", table.players[0].Name)
+
     table.curPlayer = table.players[0]
   }()
 
-  players := table.getOccupiedSeats() // XXX race cond possible
+  players := table.getOccupiedSeats()
 
   var lastPlayer *Player
 
@@ -553,6 +583,9 @@ func (table *Table) setNextPlayerTurn() {
   if table.State == TABLESTATE_NOTSTARTED {
     return
   }
+
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
 
   players := table.getNonFoldedPlayers()
 
@@ -815,11 +848,15 @@ func (table *Table) nextTableAction() {
     table.Deal()
 
     table.CommState = TABLESTATE_PREFLOP
+    fmt.Printf("nextTableAction() case NS: t.State == %s\n", table.TableStateToString())
   case TABLESTATE_NEWROUND:
     table.rotatePlayers()
     table.Deal()
 
     table.CommState = TABLESTATE_PREFLOP
+  default:
+    fmt.Printf("nextTableAction(): BUG: called with improper state (" +
+               table.TableStateToString() + ")")
   }
 }
 
@@ -888,13 +925,14 @@ func (table *Table) newRound() {
   for _, player := range table.getActiveSeats() {
     player.NewCards()
 
-    player.Action.Action = NETDATA_FIRSTACTION
+    player.Action.Amount = 0
+    player.Action.Action = NETDATA_FIRSTACTION // NOTE: set twice w/ new player
   }
 
   table.newCommunity()
 
   table.better  = nil
-  table.Ante   *= 2
+  table.Ante   *= 2 // XXX
   table.Pot     = 0 // XXX
   table.State   = TABLESTATE_NEWROUND
 }
@@ -931,7 +969,7 @@ func (table *Table) finishRound() {
 func (table *Table) BestHand(players []*Player) []*Player {
   table.WinInfo = ""
   for _, player := range players {
-    assemble_best_hand(table, player)
+    assemble_best_hand(false, table, player)
 
     table.WinInfo += fmt.Sprintf("%s [%4s][%4s] => %-15s (rank %d)\n",
       player.Name,
@@ -980,7 +1018,29 @@ func (table *Table) BestHand(players []*Player) []*Player {
 }
 
 // hand matching logic unoptimized
-func assemble_best_hand(table *Table, player *Player) {
+func assemble_best_hand(preshow bool, table *Table, player *Player) {
+  var restoreHand Hand
+  if player.Hand != nil {
+    restoreHand = *player.Hand
+  } else {
+    restoreHand = Hand{}
+  }
+  defer func() {
+    // XXX TODO very temporary!
+    if (preshow) {
+      if player.Hand != nil {
+        player.PreHand = *player.Hand
+      } else {
+        player.PreHand = Hand{}
+      }
+      player.Hand = &restoreHand
+    }
+  }()
+
+  if (table.State == TABLESTATE_PREFLOP || len(player.Hole.Cards) != 2 || len(table.Community) < 3) {
+    return
+  }
+
   cards := append(table.Community, player.Hole.Cards...)
   cards_sort(&cards)
   bestcard := len(cards)
@@ -1132,7 +1192,8 @@ func assemble_best_hand(table *Table, player *Player) {
    // royal flush, straight flush, flush, straight or high card.
     // XXX: make better
     // we check for best straight first to reduce cycles
-    for i := 1; i < 4; i++ {
+    //for i := 1; i < 4; i++ {
+    for i := 1; i < len(cards) - 3; i++ {
       if got_straight(&cards, player, bestcard-i, false) {
         return
       }
@@ -1364,6 +1425,7 @@ const (
   NETDATA_CLOSE = iota
   NETDATA_NEWCONN
 
+  NETDATA_YOURPLAYER
   NETDATA_NEWPLAYER
   NETDATA_CURPLAYERS
   NETDATA_PLAYERLEFT
@@ -1449,10 +1511,8 @@ func runServer(table *Table, addr string) (err error) {
   }
 
   removeClient := func(conn *websocket.Conn) {
-    netData := &NetData{
-        Response: NETDATA_CLIENTEXITED,
-        Table:    table,
-    }
+    table.mtx.Lock()
+    defer table.mtx.Unlock()
 
     clientIdx := -1
     for i, clientConn := range clients {
@@ -1462,15 +1522,25 @@ func runServer(table *Table, addr string) (err error) {
     }
     if clientIdx == -1 {
       fmt.Println("removeClient(): BUG: couldn't find a conn in clients slice")
+      return
     } else {
       clients = append(clients[:clientIdx], clients[clientIdx+1:]...)
     }
 
     table.NumConnected--
+
+    netData := &NetData{
+        Response: NETDATA_CLIENTEXITED,
+        Table:    table,
+    }
+
     sendResponseToAll(netData, nil)
   }
 
   removePlayer := func(conn *websocket.Conn) {
+    table.mtx.Lock()
+    defer table.mtx.Unlock()
+
     player := playerMap[conn]
 
     delete(playerMap, conn)
@@ -1482,8 +1552,7 @@ func runServer(table *Table, addr string) (err error) {
         tableAdmin = nil
       }
       
-      player.IsVacant      = true
-      player.Action.Action = NETDATA_VACANTSEAT
+      player.Clear()
 
       netData := &NetData{
         Response:   NETDATA_PLAYERLEFT,
@@ -1495,16 +1564,19 @@ func runServer(table *Table, addr string) (err error) {
     }
   }
 
-  sendPlayerActionToAll := func(player *Player) {
+  sendPlayerActionToAll := func(player *Player, conn *websocket.Conn) {
     fmt.Printf("%s action => %s\n", player.Name, player.ActionToString())
 
     netData := &NetData{ 
      Response:   NETDATA_PLAYERACTION,
      Table:      table,
-     PlayerData: player,
+     PlayerData: table.PublicPlayerInfo(*player),
     }
 
-    sendResponseToAll(netData, nil)
+    sendResponseToAll(netData, conn)
+
+    netData.PlayerData = player
+    sendData(netData, conn)
   }
 
   sendDeals := func() {
@@ -1530,9 +1602,61 @@ func runServer(table *Table, addr string) (err error) {
           break
         }
       }
-      assert(conn != nil, "sendPlayerActionToAll(): player not in playerMap")
+      assert(conn != nil, "sendHands(): player not in playerMap")
 
       sendResponseToAll(netData, conn)
+    }
+  }
+
+  // TODO: this is temporary.
+  tmp_tableLogicAfterPlayerAction := func(player *Player, netData *NetData, conn *websocket.Conn) {
+    if table.State != TABLESTATE_DONEBETTING {
+      if table.State == TABLESTATE_ROUNDOVER {
+      // all other players folded before all comm cards were dealt
+      // TODO: check for this state in a better fashion
+        table.finishRound()
+        fmt.Printf("winner # %d\n", len(table.Winners))
+        fmt.Println(table.Winners[0].Name + " wins by folds")
+
+        netData.Response   = NETDATA_ROUNDOVER
+        netData.Table      = table
+        netData.Msg        = table.Winners[0].Name + " wins by folds"
+        netData.PlayerData = nil
+
+        sendResponseToAll(netData, nil)
+
+        table.newRound()
+        table.nextTableAction()
+        sendDeals()
+      } else {
+        sendPlayerActionToAll(player, conn)
+      }
+    } else { 
+      sendPlayerActionToAll(player, conn)
+
+      fmt.Println("** done betting...")
+      table.nextCommunityAction()
+
+      if table.State == TABLESTATE_ROUNDOVER {
+        table.finishRound()
+        sendHands()
+
+        netData.Response   = NETDATA_ROUNDOVER
+        netData.Table      = table
+        netData.Msg        = table.WinInfo
+
+        sendResponseToAll(netData, nil)
+
+        table.newRound()
+        table.nextTableAction()
+        sendDeals()
+      } else {
+        netData.Response   = table.commState2NetDataResponse()
+        netData.Table      = table
+        netData.PlayerData = nil
+
+        sendResponseToAll(netData, nil)
+      }
     }
   }
 
@@ -1542,9 +1666,9 @@ func runServer(table *Table, addr string) (err error) {
     conn, err := upgrader.Upgrade(w, req, nil)
     if err != nil {
       fmt.Printf("WS upgrade err %s\n", err.Error())
-    }
 
-    table.NumConnected++ // XXX racy
+      return
+    }
 
     defer serverCloseConn(conn)
     defer removeClient(conn)
@@ -1573,7 +1697,7 @@ func runServer(table *Table, addr string) (err error) {
 
       fmt.Printf("recv %d bytes from %p\n", len(rawData), conn)
 
-      // we need to set Table member to node otherwise gob will
+      // we need to set Table member to nil otherwise gob will
       // modify our table structure if a user sends that member
       netData = NetData{ Response: NETDATA_NEWCONN, Table: nil }
 
@@ -1581,10 +1705,12 @@ func runServer(table *Table, addr string) (err error) {
 
       netData.Table = table 
 
-      fmt.Printf("in nil, netData: %v\n", netData)
-
       if netData.Request == NETDATA_NEWCONN {
         clients = append(clients, conn)
+
+        table.mtx.Lock()
+        table.NumConnected++
+        table.mtx.Unlock()
 
         sendResponseToAll(&netData, nil)
 
@@ -1596,13 +1722,12 @@ func runServer(table *Table, addr string) (err error) {
             for _, player := range table.getOccupiedSeats() {
               netData.PlayerData = table.PublicPlayerInfo(*player)
               sendData(&netData, conn)
-              time.Sleep(50 * time.Millisecond) // XXX why do i need to do this
+              //time.Sleep(50 * time.Millisecond) // XXX why do i need to do this
             }
         }
 
         if player := table.getOpenSeat(); player != nil {
           fmt.Printf("adding %p as player %s\n", &conn, player.Name)
-          table.NumPlayers++ // XXX racy?
 
           if table.State == TABLESTATE_NOTSTARTED {
             player.Action.Action = NETDATA_FIRSTACTION
@@ -1621,15 +1746,26 @@ func runServer(table *Table, addr string) (err error) {
           netData.PlayerData = table.PublicPlayerInfo(*player)
 
           sendResponseToAll(&netData, conn)
+          
+          netData.Response   = NETDATA_YOURPLAYER
+          netData.PlayerData = player
+          sendData(&netData, conn)
         }
 
         if tableAdmin == nil {
+          table.mtx.Lock()
           tableAdmin = conn
+          table.mtx.Unlock()
           sendData(&NetData{ Response: NETDATA_MAKEADMIN }, conn)
         }
       } else {
         switch netData.Request {
         case NETDATA_CLIENTEXITED:
+          if player := playerMap[conn]; player != nil && player == table.curPlayer {
+            // XXX just autofolding for now
+            table.PlayerAction(player, Action{ Action: NETDATA_FOLD })
+          }
+
           return
         case NETDATA_STARTGAME:
           if conn != tableAdmin {
@@ -1682,56 +1818,8 @@ func runServer(table *Table, addr string) (err error) {
             netData.Msg      = err.Error()
 
             sendData(&netData, conn)
-
-            continue
-          } else if table.State != TABLESTATE_DONEBETTING {
-            if table.State == TABLESTATE_ROUNDOVER {
-            // all other players folded before all comm cards were dealt
-              table.finishRound()
-              fmt.Printf("winner # %d\n", len(table.Winners))
-              fmt.Println(table.Winners[0].Name + " wins by folds")
-
-              netData.Response   = NETDATA_ROUNDOVER
-              netData.Table      = table
-              netData.Msg        = table.Winners[0].Name + " wins by folds"
-              netData.PlayerData = nil
-
-              sendResponseToAll(&netData, nil)
-
-              table.newRound()
-              table.nextTableAction()
-              sendDeals()
-            } else {
-              sendPlayerActionToAll(table.PublicPlayerInfo(*player))
-            }
-          } else { 
-            sendPlayerActionToAll(table.PublicPlayerInfo(*player))
-
-            fmt.Println("** done betting...")
-            table.nextCommunityAction()
-
-            if table.State == TABLESTATE_ROUNDOVER {
-              table.finishRound()
-              sendHands()
-
-              netData.Response   = NETDATA_ROUNDOVER
-              netData.Table      = table
-              netData.Msg        = table.WinInfo
-
-              sendResponseToAll(&netData, nil)
-
-              table.newRound()
-              table.nextTableAction()
-              sendDeals()
-
-              continue
-            }
-
-            netData.Response   = table.commState2NetDataResponse()
-            netData.Table      = table
-            netData.PlayerData = nil
-
-            sendResponseToAll(&netData, nil)
+          } else {
+            tmp_tableLogicAfterPlayerAction(player, &netData, conn)
           }
         default:
           netData.Response = NETDATA_BADREQUEST
@@ -1745,7 +1833,7 @@ func runServer(table *Table, addr string) (err error) {
     } //for loop end
   } // func end
     
-  fmt.Printf("starting sern %v\n", addr)
+  fmt.Printf("starting server on %v\n", addr)
 
   http.HandleFunc("/cli", WSCLIClient)
 
@@ -1765,6 +1853,10 @@ type FrontEnd interface {
 }
 
 func runClient(addr string, isGUI bool) (err error) {
+  if !strings.HasPrefix(addr, "ws://") {
+    addr = "ws://" + addr
+  }
+
   fmt.Printf("connecting to %s ...\n", addr)
   conn, _, err := websocket.DefaultDialer.Dial(addr, nil)
   if err != nil {
@@ -1781,7 +1873,7 @@ func runClient(addr string, isGUI bool) (err error) {
     }
 
     select {
-    case <-time.After(time.Second * 5):
+    case <-time.After(time.Second * 1):
     }
     return
   }()

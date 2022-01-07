@@ -10,4 +10,5 @@ require (
 	github.com/hajimehoshi/ebiten/v2 v2.0.5
 	github.com/hajimehoshi/wasmserve v0.0.0-20210211132404-f94a97dc1500 // indirect
 	github.com/rivo/tview v0.0.0-20210909154944-f7430b878d17
+	golang.org/x/text v0.3.6
 )

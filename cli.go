@@ -3,6 +3,7 @@ package main
 import (
   "fmt"
   "strconv"
+  "errors"
   //"strings"
 
   "github.com/gdamore/tcell/v2"
@@ -138,7 +139,7 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
     cli.tableInfoList.SetItemText(0, "# players",
       strconv.FormatUint(uint64(table.NumPlayers), 10))
     cli.tableInfoList.SetItemText(1, "# open seats",
-      strconv.FormatUint(uint64(table.NumSeats) - uint64(table.NumPlayers), 10))
+      strconv.FormatUint(uint64(table.GetNumOpenSeats()), 10))
   case "status":
     cli.tableInfoList.SetItemText(3, "dealer",      table.Dealer.Name)
     cli.tableInfoList.SetItemText(4, "small blind", table.SmallBlind.Name)
@@ -179,14 +180,22 @@ func (cli *CLI) removePlayer(player *Player) {
   cli.app.Draw()
 }
 
-func (cli *CLI) updatePlayer(player *Player) {
+func (cli *CLI) updatePlayer(player *Player, table *Table) {
   textView := cli.playersTextViewMap[player.Name]
 
   if player.Name == cli.yourName {
+    preHand := ""
+    if (table != nil) {
+      assemble_best_hand(true, table, player)
+      preHand = player.PreHand.RankName()
+    } else {
+      preHand = "..."
+    }
     textView.
-      SetText("name: "           + player.Name                                      + "\n" +
-              "current action: " + player.ActionToString()                          + "\n" +
-              "chip count: "     + strconv.FormatUint(uint64(player.ChipCount), 10) + "\n")
+      SetText("name: "              + player.Name                + "\n" +
+              "current action: "    + player.ActionToString()    + "\n" +
+              "current best hand: " + preHand                    + "\n" +
+              "chip count: "        + player.ChipCountToString() + "\n")
   } else {
     if (textView == nil) { // XXX
       return
@@ -382,6 +391,8 @@ func (cli *CLI) cards2String(cards Cards) string {
 }
 
 func cliInputLoop(cli *CLI) {
+  defer cli.app.Stop()
+
   for {
     select {
     case netData := <-cli.inputChan:
@@ -390,6 +401,11 @@ func cliInputLoop(cli *CLI) {
         assert(netData.Table != nil, "netData.Table == nil")
 
         cli.updateInfoList("# connected", netData.Table)
+      case NETDATA_YOURPLAYER:
+        assert(netData.PlayerData != nil, "PlayerData == nil")
+        cli.updateInfoList("# players", netData.Table)
+
+        cli.updatePlayer(netData.PlayerData, nil)
       case NETDATA_NEWPLAYER, NETDATA_CURPLAYERS:
         assert(netData.PlayerData != nil, "PlayerData == nil")
         
@@ -410,7 +426,7 @@ func cliInputLoop(cli *CLI) {
             cli.playersTextViewMap[netData.PlayerData.Name] = cli.yourInfoView
           }
 
-          cli.updatePlayer(netData.PlayerData)
+          cli.updatePlayer(netData.PlayerData, netData.Table)
 
           txt := cli.cards2String(netData.PlayerData.Hole.Cards)
 
@@ -419,12 +435,12 @@ func cliInputLoop(cli *CLI) {
       case NETDATA_PLAYERACTION:
         assert(netData.PlayerData != nil, "PlayerData == nil")
 
-        cli.updatePlayer(netData.PlayerData)
+        cli.updatePlayer(netData.PlayerData, netData.Table)
         cli.updateInfoList("status", netData.Table)
       case NETDATA_SHOWHAND:
         assert(netData.PlayerData != nil, "Playerdata == nil")
 
-        cli.updatePlayer(netData.PlayerData)
+        cli.updatePlayer(netData.PlayerData, nil)
       case NETDATA_ROUNDOVER:
         //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
@@ -432,7 +448,7 @@ func cliInputLoop(cli *CLI) {
         cli.switchToPage("error")
         
         for _, player := range netData.Table.Winners {
-          cli.updatePlayer(player)
+          cli.updatePlayer(player, nil)
         }
 
         cli.app.Draw()
@@ -450,15 +466,15 @@ func cliInputLoop(cli *CLI) {
         cli.switchToPage("error")
         cli.app.Draw()
       default:
-        panic("bad response")
+        cli.finish <- errors.New("bad response")
+
+        return
       }
 
-    case err := <-cli.finish:
+    case err := <-cli.finish: // XXX
       if err != nil {
         fmt.Printf("backend error: %s\n", err)
       }
-
-      cli.app.Stop()
 
       return
     }
