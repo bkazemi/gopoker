@@ -9,6 +9,7 @@ import (
   "encoding/gob"
   //"io"
   "os"
+  "os/signal"
   "strings"
   "strconv"
   "sort"
@@ -17,6 +18,7 @@ import (
   "time"
   "net/http"
   "sync"
+  "context"
 
   "golang.org/x/text/language"
   "golang.org/x/text/message"
@@ -136,7 +138,7 @@ type Action struct {
 }
 
 type Player struct {
-  Name      string
+  Name      string // NOTE: must have unique names
   IsCPU     bool
 
   IsVacant  bool
@@ -184,13 +186,15 @@ func (player *Player) ChipCountToString() string {
 }
 
 func (player *Player) ActionToString() string {
+  p := message.NewPrinter(language.English)
+
   switch player.Action.Action {
   case NETDATA_ALLIN:
-    return "all in"
+    return p.Sprintf("all in (%d chips)", player.Action.Amount)
   case NETDATA_BET:
-    return "raise"
+    return p.Sprintf("raise (bet %d chips)", player.Action.Amount)
   case NETDATA_CALL:
-    return "call"
+    return p.Sprintf("call (%d chips)", player.Action.Amount)
   case NETDATA_CHECK:
     return "check"
   case NETDATA_FOLD:
@@ -198,6 +202,8 @@ func (player *Player) ActionToString() string {
 
   case NETDATA_VACANTSEAT:
     return "seat is open" // XXX 
+  case NETDATA_PLAYERTURN:
+    return "(player's turn) waiting for action"
   case NETDATA_FIRSTACTION:
     return "waiting for first action"
   case NETDATA_MIDROUNDADDITION:
@@ -380,6 +386,26 @@ func (table *Table) commState2NetDataResponse() int {
   }
 }
 
+func (table *Table) BigBlindToString() string {
+  if table.BigBlind != nil {
+    p := message.NewPrinter(language.English)
+
+    return p.Sprintf("%s (%d chip bet)", table.BigBlind.Name, table.Ante)
+  }
+
+  return ""
+}
+
+func (table *Table) SmallBlindToString() string {
+  if table.SmallBlind != nil {
+    p := message.NewPrinter(language.English)
+
+    return p.Sprintf("%s (%d chip bet)", table.SmallBlind.Name, table.Ante / 2)
+  }
+
+  return ""
+}
+
 func (table *Table) PublicPlayerInfo(player Player) *Player {
   if (table.State != TABLESTATE_SHOWHANDS) {
     player.Hole, player.Hand = nil, nil
@@ -455,6 +481,23 @@ func (table *Table) addNewPlayers() {
   }
 }
 
+func (table *Table) removeEliminatedPlayers() []*Player {
+  ret := make([]*Player, 0)
+
+  for _, player := range table.getNonFoldedPlayers() {
+    if player.ChipCount == 0 {
+      player.IsVacant = true
+      ret = append(ret, player)
+    }
+  }
+
+  if uint(len(ret)) == table.NumPlayers-1 {
+    table.State = TABLESTATE_GAMEOVER
+  }
+
+  return ret
+}
+
 // reorders the players slice to
 //  [B+1, p..., D, S, B] pre-flop
 //  [S, B, p..., D] post-flop
@@ -471,13 +514,13 @@ func (table *Table) reorderPlayers() {
 
   if table.State == TABLESTATE_NEWROUND || 
      table.State == TABLESTATE_PREFLOP {
-    if players[len(players)-1] == table.BigBlind {
+    if players[len(players)-1].Name == table.BigBlind.Name {
       return
     }
 
     lastPlayer = table.BigBlind
   } else { // post-flop
-    if players[len(players)-1] == table.Dealer {
+    if players[len(players)-1].Name == table.Dealer.Name {
       return
     }
 
@@ -486,7 +529,7 @@ func (table *Table) reorderPlayers() {
 
   lastPlayerIdx := 0
   for i, player := range players {
-    if player == lastPlayer { 
+    if player.Name == lastPlayer.Name { 
       lastPlayerIdx = i
       break
     }
@@ -518,22 +561,25 @@ func (table *Table) rotatePlayers() {
     return
   }
 
-  fmt.Printf("rotateBlinds(): D=%s S=%s B=%s => ",
+  fmt.Printf("rotatePlayers(): D=%s S=%s B=%s => ",
     table.Dealer.Name,
     table.SmallBlind.Name,
     table.BigBlind.Name)
 
-  defer func() {
+  Panic := &Panic{}
+  Panic.Init()
+
+  defer Panic.ifNoPanic(func() {
     fmt.Printf("D=%s S=%s B=%s\n",
       table.Dealer.Name,
       table.SmallBlind.Name,
       table.BigBlind.Name)
 
     table.reorderPlayers()
-  }()
+  })
 
   if len(players) == 2 {
-    if players[0] == table.Dealer {
+    if players[0].Name == table.Dealer.Name {
       table.Dealer     = players[1]
       table.SmallBlind = table.Dealer
       table.BigBlind   = players[0]
@@ -547,7 +593,7 @@ func (table *Table) rotatePlayers() {
   }
 
   for i, player := range players {
-    if player == table.Dealer {
+    if player.Name == table.Dealer.Name {
       if i == len(players)-1 {
       // [ S, B, u..., D] 
         table.Dealer     = players[0]
@@ -569,12 +615,17 @@ func (table *Table) rotatePlayers() {
           table.BigBlind   = players[i+3]
         }
       }
+      
+      fmt.Printf("D=%s S=%s B=%s\n",
+        table.Dealer.Name,
+        table.SmallBlind.Name,
+        table.BigBlind.Name)
 
       return
     }
   }
 
-  panic("BUG: rotatePlayers(): table dealer not found")
+  Panic.panic(fmt.Sprintf("BUG: rotatePlayers(): dealer (%s) not found", table.Dealer.Name))
 }
 
 // TODO: use a linked list?
@@ -599,7 +650,7 @@ func (table *Table) setNextPlayerTurn() {
     otherPlayers := table.getActiveSeats()
 
     for i, player := range otherPlayers {
-      if player == table.curPlayer { 
+      if player.Name == table.curPlayer.Name { 
         // check successive players for a non-folder
         for _, op := range otherPlayers[i+1:] {
           if op.Action.Action != NETDATA_FOLD {
@@ -612,15 +663,15 @@ func (table *Table) setNextPlayerTurn() {
         }
 
         if table.State != TABLESTATE_PLAYERRAISED &&
-           table.curPlayer == player {
+           table.curPlayer.Name == player.Name {
           // folder is last active player and didn't raise, betting is done
           table.State = TABLESTATE_DONEBETTING
           table.curPlayer = table.getNonFoldedPlayers()[0] // XXX 
           return
         }
 
-        if table.State  == TABLESTATE_PLAYERRAISED &&
-           table.better == table.curPlayer           {
+        if table.State       == TABLESTATE_PLAYERRAISED &&
+           table.better.Name == table.curPlayer.Name      {
         // last player did not re-raise, betting is done
           table.State  = TABLESTATE_DONEBETTING
           table.better = nil // XXX 
@@ -628,7 +679,7 @@ func (table *Table) setNextPlayerTurn() {
           return
         } 
 
-        if table.curPlayer == player {
+        if table.curPlayer.Name == player.Name {
           // if curPlayers wasn't incremented, it means that all the successive
           // players had already folded and the next active player is located [:i]
           for _, player := range otherPlayers {
@@ -638,9 +689,9 @@ func (table *Table) setNextPlayerTurn() {
             }
           }
 
-          assert(table.curPlayer != player, "BUG: curPlayer not incremented after a fold")
+          assert(table.curPlayer.Name != player.Name, "BUG: curPlayer not incremented after a fold")
 
-          if (table.curPlayer == table.better) {
+          if table.curPlayer.Name == table.better.Name {
             table.State = TABLESTATE_DONEBETTING
             table.better = nil
             return
@@ -655,7 +706,7 @@ func (table *Table) setNextPlayerTurn() {
   }
 
   for i, player := range players {
-    if player == table.curPlayer {
+    if player.Name == table.curPlayer.Name {
       if i == len(players)-1 {
         // [p..., curP]
         fmt.Printf("%s is last player\n", player.Name)
@@ -676,8 +727,8 @@ func (table *Table) setNextPlayerTurn() {
         table.curPlayer = players[i+1]
       }
 
-      if table.State  == TABLESTATE_PLAYERRAISED &&
-         table.better == table.curPlayer         &&
+      if table.State       == TABLESTATE_PLAYERRAISED &&
+         table.better.Name == table.curPlayer.Name    &&
          player.Action.Action != NETDATA_BET {
         // last player did not re-raise, round over
           table.State  = TABLESTATE_DONEBETTING
@@ -707,11 +758,11 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
   var amt uint = 0
 
   if table.State == TABLESTATE_PREFLOP {
-    if player == table.BigBlind {
+    if player.Name == table.BigBlind.Name {
       amt += table.Ante
     }
 
-    if player == table.SmallBlind {
+    if player.Name == table.SmallBlind.Name {
       amt += table.Ante / 2
     }
   }
@@ -735,10 +786,11 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       player.Action.Action = NETDATA_BET
     }
 
-    amt              += action.Amount
-    player.ChipCount -= amt
-    table.Pot        += amt
-    table.Bet        += amt
+    amt                  += action.Amount
+    player.Action.Amount  = amt
+    player.ChipCount     -= amt
+    table.Pot            += amt
+    table.Bet            += amt
 
     table.better = player
     table.State = TABLESTATE_PLAYERRAISED
@@ -747,6 +799,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       player.Action.Action  = NETDATA_ALLIN
 
       table.Pot            += player.ChipCount
+      player.Action.Amount  = player.ChipCount
       player.ChipCount      = 0
     } else {
       if table.State != TABLESTATE_PLAYERRAISED {
@@ -755,8 +808,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
       player.Action.Action = NETDATA_CALL
 
-      table.Pot        += table.Bet 
-      player.ChipCount -= table.Bet
+      table.Pot            += table.Bet 
+      player.Action.Amount  = table.Bet
+      player.ChipCount     -= table.Bet
     }
   case NETDATA_CHECK:
     if table.State == TABLESTATE_PLAYERRAISED {
@@ -854,6 +908,9 @@ func (table *Table) nextTableAction() {
     table.Deal()
 
     table.CommState = TABLESTATE_PREFLOP
+  case TABLESTATE_GAMEOVER:
+    fmt.Printf("nextTableAction(): game over!\n")
+
   default:
     fmt.Printf("nextTableAction(): BUG: called with improper state (" +
                table.TableStateToString() + ")")
@@ -941,6 +998,8 @@ func (table *Table) finishRound() {
   players := table.getNonFoldedPlayers()
 
   if (len(players) == 1) {
+    players[0].ChipCount += table.Pot
+
     table.State = TABLESTATE_ROUNDOVER
 
     table.Winners = players
@@ -1104,12 +1163,14 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
       if len(ret) == num {
         return ret
       }
+
       for _, except_numvalue := range except {
         if cards[i].NumValue == except_numvalue {
           skip = true
           break
         }
       }
+
       if !skip {
         // insert at beginning of slice
         ret = append(Cards{cards[i]}, ret...)
@@ -1120,24 +1181,28 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
   }
 
   // flush search function //
-  got_flush := func(cards Cards, player *Player, add_to_cards bool) (bool, int) {
+  got_flush := func(cards Cards, player *Player, addToCards bool) (bool, int) {
     type _suitstruct struct{cnt uint; cards Cards}
     suits := make(map[int]*_suitstruct)
 
     for _, card := range cards {
       suits[card.Suit] = &_suitstruct{ cards: Cards{} }
     }
+
     // count each suit
     for _, card := range cards {
       suits[card.Suit].cnt++
       suits[card.Suit].cards = append(suits[card.Suit].cards, card)
     }
+
     // search for flush
     for suit, suit_struct := range suits {
       if suit_struct.cnt >= 5 { // NOTE: it's only possible to get one flush
         player.Hand.Rank  = R_FLUSH
-        if add_to_cards {
-          player.Hand.Cards = append(player.Hand.Cards, suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct.cards)]...)
+
+        if addToCards {
+          player.Hand.Cards = append(player.Hand.Cards,
+                                     suit_struct.cards[len(suit_struct.cards)-5:len(suit_struct.cards)]...)
         }
         return true, suit
       }
@@ -1148,14 +1213,21 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
 
   // straight flush/straight search function //
   got_straight := func(cards *Cards, player *Player, high int, acelow bool) (bool) {
-    straight_flush := true
+    straightFlush := true
+
     if acelow {
     // check ace to 5
       acesuit := (*cards)[len(*cards)-1].Suit
+
+      if (*cards)[0].NumValue != C_TWO {
+        return false // can't be A to 5
+      }
+
       for i := 1; i <= high; i++ {
         if (*cards)[i].Suit != acesuit {
-          straight_flush = false
+          straightFlush = false
         }
+
         if (*cards)[i].NumValue != (*cards)[i-1].NumValue+1 {
           return false
         }
@@ -1164,15 +1236,17 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
       low := high-4
       for i := high; i > low; i-- {
         //fmt.Printf("h %d L %d ci %d ci-1 %d\n", high, low, i, i-1)
-        if (*cards)[i].Suit != (*cards)[i-1].Suit+1 {
-          straight_flush = false
+        if (*cards)[i].Suit != (*cards)[i-1].Suit { // XXX had [i-1].Suit+1 for some reason
+          straightFlush = false
         }
+
         if (*cards)[i].NumValue != (*cards)[i-1].NumValue+1 {
           return false
         }
       }
     }
-    if straight_flush {
+
+    if straightFlush {
       if (*cards)[high].NumValue == C_ACE {
         player.Hand.Rank = R_ROYALFLUSH
       } else {
@@ -1181,6 +1255,7 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
     } else {
       player.Hand.Rank = R_STRAIGHT
     }
+
     player.Hand.Cards = append(player.Hand.Cards, (*cards)[high-4:high+1]...)
     assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
@@ -1193,28 +1268,40 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
     // XXX: make better
     // we check for best straight first to reduce cycles
     //for i := 1; i < 4; i++ {
+    isStraight := false
+    
     for i := 1; i < len(cards) - 3; i++ {
       if got_straight(&cards, player, bestcard-i, false) {
-        return
+        isStraight = true
+        break
       }
     }
-    if cards[len(cards)-1].NumValue == C_ACE &&
-       got_straight(&cards, player, 4, true) {
+
+    if player.Hand.Rank == R_ROYALFLUSH    ||
+       player.Hand.Rank == R_STRAIGHTFLUSH {
+         return
+    }
+
+    if isFlush, _ := got_flush(cards, player, true); isFlush {
       return
     }
-    if player.Hand.Rank == R_STRAIGHTFLUSH {
+
+    // check for A to 5
+    if !isStraight && cards[len(cards)-1].NumValue == C_ACE {
+      got_straight(&cards, player, 3, true)
+    }
+
+    if player.Hand.Rank == R_STRAIGHT {
       return
     }
-    have_flush, _ := got_flush(cards, player, true)
-    if have_flush || player.Hand.Rank == R_STRAIGHT {
-      return
-    }
+
     // muck
     player.Hand.Rank   = R_HIGHCARD
     player.Hand.Cards  = append(player.Hand.Cards, cards[bestcard-1],
                                 cards[bestcard-2], cards[bestcard-3],
                                 cards[bestcard-4], cards[bestcard-5])
     assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
+
     return
   }
 
@@ -1229,6 +1316,7 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
         break
       }
     }
+
    assert(kicker != nil, "fours: kicker == nil")
    player.Hand.Rank  = R_FOURS
    player.Hand.Cards = append(Cards{kicker}, cards[foursidx:foursidx+4]...)
@@ -1242,10 +1330,13 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
   // first saves some cycles+space
   if match_hands.threes != nil && match_hands.pairs != nil {
     player.Hand.Rank = R_FULLHOUSE
+
     pairidx   := int(match_hands.pairs [len(match_hands.pairs )-1])
     threesidx := int(match_hands.threes[len(match_hands.threes)-1])
+
     player.Hand.Cards = append(player.Hand.Cards, cards[pairidx:pairidx+2]...)
     player.Hand.Cards = append(player.Hand.Cards, cards[threesidx:threesidx+3]...)
+
     assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
     return
   }
@@ -1261,8 +1352,10 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
   if have_flush {
   // check for possible RF/straight flush suit
     cardmap := make(map[int]int) // key == num, val == suit
+
     for _, card := range cards {
       mappedsuit, found := cardmap[card.NumValue];
+
       if found && mappedsuit != suit && card.Suit == suit {
         cardmap[card.NumValue] = card.Suit
         assert(unique_cards[len(unique_cards)-1].NumValue == card.NumValue, "unique_cards problem")
@@ -1272,16 +1365,19 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
         unique_cards = append(unique_cards, card)
       }
     }
+
     assert((len(unique_cards) <= 7 && len(unique_cards) >= 3),
            fmt.Sprintf("impossible number of unique cards (%v)", len(unique_cards)))
   } else {
     cardmap := make(map[int]bool)
+
     for _, card := range cards {
       if _, val := cardmap[card.NumValue]; !val {
         cardmap[card.NumValue] = true
         unique_cards = append(unique_cards, card)
       }
     }
+
     assert((len(unique_cards) <= 7 && len(unique_cards) >= 1),
            "impossible number of unique cards")
   }
@@ -1291,12 +1387,14 @@ func assemble_best_hand(preshow bool, table *Table, player *Player) {
     unique_bestcard := len(unique_cards)
     iter := unique_bestcard - 4
     //fmt.Printf("iter %v len(uc) %d\n)", iter, len(unique_cards))
+
     for i := 1; i <= iter; i++ {
       if got_straight(&unique_cards, player, unique_bestcard-i, false) {
         assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
         return
       }
     }
+
     if unique_cards[unique_bestcard-1].NumValue == C_ACE &&
        got_straight(&unique_cards, player, 4, true) {
       assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
@@ -1421,6 +1519,29 @@ func assert(cond bool, msg string) {
   }
 }
 
+// used to avoid execution of defers after a panic()
+type Panic struct {
+  panicked  bool
+  panic     func(string)
+  ifNoPanic func(func())
+}
+
+func (p *Panic) Init() {
+  p.panicked = false
+
+  p.panic = func(msg string) {
+    p.panicked = true
+    panic(msg)
+  }
+
+  p.ifNoPanic = func(deferredFunc func()) {
+    if !p.panicked {
+      deferredFunc()
+    }
+  }
+}
+
+// requests/responses sent between client and server
 const (
   NETDATA_CLOSE = iota
   NETDATA_NEWCONN
@@ -1428,6 +1549,7 @@ const (
   NETDATA_YOURPLAYER
   NETDATA_NEWPLAYER
   NETDATA_CURPLAYERS
+  NETDATA_UPDATEPLAYER
   NETDATA_PLAYERLEFT
   NETDATA_CLIENTEXITED
 
@@ -1435,21 +1557,24 @@ const (
   NETDATA_STARTGAME
 
   NETDATA_PLAYERACTION
+  NETDATA_PLAYERTURN
   NETDATA_ALLIN
   NETDATA_BET
   NETDATA_CALL
   NETDATA_CHECK
   NETDATA_RAISE
   NETDATA_FOLD
-  NETDATA_FLOP
 
+  NETDATA_CURHAND
   NETDATA_SHOWHAND
 
   NETDATA_FIRSTACTION
   NETDATA_MIDROUNDADDITION
+  NETDATA_ELIMINATED
   NETDATA_VACANTSEAT
 
   NETDATA_DEAL
+  NETDATA_FLOP
   NETDATA_TURN
   NETDATA_RIVER
   NETDATA_BESTHAND
@@ -1479,6 +1604,13 @@ func sendData(data *NetData, conn *websocket.Conn) {
     panic("sendData(): websocket == nil")
   }
 
+  // TODO: move this
+  if (data.Table != nil) {
+    data.Table.Dealer     = data.Table.PublicPlayerInfo(*data.Table.Dealer)
+    data.Table.SmallBlind = data.Table.PublicPlayerInfo(*data.Table.SmallBlind)
+    data.Table.BigBlind   = data.Table.PublicPlayerInfo(*data.Table.BigBlind)
+  }
+
   //fmt.Printf("sending %p to %p...\n", data, conn)
 
   var gobBuf bytes.Buffer
@@ -1487,9 +1619,6 @@ func sendData(data *NetData, conn *websocket.Conn) {
   enc.Encode(data)
 
   conn.WriteMessage(websocket.BinaryMessage, gobBuf.Bytes())
-  //writeConn.Flush()
-  
-  //fmt.Printf("finished sendData()\n")
 }
 
 func serverCloseConn(conn *websocket.Conn) {
@@ -1537,16 +1666,15 @@ func runServer(table *Table, addr string) (err error) {
     sendResponseToAll(netData, nil)
   }
 
-  removePlayer := func(conn *websocket.Conn) {
+  removePlayerByConn := func(conn *websocket.Conn) {
     table.mtx.Lock()
     defer table.mtx.Unlock()
 
     player := playerMap[conn]
 
-    delete(playerMap, conn)
-
     if player != nil { // else client was a spectator
       fmt.Printf("removing %s\n", player.Name)
+      delete(playerMap, conn)
 
       if tableAdmin == conn {
         tableAdmin = nil
@@ -1562,6 +1690,40 @@ func runServer(table *Table, addr string) (err error) {
 
       sendResponseToAll(netData, conn)
     }
+  }
+
+  removePlayer := func(player *Player) {
+    for conn, p := range playerMap {
+      if p == player {
+        removePlayerByConn(conn)
+      }
+    }
+  }
+
+  sendPlayerTurn := func(conn *websocket.Conn) {
+    if (table.curPlayer == nil) {
+      return
+    }
+
+    netData := &NetData{
+      Response:   NETDATA_PLAYERTURN,
+      PlayerData: table.PublicPlayerInfo(*table.curPlayer),
+    }
+
+    netData.PlayerData.Action.Action = NETDATA_PLAYERTURN
+
+    sendData(netData, conn)
+  }
+
+  sendPlayerTurnToAll := func() {
+    netData := &NetData{
+      Response:   NETDATA_PLAYERTURN,
+      PlayerData: table.PublicPlayerInfo(*table.curPlayer),
+    }
+
+    netData.PlayerData.Action.Action = NETDATA_PLAYERTURN
+
+    sendResponseToAll(netData, nil)
   }
 
   sendPlayerActionToAll := func(player *Player, conn *websocket.Conn) {
@@ -1625,14 +1787,37 @@ func runServer(table *Table, addr string) (err error) {
 
         sendResponseToAll(netData, nil)
 
+        for _, player := range table.removeEliminatedPlayers() {
+          netData.Response   = NETDATA_ELIMINATED
+          netData.Msg        = ""
+          netData.PlayerData = player
+
+          sendResponseToAll(netData, nil)
+        }
+
+        if table.State == TABLESTATE_GAMEOVER {
+          netData.Response = NETDATA_BADREQUEST
+          netData.Msg      = "game over"
+          netData.Table, netData.PlayerData = nil, nil
+
+          sendResponseToAll(netData, nil)
+
+          table.State = TABLESTATE_NOTSTARTED // make a new game
+
+          return
+        }
+
         table.newRound()
         table.nextTableAction()
         sendDeals()
+        sendPlayerTurnToAll()
       } else {
         sendPlayerActionToAll(player, conn)
+        sendPlayerTurnToAll()
       }
     } else { 
       sendPlayerActionToAll(player, conn)
+      sendPlayerTurnToAll()
 
       fmt.Println("** done betting...")
       table.nextCommunityAction()
@@ -1647,17 +1832,71 @@ func runServer(table *Table, addr string) (err error) {
 
         sendResponseToAll(netData, nil)
 
+        netData.Response           = NETDATA_UPDATEPLAYER
+        netData.Table, netData.Msg = nil, ""
+        for _, player := range table.getNonFoldedPlayers() {
+          netData.PlayerData = player
+
+          sendResponseToAll(netData, nil)
+        }
+
+        for _, player := range table.removeEliminatedPlayers() {
+          netData.Response   = NETDATA_ELIMINATED
+          netData.PlayerData = player
+
+          removePlayer(player)
+          sendResponseToAll(netData, nil)
+        }
+
+        if table.State == TABLESTATE_GAMEOVER {
+          netData.Response = NETDATA_BADREQUEST
+          netData.Msg      = "game over"
+          netData.Table, netData.PlayerData = nil, nil
+
+          sendResponseToAll(netData, nil)
+
+          table.State = TABLESTATE_NOTSTARTED // make a new game
+
+          return
+        }
+
         table.newRound()
         table.nextTableAction()
         sendDeals()
-      } else {
+        sendPlayerTurnToAll()
+      } else { // new community card(s)
         netData.Response   = table.commState2NetDataResponse()
         netData.Table      = table
         netData.PlayerData = nil
 
         sendResponseToAll(netData, nil)
+
+        sendPlayerTurnToAll()
+
+        // let players know they should update their current hand after the community action
+        // NOTE: hand is currently computed on client side
+	      netData.Response = NETDATA_CURHAND
+	      for conn, player := range playerMap {
+          netData.PlayerData = player
+          sendData(netData, conn)
+	      }
       }
     }
+  }
+
+  errChan := make(chan error)
+
+  // cleanly close connections after a server panic()
+  serverError := func(err error) {
+    fmt.Println("server panicked")
+
+    for _, conn := range clients {
+      conn.WriteMessage(websocket.CloseMessage,
+                        websocket.FormatCloseMessage(websocket.CloseInternalServerErr,
+                                                     err.Error()))
+    }
+
+    errChan <- err
   }
 
   upgrader := websocket.Upgrader{}
@@ -1672,7 +1911,13 @@ func runServer(table *Table, addr string) (err error) {
 
     defer serverCloseConn(conn)
     defer removeClient(conn)
-    defer removePlayer(conn)
+    defer removePlayerByConn(conn)
+
+    defer func() {
+      if err := recover(); err != nil {
+        serverError(errors.New(err.(string)))
+      }
+    }()
 
     /*var (
       readBuf   = make([]byte, 4096)
@@ -1690,7 +1935,9 @@ func runServer(table *Table, addr string) (err error) {
     for {
       _, rawData, err := conn.ReadMessage()
       if err != nil {
-        fmt.Printf("runServer(): readConn err: %v\n", err)
+        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+          fmt.Printf("runServer(): readConn() err: %v\n", err)
+        }
 
         return
       }
@@ -1722,7 +1969,6 @@ func runServer(table *Table, addr string) (err error) {
             for _, player := range table.getOccupiedSeats() {
               netData.PlayerData = table.PublicPlayerInfo(*player)
               sendData(&netData, conn)
-              //time.Sleep(50 * time.Millisecond) // XXX why do i need to do this
             }
         }
 
@@ -1752,16 +1998,19 @@ func runServer(table *Table, addr string) (err error) {
           sendData(&netData, conn)
         }
 
+        sendPlayerTurn(conn)
+
         if tableAdmin == nil {
           table.mtx.Lock()
           tableAdmin = conn
           table.mtx.Unlock()
+
           sendData(&NetData{ Response: NETDATA_MAKEADMIN }, conn)
         }
       } else {
         switch netData.Request {
         case NETDATA_CLIENTEXITED:
-          if player := playerMap[conn]; player != nil && player == table.curPlayer {
+          if player := playerMap[conn]; player != nil && player.Name == table.curPlayer.Name {
             // XXX just autofolding for now
             table.PlayerAction(player, Action{ Action: NETDATA_FOLD })
           }
@@ -1790,6 +2039,7 @@ func runServer(table *Table, addr string) (err error) {
             table.nextTableAction()
 
             sendDeals()
+            sendPlayerTurnToAll()
           }
         case NETDATA_BET, NETDATA_CALL, NETDATA_CHECK, NETDATA_FOLD:
           player := playerMap[conn]
@@ -1803,7 +2053,7 @@ func runServer(table *Table, addr string) (err error) {
             continue
           }
 
-          if player != table.curPlayer {
+          if player.Name != table.curPlayer.Name {
             netData.Response = NETDATA_BADREQUEST
             netData.Msg      = "it's not your turn"
             netData.Table    = nil
@@ -1835,10 +2085,38 @@ func runServer(table *Table, addr string) (err error) {
     
   fmt.Printf("starting server on %v\n", addr)
 
+  server := &http.Server{ Addr: addr }
+
   http.HandleFunc("/cli", WSCLIClient)
 
-  if err := http.ListenAndServe(addr, nil); err != nil {
-    return err
+  go func() {
+    if err := server.ListenAndServe(); err != nil {
+      fmt.Printf("ListenAndServe(): %s\n", err.Error())
+    }
+  }()
+
+  sigChan := make(chan os.Signal, 1)
+  signal.Notify(sigChan, os.Interrupt)
+
+  select {
+  case sig := <-sigChan:
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    fmt.Fprintf(os.Stderr, "received signal: %s\n", sig.String())
+
+    if err := server.Shutdown(ctx); err != nil {
+      fmt.Fprintf(os.Stderr, "server.Shutdown(): %s\n", err.Error())
+    }
+  case err := <-errChan:
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+   
+    fmt.Fprintf(os.Stderr, "irrecoverable server error: %s\n", err.Error())
+
+    if err := server.Shutdown(ctx); err != nil {
+      fmt.Fprintf(os.Stderr, "server.Shutdown(): %s\n", err.Error())
+    }
   }
 
   return nil
@@ -1850,6 +2128,7 @@ type FrontEnd interface {
   Init()       error
   Run()        error
   Finish()     chan error
+  Error()      chan error
 }
 
 func runClient(addr string, isGUI bool) (err error) {
@@ -1857,23 +2136,25 @@ func runClient(addr string, isGUI bool) (err error) {
     addr = "ws://" + addr
   }
 
-  fmt.Printf("connecting to %s ...\n", addr)
+  fmt.Fprintf(os.Stderr, "connecting to %s ...\n", addr)
   conn, _, err := websocket.DefaultDialer.Dial(addr, nil)
   if err != nil {
     return err
   }
 
   defer func() {
-    fmt.Println("closing connection")
+    fmt.Fprintf(os.Stderr, "closing connection\n")
     err := conn.WriteMessage(websocket.CloseMessage,
                              websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
     if err != nil {
-      fmt.Printf("write close err: %s\n", err.Error())
-      return
+      fmt.Fprintf(os.Stderr, "write close err: %s\n", err.Error())
     }
 
+    return
+
     select {
-    case <-time.After(time.Second * 1):
+    case <-time.After(time.Second * 3):
+      fmt.Fprintf(os.Stderr, "timeout: couldn't close connection properly.\n")
     }
     return
   }()
@@ -1889,15 +2170,43 @@ func runClient(addr string, isGUI bool) (err error) {
     }
   }
 
-  fmt.Printf("connected to %s\n", addr)
+  recoverFunc := func() {
+    if err := recover(); err != nil {
+      var typedErr error
+
+      switch errType := err.(type) {
+      case string:
+        typedErr = errors.New(errType)
+      case error:
+        typedErr = errType
+      default:
+        typedErr = errors.New("unknown panic")
+      }
+
+      if (frontEnd != nil) {
+        frontEnd.Finish() <- typedErr
+      }
+      fmt.Printf("recover() done\n")
+    }
+  }
+
+  fmt.Fprintf(os.Stderr, "connected to %s\n", addr)
 
   go func () {
+    defer recoverFunc()
+
     sendData(&NetData{ Request: NETDATA_NEWCONN }, conn)
 
     for {
       _, data, err := conn.ReadMessage()
+
       if err != nil {
-        frontEnd.Finish() <- err
+        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+          frontEnd.Finish() <- err
+        } else {
+          frontEnd.Finish() <- nil // normal exit
+        }
+
         return
       }
 
@@ -1920,8 +2229,11 @@ func runClient(addr string, isGUI bool) (err error) {
   go func() {
     for {
       select {
-      case err := <-frontEnd.Finish():
-        fmt.Printf("%s\n", err.Error())
+      case err := <-frontEnd.Error(): // error from front-end
+        if err != nil {
+          fmt.Fprintf(os.Stderr, "front-end err: %s\n", err.Error())
+        }
+        return
       case netData := <-frontEnd.OutputChan():
         sendData(netData, conn)
       }

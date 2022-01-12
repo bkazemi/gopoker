@@ -4,7 +4,8 @@ import (
   "fmt"
   "strconv"
   "errors"
-  //"strings"
+  "strings"
+  //"os"
 
   "github.com/gdamore/tcell/v2"
   "github.com/rivo/tview"
@@ -32,6 +33,7 @@ type CLI struct {
   otherPlayersFlex   *tview.Flex
 
   playersTextViewMap  map[string]*tview.TextView
+  curPlayerTextView  *tview.TextView
 
   actionsFlex        *tview.Flex
   actionsForm        *tview.Form
@@ -45,13 +47,31 @@ type CLI struct {
   outputChan          chan *NetData // will route CLI input to server
 
   finish              chan error
+  err                 chan error
+  done                chan bool // XXX for waiting on quit button during premature exits
 }
 
 // TODO: check if page exists
 func (cli *CLI) switchToPage(page string) {
-  cli.curPage = page
+  if page == "errorMustQuit" { // irrecoverable error
+    cli.errorModal.ClearButtons()
 
-  cli.pages.SwitchToPage(page)
+    cli.errorModal.
+      AddButtons([]string{"quit"}).
+      SetDoneFunc(func(_ int, btnLabel string) {
+        switch btnLabel {
+        case "quit":
+          cli.done <- true
+        }
+      })
+
+    cli.pages.SwitchToPage("error")
+    cli.app.SetFocus(cli.errorModal)
+  } else {
+    cli.curPage = page
+
+    cli.pages.SwitchToPage(page)
+  }
 }
 
 func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
@@ -96,6 +116,14 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
       cli.handleButton("fold")
     } else {
       cli.app.SetFocus(cli.actionsForm.GetButton(3))
+    }
+
+  case 's':
+    if cli.lastKey == 's' {
+      cli.lastKey = '.'
+      cli.handleButton("start")
+    } else {
+      cli.app.SetFocus(cli.actionsForm.GetButton(5))
     }
   }
 
@@ -142,8 +170,8 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
       strconv.FormatUint(uint64(table.GetNumOpenSeats()), 10))
   case "status":
     cli.tableInfoList.SetItemText(3, "dealer",      table.Dealer.Name)
-    cli.tableInfoList.SetItemText(4, "small blind", table.SmallBlind.Name)
-    cli.tableInfoList.SetItemText(5, "big blind",   table.BigBlind.Name)
+    cli.tableInfoList.SetItemText(4, "small blind", table.SmallBlindToString())
+    cli.tableInfoList.SetItemText(5, "big blind",   table.BigBlindToString())
     cli.tableInfoList.SetItemText(6, "status",      table.TableStateToString())
   }
 
@@ -184,34 +212,57 @@ func (cli *CLI) updatePlayer(player *Player, table *Table) {
   textView := cli.playersTextViewMap[player.Name]
 
   if player.Name == cli.yourName {
-    preHand := ""
-    if (table != nil) {
+    if table != nil {
       assemble_best_hand(true, table, player)
-      preHand = player.PreHand.RankName()
-    } else {
-      preHand = "..."
+
+      preHand := player.PreHand.RankName()
+      textViewSetLine(textView, 4, "current hand: " + preHand)
+
+      return
     }
-    textView.
-      SetText("name: "              + player.Name                + "\n" +
-              "current action: "    + player.ActionToString()    + "\n" +
-              "current best hand: " + preHand                    + "\n" +
-              "chip count: "        + player.ChipCountToString() + "\n")
+
+    textViewSetLine(textView, 1, "name: "           + player.Name)
+    textViewSetLine(textView, 2, "current action: " + player.ActionToString())
+    textViewSetLine(textView, 3, "chip count: "     + player.ChipCountToString())
   } else {
     if (textView == nil) { // XXX
       return
     }
-    /*tv := strings.Split(textView.GetText(false), "\n")
-    textView.
-      SetText(player.ActionToString()    + "\n" +
-              strings.Join(tv[1:], "\n"))*/
-    textView.
-      SetText("current action: " + player.ActionToString() + "\n" +
-              "chip count: "     + strconv.FormatUint(uint64(player.ChipCount), 10) + "\n\n")
+
+    textViewSetLine(textView, 1, player.ActionToString())
+    textViewSetLine(textView, 2, player.ChipCountToString() + "\n")
 
     if (player.Hole != nil) {
-      textView.
-        SetText(textView.GetText(false) + cli.cards2String(player.Hole.Cards))
+      textViewSetLine(textView, 3, cli.cards2String(player.Hole.Cards))
     }
+  }
+
+}
+
+func (cli *CLI) clearPlayerScreens() {
+  for _, textView := range cli.playersTextViewMap {
+    textView.Clear()
+  }
+}
+
+// NOTE: make sure to call this with increasing lineNums
+//       on first draws
+func textViewSetLine(textView *tview.TextView, lineNum int, txt string) {
+  if lineNum < 1 {
+    return
+  }
+
+  tv := strings.Split(textView.GetText(false), "\n")
+
+  if lineNum > len(tv) { // line not added yet
+    textView.SetText(textView.GetText(false) + txt)
+  } else {
+    if tv[lineNum-1] == txt {
+      return // no update
+    }
+
+    tv[lineNum-1] = txt
+    textView.SetText(strings.Join(tv, "\n"))
   }
 }
 
@@ -226,7 +277,8 @@ func (cli *CLI) Init() error {
 
   cli.inputChan  = make(chan *NetData)
   cli.outputChan = make(chan *NetData)
-  cli.finish     = make(chan error)
+  cli.finish     = make(chan error, 1)
+  cli.err        = make(chan error, 1)
 
   newTextView := func(title string, border bool) *tview.TextView {
     ret := tview.NewTextView().SetTextAlign(tview.AlignCenter).
@@ -294,7 +346,7 @@ func (cli *CLI) Init() error {
 
   cli.yourInfoView = newTextView("Your Info", true)
   cli.yourInfoView.SetTextAlign(tview.AlignLeft)
-  cli.yourInfoView.SetText("name: \ncurrent action: \nchip count: \n")
+  //cli.yourInfoView.SetText("name: \ncurrent action: \nchip count: \n")
 
   cli.holeView = newTextView("Hole", true)
 
@@ -366,6 +418,10 @@ func (cli *CLI) Finish() chan error {
   return cli.finish
 }
 
+func (cli *CLI) Error() chan error {
+  return cli.err
+}
+
 func (cli *CLI) cards2String(cards Cards) string {
   txt := "\n"
 
@@ -420,6 +476,8 @@ func cliInputLoop(cli *CLI) {
           cli.handleButton("start")
         })
       case NETDATA_DEAL:
+        cli.clearPlayerScreens()
+
         if netData.PlayerData != nil {
           if cli.playersTextViewMap[netData.PlayerData.Name] == nil {
             cli.yourName = netData.PlayerData.Name
@@ -437,6 +495,32 @@ func cliInputLoop(cli *CLI) {
 
         cli.updatePlayer(netData.PlayerData, netData.Table)
         cli.updateInfoList("status", netData.Table)
+      case NETDATA_PLAYERTURN:
+        assert(netData.PlayerData != nil, "PlayerData == nil")
+
+        curPlayerTextView := cli.playersTextViewMap[netData.PlayerData.Name]
+
+        if curPlayerTextView == nil {
+          continue // XXX probably would be a bug
+        }
+
+        if cli.curPlayerTextView != nil {
+          cli.curPlayerTextView.SetBorderColor(tcell.ColorWhite)
+        }
+
+        cli.curPlayerTextView = curPlayerTextView
+
+        cli.curPlayerTextView.SetBorderColor(tcell.ColorRed)
+
+        cli.app.Draw()
+      case NETDATA_UPDATEPLAYER:
+        assert(netData.PlayerData != nil, "PlayerData == nil")
+
+        cli.updatePlayer(netData.PlayerData, netData.Table)
+      case NETDATA_CURHAND:
+        assert(netData.PlayerData != nil, "PlayerData == nil")
+
+        cli.updatePlayer(netData.PlayerData, netData.Table)
       case NETDATA_SHOWHAND:
         assert(netData.PlayerData != nil, "Playerdata == nil")
 
@@ -452,6 +536,15 @@ func cliInputLoop(cli *CLI) {
         }
 
         cli.app.Draw()
+      case NETDATA_ELIMINATED:
+        if netData.PlayerData.Name == cli.yourName {
+          cli.errorModal.SetText("you were eliminated")
+          cli.switchToPage("error")
+
+          cli.app.Draw()
+        }
+
+        //cli.removePlayer(netData.PlayerData)
       case NETDATA_FLOP, NETDATA_TURN, NETDATA_RIVER:
         txt := cli.cards2String(netData.Table.Community)
 
@@ -467,22 +560,36 @@ func cliInputLoop(cli *CLI) {
         cli.app.Draw()
       default:
         cli.finish <- errors.New("bad response")
-
-        return
       }
 
     case err := <-cli.finish: // XXX
       if err != nil {
-        fmt.Printf("backend error: %s\n", err)
-      }
+        cli.done = make(chan bool, 1)
 
-      return
+        cli.errorModal.SetText(fmt.Sprintf("backend error: %s", err))
+        cli.switchToPage("errorMustQuit")
+        cli.app.Draw()
+
+        <-cli.done // wait for user to press close
+        return
+      } else {
+        return
+      }
     }
   }
 }
 
 func (cli *CLI) Run() error {
   go cliInputLoop(cli)
+
+  defer func() {
+    if err := recover(); err != nil {
+      if cli.app != nil {
+        cli.err <- err.(error)
+        cli.app.Stop()
+      }
+    }
+  }()
 
   if err := cli.app.SetRoot(cli.pages, true).SetFocus(cli.actionsForm).Run(); err != nil {
     return err
