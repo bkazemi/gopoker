@@ -35,7 +35,9 @@ type CLI struct {
   playersTextViewMap  map[string]*tview.TextView
   curPlayerTextView  *tview.TextView
 
+  betInputField      *tview.InputField
   actionsFlex        *tview.Flex
+  actionsBox         *tview.Box
   actionsForm        *tview.Form
 
   tableInfoList      *tview.List
@@ -94,7 +96,7 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
       cli.lastKey = '.'
       cli.handleButton("bet")
     } else {
-      cli.app.SetFocus(cli.actionsForm.GetFormItem(0))
+      cli.app.SetFocus(cli.betInputField)
     }
   case 'c':
     if cli.lastKey == 'c' {
@@ -169,10 +171,10 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
     cli.tableInfoList.SetItemText(1, "# open seats",
       strconv.FormatUint(uint64(table.GetNumOpenSeats()), 10))
   case "status":
-    cli.tableInfoList.SetItemText(3, "dealer",      table.Dealer.Name)
-    cli.tableInfoList.SetItemText(4, "small blind", table.SmallBlindToString())
-    cli.tableInfoList.SetItemText(5, "big blind",   table.BigBlindToString())
-    cli.tableInfoList.SetItemText(6, "status",      table.TableStateToString())
+    cli.tableInfoList.SetItemText(4, "dealer",      table.Dealer.Name)
+    cli.tableInfoList.SetItemText(5, "small blind", table.SmallBlindToString())
+    cli.tableInfoList.SetItemText(6, "big blind",   table.BigBlindToString())
+    cli.tableInfoList.SetItemText(7, "status",      table.TableStateToString())
   }
 
   cli.app.Draw()
@@ -229,8 +231,8 @@ func (cli *CLI) updatePlayer(player *Player, table *Table) {
       return
     }
 
-    textViewSetLine(textView, 1, player.ActionToString())
-    textViewSetLine(textView, 2, player.ChipCountToString() + "\n")
+    textViewSetLine(textView, 1, "current action: " + player.ActionToString())
+    textViewSetLine(textView, 2, "chip count: "     + player.ChipCountToString() + "\n")
 
     if (player.Hole != nil) {
       textViewSetLine(textView, 3, cli.cards2String(player.Hole.Cards))
@@ -256,11 +258,9 @@ func textViewSetLine(textView *tview.TextView, lineNum int, txt string) {
 
   if lineNum > len(tv) { // line not added yet
     textView.SetText(textView.GetText(false) + txt)
+  } else if tv[lineNum-1] == txt {
+    return // no update
   } else {
-    if tv[lineNum-1] == txt {
-      return // no update
-    }
-
     tv[lineNum-1] = txt
     textView.SetText(strings.Join(tv, "\n"))
   }
@@ -301,8 +301,42 @@ func (cli *CLI) Init() error {
 
   cli.playersTextViewMap = make(map[string]*tview.TextView)
 
-  cli.actionsForm = tview.NewForm().
-    AddInputField("bet amount", "", 20, func(inp string, lastChar rune) bool {
+  cli.betInputField = tview.NewInputField() // XXX compiler claims I need a type assertion if I chain here?
+  cli.betInputField.
+    SetLabel("bet amount: ").
+    SetFieldWidth(20).
+    SetAcceptanceFunc(func(inp string, lastChar rune) bool {
+      if _, err := strconv.ParseUint(inp, 10, 64); err != nil {
+        return false
+      } else {
+        return true
+      }
+    }).
+    SetChangedFunc(func(inp string) {
+      n, err := strconv.ParseUint(inp, 10, 64)
+      if err != nil {
+        cli.bet = 0
+      } else {
+        cli.bet = uint(n) // XXX
+      }
+    }).
+    SetFinishedFunc(func(_ tcell.Key) {
+      n := cli.betInputField.GetText()
+
+      if n == "" {
+        return
+      }
+
+      _, err := strconv.ParseUint(n, 10, 64)
+      if err != nil {
+        // should never happen, input is checked in accept func
+        panic("bad bet val: " + n)
+      }
+    })
+
+  cli.actionsForm = tview.NewForm().SetHorizontal(true).
+    // XXX ask dev about button overflow
+    /*AddInputField("bet amount", "", 20, func(inp string, lastChar rune) bool {
       if _, err := strconv.ParseUint(inp, 10, 64); err != nil {
         return false
       } else {
@@ -315,7 +349,7 @@ func (cli *CLI) Init() error {
       } else {
         cli.bet = uint(n) // XXX
       }
-    }).
+    }).*/
     AddButton("check", func() {
       cli.handleButton("check")
     }).
@@ -331,7 +365,7 @@ func (cli *CLI) Init() error {
     AddButton("quit",  func() {
       cli.handleButton("quit")
     })
-  cli.actionsForm.GetFormItem(0).SetFinishedFunc(func(_ tcell.Key) {
+  /*cli.actionsForm.GetFormItem(0).SetFinishedFunc(func(_ tcell.Key) {
     label := cli.actionsForm.GetFormItem(0).GetLabel()
 
     _, err := strconv.ParseUint(label, 10, 64)
@@ -339,8 +373,14 @@ func (cli *CLI) Init() error {
       // should never happen, input is checked in accept()
       panic("bad bet val: " + label)
     }
-  })
-  cli.actionsForm.SetBorder(true).SetTitle("Actions")
+  })*/
+  cli.actionsForm.SetBorder(false)//.SetTitle("Actions")
+
+  cli.actionsFlex = tview.NewFlex().SetDirection(tview.FlexRow).
+    AddItem(tview.NewBox(),    0, 1, false).
+    AddItem(cli.betInputField, 0, 1, false).
+    AddItem(cli.actionsForm,   0, 8, false)
+  cli.actionsFlex.SetBorder(true).SetTitle("Actions")
 
   cli.yourInfoFlex = tview.NewFlex().SetDirection(tview.FlexRow)
 
@@ -370,7 +410,7 @@ func (cli *CLI) Init() error {
     SetColumns(0, 0, 0).
     AddItem(cli.commView,         0, 0, 1, 3, 0, 0, false).
     AddItem(cli.otherPlayersFlex, 1, 0, 1, 3, 0, 0, false).
-    AddItem(cli.actionsForm,      2, 0, 1, 1, 0, 0, false).
+    AddItem(cli.actionsFlex,      2, 0, 1, 1, 0, 0, false).
     AddItem(cli.yourInfoFlex,     2, 1, 1, 1, 0, 0, false).
     AddItem(cli.tableInfoList,    2, 2, 1, 1, 0, 0, false)
 
@@ -476,6 +516,7 @@ func cliInputLoop(cli *CLI) {
           cli.handleButton("start")
         })
       case NETDATA_DEAL:
+        cli.commView.Clear()
         cli.clearPlayerScreens()
 
         if netData.PlayerData != nil {
@@ -517,6 +558,10 @@ func cliInputLoop(cli *CLI) {
         assert(netData.PlayerData != nil, "PlayerData == nil")
 
         cli.updatePlayer(netData.PlayerData, netData.Table)
+      case NETDATA_UPDATETABLE:
+        assert(netData.Table != nil, "Table == nil")
+
+        cli.updateInfoList("status", netData.Table)
       case NETDATA_CURHAND:
         assert(netData.PlayerData != nil, "PlayerData == nil")
 
