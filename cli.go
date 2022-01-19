@@ -11,6 +11,11 @@ import (
   "github.com/rivo/tview"
 )
 
+type CLIFocusList struct {
+  prev, next *CLIFocusList
+  prim        tview.Primitive
+}
+
 type CLI struct {
   app               *tview.Application
   pages             *tview.Pages
@@ -23,7 +28,7 @@ type CLI struct {
   yourName           string
 
   bet                uint
- 
+
   commView,
   otherPlayersView,
   yourInfoView,
@@ -40,10 +45,17 @@ type CLI struct {
   actionsBox         *tview.Box
   actionsForm        *tview.Form
 
+  chatFlex           *tview.Flex
+  chatTextView       *tview.TextView
+  chatInputField     *tview.InputField
+  chatMsg             string
+
   tableInfoList      *tview.List
 
-  exitModal          *tview.Modal
+  exitModal,
   errorModal         *tview.Modal
+
+  focusList          *CLIFocusList
 
   inputChan           chan *NetData
   outputChan          chan *NetData // will route CLI input to server
@@ -90,6 +102,21 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
     return eventKey
   }
 
+  switch eventKey.Key() {
+  case tcell.KeyLeft:
+    cli.focusList = cli.focusList.prev
+    cli.app.SetFocus(cli.focusList.prim)
+  case tcell.KeyRight:
+    cli.focusList = cli.focusList.next
+    cli.app.SetFocus(cli.focusList.prim)
+  }
+
+  // if we don't check this we will switch out of chat input when
+  // the runes below are pressed
+  if cli.app.GetFocus() == cli.chatInputField {
+    return eventKey
+  }
+
   switch key {
   case 'b':
     if cli.lastKey == 'b' {
@@ -120,6 +147,9 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
       cli.app.SetFocus(cli.actionsForm.GetButton(3))
     }
 
+  case 'm':
+    cli.app.SetFocus(cli.chatInputField)
+
   case 's':
     if cli.lastKey == 's' {
       cli.lastKey = '.'
@@ -136,6 +166,7 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
 
 func (cli *CLI) handleButton(btn string) {
   req := NETDATA_BADREQUEST
+  msg := ""
 
   switch btn {
   case "call":
@@ -146,6 +177,11 @@ func (cli *CLI) handleButton(btn string) {
     req = NETDATA_FOLD
   case "raise":
     req = NETDATA_BET
+  case "msg":
+    req = NETDATA_CHATMSG
+    msg = cli.chatMsg
+
+    cli.chatMsg = ""
   case "start":
     req = NETDATA_STARTGAME
   case "quit":
@@ -156,7 +192,10 @@ func (cli *CLI) handleButton(btn string) {
 
   cli.outputChan <- &NetData{
     Request: req,
-    PlayerData: &Player{ Action: Action{ Action: req, Amount: cli.bet, } }, // XXX: lol
+    PlayerData: &Player{
+      Action: Action{ Action: req, Amount: cli.bet, },
+    }, // XXX action x3!
+    Msg: msg,
   }
 }
 
@@ -171,10 +210,11 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
     cli.tableInfoList.SetItemText(1, "# open seats",
       strconv.FormatUint(uint64(table.GetNumOpenSeats()), 10))
   case "status":
-    cli.tableInfoList.SetItemText(4, "dealer",      table.Dealer.Name)
-    cli.tableInfoList.SetItemText(5, "small blind", table.SmallBlindToString())
-    cli.tableInfoList.SetItemText(6, "big blind",   table.BigBlindToString())
-    cli.tableInfoList.SetItemText(7, "status",      table.TableStateToString())
+    cli.tableInfoList.SetItemText(4, "pot",         table.PotToString())
+    cli.tableInfoList.SetItemText(5, "dealer",      table.Dealer.Name)
+    cli.tableInfoList.SetItemText(6, "small blind", table.SmallBlindToString())
+    cli.tableInfoList.SetItemText(7, "big blind",   table.BigBlindToString())
+    cli.tableInfoList.SetItemText(8, "status",      table.TableStateToString())
   }
 
   cli.app.Draw()
@@ -206,7 +246,7 @@ func (cli *CLI) removePlayer(player *Player) {
   textView := cli.playersTextViewMap[player.Name]
 
   cli.otherPlayersFlex.RemoveItem(textView)
-  
+
   cli.app.Draw()
 }
 
@@ -215,7 +255,7 @@ func (cli *CLI) updatePlayer(player *Player, table *Table) {
 
   if player.Name == cli.yourName {
     if table != nil {
-      assemble_best_hand(true, table, player)
+      assembleBestHand(true, table, player)
 
       preHand := player.PreHand.RankName()
       textViewSetLine(textView, 4, "current hand: " + preHand)
@@ -245,6 +285,10 @@ func (cli *CLI) clearPlayerScreens() {
   for _, textView := range cli.playersTextViewMap {
     textView.Clear()
   }
+}
+
+func (cli *CLI) updateChat(msg string) {
+  cli.chatTextView.SetText(cli.chatTextView.GetText(false) + msg)
 }
 
 // NOTE: make sure to call this with increasing lineNums
@@ -291,11 +335,36 @@ func (cli *CLI) Init() error {
     if border {
       ret.SetBorder(true)
     }
-    
+
     return ret
   }
 
   cli.commView = newTextView("Community Cards", true)
+
+  cli.chatTextView = newTextView("chat", false)
+  cli.chatTextView.SetTextAlign(tview.AlignLeft)
+
+  cli.chatInputField = tview.NewInputField()
+  cli.chatInputField.
+    SetLabel("msg: ").
+    SetFinishedFunc(func(_ tcell.Key) {
+      msg := cli.chatInputField.GetText()
+
+      if strings.TrimSpace(msg) == "" {
+        return
+      }
+
+      cli.chatMsg = msg
+      cli.chatInputField.SetText("")
+
+      cli.handleButton("msg")
+    })
+
+  cli.chatFlex = tview.NewFlex().SetDirection(tview.FlexRow).
+    AddItem(cli.chatTextView,   0, 8, false).
+    AddItem(tview.NewBox(),     0, 1, false).
+    AddItem(cli.chatInputField, 0, 1, false)
+  cli.chatFlex.SetBorder(true).SetTitle("Chat")
 
   cli.otherPlayersFlex = tview.NewFlex()
 
@@ -377,9 +446,9 @@ func (cli *CLI) Init() error {
   cli.actionsForm.SetBorder(false)//.SetTitle("Actions")
 
   cli.actionsFlex = tview.NewFlex().SetDirection(tview.FlexRow).
-    AddItem(tview.NewBox(),    0, 1, false).
-    AddItem(cli.betInputField, 0, 1, false).
-    AddItem(cli.actionsForm,   0, 8, false)
+    AddItem(tview.NewBox(),     0, 1, false).
+    AddItem(cli.betInputField,  0, 1, false).
+    AddItem(cli.actionsForm,    0, 8, false)
   cli.actionsFlex.SetBorder(true).SetTitle("Actions")
 
   cli.yourInfoFlex = tview.NewFlex().SetDirection(tview.FlexRow)
@@ -399,6 +468,7 @@ func (cli *CLI) Init() error {
     AddItem("# open seats", "", '-', nil).
     AddItem("# connected",  "", '-', nil).
     AddItem("buy in",       "", '-', nil).
+    AddItem("pot",          "", '-', nil).
     AddItem("dealer",       "", '-', nil).
     AddItem("small blind",  "", '-', nil).
     AddItem("big blind",    "", '-', nil).
@@ -408,7 +478,8 @@ func (cli *CLI) Init() error {
   cli.gameGrid.
     SetRows(0, 0, 0).
     SetColumns(0, 0, 0).
-    AddItem(cli.commView,         0, 0, 1, 3, 0, 0, false).
+    AddItem(cli.commView,         0, 0, 1, 2, 0, 0, false).
+    AddItem(cli.chatFlex,         0, 2, 1, 1, 0, 0, false).
     AddItem(cli.otherPlayersFlex, 1, 0, 1, 3, 0, 0, false).
     AddItem(cli.actionsFlex,      2, 0, 1, 1, 0, 0, false).
     AddItem(cli.yourInfoFlex,     2, 1, 1, 1, 0, 0, false).
@@ -436,6 +507,18 @@ func (cli *CLI) Init() error {
         cli.errorModal.SetText("")
       }
     })
+
+  cli.focusList = &CLIFocusList{
+    prev: &CLIFocusList{ prim: cli.tableInfoList },
+    prim: cli.actionsForm,
+  }
+  cli.focusList.next = &CLIFocusList{
+    prev: cli.focusList,
+    next: cli.focusList.prev,
+    prim: cli.yourInfoView,
+  }
+  cli.focusList.prev.prev = cli.focusList.next
+  cli.focusList.prev.next = cli.focusList
 
   cli.pages.AddPage("game",  cli.gameGrid,   true, true)
   cli.pages.AddPage("exit",  cli.exitModal,  true, false)
@@ -471,7 +554,7 @@ func (cli *CLI) cards2String(cards Cards) string {
 
   for _, card := range cards {
     pad := " "
-    
+
     if card.NumValue == 10 {
       pad = ""
     }
@@ -497,6 +580,8 @@ func cliInputLoop(cli *CLI) {
         assert(netData.Table != nil, "netData.Table == nil")
 
         cli.updateInfoList("# connected", netData.Table)
+      case NETDATA_CHATMSG:
+        cli.updateChat(netData.Msg)
       case NETDATA_YOURPLAYER:
         assert(netData.PlayerData != nil, "PlayerData == nil")
         cli.updateInfoList("# players", netData.Table)
@@ -504,7 +589,7 @@ func cliInputLoop(cli *CLI) {
         cli.updatePlayer(netData.PlayerData, nil)
       case NETDATA_NEWPLAYER, NETDATA_CURPLAYERS:
         assert(netData.PlayerData != nil, "PlayerData == nil")
-        
+
         cli.updateInfoList("# players", netData.Table)
 
         cli.addNewPlayer(netData.PlayerData)
@@ -515,6 +600,7 @@ func cliInputLoop(cli *CLI) {
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start")
         })
+
       case NETDATA_DEAL:
         cli.commView.Clear()
         cli.clearPlayerScreens()
@@ -531,6 +617,7 @@ func cliInputLoop(cli *CLI) {
 
           cli.holeView.SetText(txt)
         }
+
       case NETDATA_PLAYERACTION:
         assert(netData.PlayerData != nil, "PlayerData == nil")
 
@@ -570,12 +657,13 @@ func cliInputLoop(cli *CLI) {
         assert(netData.PlayerData != nil, "Playerdata == nil")
 
         cli.updatePlayer(netData.PlayerData, nil)
+
       case NETDATA_ROUNDOVER:
         //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
-        
+
         for _, player := range netData.Table.Winners {
           cli.updatePlayer(player, nil)
         }
@@ -595,6 +683,7 @@ func cliInputLoop(cli *CLI) {
 
         cli.commView.SetText(txt)
         cli.updateInfoList("status", netData.Table)
+
       case NETDATA_BADREQUEST:
         if (netData.Msg == "") {
           netData.Msg = "unspecified server error"
@@ -603,6 +692,8 @@ func cliInputLoop(cli *CLI) {
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
         cli.app.Draw()
+      case NETDATA_SERVERCLOSED:
+        cli.finish <- errors.New("server closed")
       default:
         cli.finish <- errors.New("bad response")
       }
