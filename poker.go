@@ -2310,10 +2310,10 @@ func runServer(table *Table, addr string) (err error) {
     fmt.Printf("=> new conn from %s\n", req.Host)
 
     go func() {
-      timer := time.NewTimer(15 * time.Second)
+      ticker := time.NewTicker(15 * time.Second)
 
       for {
-        <-timer.C
+        <-ticker.C
         if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
           fmt.Printf("ping err: %s\n", err.Error())
           return
