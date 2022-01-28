@@ -2309,6 +2309,18 @@ func runServer(table *Table, addr string) (err error) {
 
     fmt.Printf("=> new conn from %s\n", req.Host)
 
+    go func() {
+      timer := time.NewTimer(15 * time.Second)
+
+      for {
+        <-timer.C
+        if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+          fmt.Printf("ping err: %s\n", err.Error())
+          return
+        }
+      }
+    }()
+
     netData := NetData{
       Response: NETDATA_NEWCONN,
       Table:    table,
@@ -2483,7 +2495,12 @@ func runServer(table *Table, addr string) (err error) {
 
   fmt.Printf("starting server on %v\n", addr)
 
-  server := &http.Server{ Addr: addr }
+  server := &http.Server{
+    Addr: addr,
+    IdleTimeout: 30 * time.Minute,
+  }
+
+  server.SetKeepAlivesEnabled(true)
 
   http.HandleFunc("/cli", WSCLIClient)
 
