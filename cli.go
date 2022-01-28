@@ -118,44 +118,56 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
   }
 
   switch key {
+  case 'a':
+    if cli.lastKey == 'a' {
+      cli.lastKey = '_'
+      cli.handleButton("allin")
+    } else {
+      cli.app.SetFocus(cli.actionsForm.GetButton(3))
+    }
   case 'b':
     if cli.lastKey == 'b' {
-      cli.lastKey = '.'
+      cli.lastKey = '_'
       cli.handleButton("bet")
     } else {
       cli.app.SetFocus(cli.betInputField)
     }
   case 'c':
     if cli.lastKey == 'c' {
-      cli.lastKey = '.'
+      cli.lastKey = '_'
       cli.handleButton("check")
     } else {
       cli.app.SetFocus(cli.actionsForm.GetButton(0))
     }
   case 'r':
     if cli.lastKey == 'r' {
-      cli.lastKey = '.'
+      cli.lastKey = '_'
       cli.handleButton("raise")
     } else {
       cli.app.SetFocus(cli.actionsForm.GetButton(2))
     }
   case 'f':
     if cli.lastKey == 'f' {
-      cli.lastKey = '.'
+      cli.lastKey = '_'
       cli.handleButton("fold")
     } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(3))
+      cli.app.SetFocus(cli.actionsForm.GetButton(4))
     }
 
   case 'm':
     cli.app.SetFocus(cli.chatInputField)
+    cli.chatInputField.SetText("") // NOTE: otherwise `m` shows up in field
 
   case 's':
+    if cli.actionsForm.GetButtonCount() < 7 {
+      break
+    }
+
     if cli.lastKey == 's' {
-      cli.lastKey = '.'
+      cli.lastKey = '_'
       cli.handleButton("start")
     } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(5))
+      cli.app.SetFocus(cli.actionsForm.GetButton(6))
     }
   }
 
@@ -169,6 +181,8 @@ func (cli *CLI) handleButton(btn string) {
   msg := ""
 
   switch btn {
+  case "allin":
+    req = NETDATA_ALLIN
   case "call":
     req = NETDATA_CALL
   case "check":
@@ -177,6 +191,7 @@ func (cli *CLI) handleButton(btn string) {
     req = NETDATA_FOLD
   case "raise":
     req = NETDATA_BET
+    cli.betInputField.SetText("")
   case "msg":
     req = NETDATA_CHATMSG
     msg = cli.chatMsg
@@ -260,12 +275,14 @@ func (cli *CLI) updatePlayer(player *Player, table *Table) {
       preHand := player.PreHand.RankName()
       textViewSetLine(textView, 4, "current hand: " + preHand)
 
-      return
+      //return XXX update hand seperately
     }
 
     textViewSetLine(textView, 1, "name: "           + player.Name)
     textViewSetLine(textView, 2, "current action: " + player.ActionToString())
     textViewSetLine(textView, 3, "chip count: "     + player.ChipCountToString())
+
+    textView.ScrollToBeginning() // XXX find out why extra empty lines are being added to yourInfoView
   } else {
     if (textView == nil) { // XXX
       return
@@ -382,6 +399,10 @@ func (cli *CLI) Init() error {
       }
     }).
     SetChangedFunc(func(inp string) {
+      if inp == "" {
+        return
+      }
+
       n, err := strconv.ParseUint(inp, 10, 64)
       if err != nil {
         cli.bet = 0
@@ -427,6 +448,9 @@ func (cli *CLI) Init() error {
     }).
     AddButton("raise", func() {
       cli.handleButton("raise")
+    }).
+    AddButton("all-in", func() {
+      cli.handleButton("allin")
     }).
     AddButton("fold",  func() {
       cli.handleButton("fold")
@@ -586,6 +610,9 @@ func cliInputLoop(cli *CLI) {
         assert(netData.PlayerData != nil, "PlayerData == nil")
         cli.updateInfoList("# players", netData.Table)
 
+        cli.yourName = netData.PlayerData.Name
+        cli.playersTextViewMap[cli.yourName] = cli.yourInfoView
+
         cli.updatePlayer(netData.PlayerData, nil)
       case NETDATA_NEWPLAYER, NETDATA_CURPLAYERS:
         assert(netData.PlayerData != nil, "PlayerData == nil")
@@ -606,11 +633,6 @@ func cliInputLoop(cli *CLI) {
         cli.clearPlayerScreens()
 
         if netData.PlayerData != nil {
-          if cli.playersTextViewMap[netData.PlayerData.Name] == nil {
-            cli.yourName = netData.PlayerData.Name
-            cli.playersTextViewMap[netData.PlayerData.Name] = cli.yourInfoView
-          }
-
           cli.updatePlayer(netData.PlayerData, netData.Table)
 
           txt := cli.cards2String(netData.PlayerData.Hole.Cards)
@@ -639,6 +661,13 @@ func cliInputLoop(cli *CLI) {
         cli.curPlayerTextView = curPlayerTextView
 
         cli.curPlayerTextView.SetBorderColor(tcell.ColorRed)
+
+        // set focus in case the user was focused on chat
+        if curPlayerTextView == cli.yourInfoView {
+          if page, _ := cli.pages.GetFrontPage(); page == "game" {
+            cli.app.SetFocus(cli.actionsForm)
+          }
+        }
 
         cli.app.Draw()
       case NETDATA_UPDATEPLAYER:
@@ -672,6 +701,9 @@ func cliInputLoop(cli *CLI) {
       case NETDATA_ELIMINATED:
         if netData.PlayerData.Name == cli.yourName {
           cli.errorModal.SetText("you were eliminated")
+          cli.playersTextViewMap[cli.yourName].SetTextAlign(tview.AlignCenter)
+          cli.playersTextViewMap[cli.yourName].SetText("eliminated")
+          cli.holeView.Clear()
           cli.switchToPage("error")
 
           cli.app.Draw()
@@ -684,9 +716,13 @@ func cliInputLoop(cli *CLI) {
         cli.commView.SetText(txt)
         cli.updateInfoList("status", netData.Table)
 
-      case NETDATA_BADREQUEST:
-        if (netData.Msg == "") {
-          netData.Msg = "unspecified server error"
+      case NETDATA_BADREQUEST, NETDATA_SERVERMSG:
+        if netData.Msg == "" {
+          if netData.Response == NETDATA_BADREQUEST {
+            netData.Msg = "unspecified server error"
+          } else {
+            netData.Msg = "BUG: empty server message"
+          }
         }
 
         cli.errorModal.SetText(netData.Msg)

@@ -242,11 +242,16 @@ func (deck *Deck) Init() error {
 func (deck *Deck) Shuffle() {
   // XXX: get better rands
   rand.Seed(time.Now().UnixNano())
-  for i := 0; i < 52; i++ {
-    randidx := rand.Intn(52)
-    // swap
-    deck.cards[randidx], deck.cards[i] = deck.cards[i], deck.cards[randidx]
+
+  for i := rand.Intn(4)+1; i > 0; i-- {
+    //rand.Seed(time.Now().UnixNano())
+    for i := 0; i < 52; i++ {
+      randidx := rand.Intn(52)
+      // swap
+      deck.cards[randidx], deck.cards[i] = deck.cards[i], deck.cards[randidx]
+    }
   }
+
   deck.pos = 0
 }
 
@@ -290,14 +295,15 @@ type Table struct {
   SmallBlind  *Player     // current small blind
   BigBlind    *Player     // current big blind
 
-  players      []*Player   // array of players at table
+  players      []*Player  // array of players at table
   Winners      []*Player  // array of round winners
   curPlayer   *Player     // keeps track of whose turn it is
   better      *Player     // last player to (re-)raise
   NumPlayers   uint       // number of current players
   NumSeats     uint       // number of total possible players
+  roundCount   uint       // total number of rounds played
 
-  WinInfo      string // XXX tmp
+  WinInfo      string 		// XXX tmp
 
   State        TableState // current status of table
   CommState    TableState // current status of community
@@ -323,11 +329,66 @@ func (table *Table) Init(deck *Deck, CPUPlayers []bool) error {
     table.players[i] = player
   }
 
-  table.Dealer     = table.players[0]
-  table.SmallBlind = table.players[1]
-  table.BigBlind   = table.players[2]
+  table.Dealer = table.players[0]
+
+  if table.NumSeats < 2 {
+    return errors.New("need at least two players")
+  } else if table.NumSeats == 2 {
+    table.SmallBlind = table.players[1]
+    table.BigBlind   = table.players[0]
+  } else {
+    table.SmallBlind = table.players[1]
+    table.BigBlind   = table.players[2]
+  }
 
   return nil
+}
+
+func (table *Table) reset(player *Player) {
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
+
+  table.Ante = 10
+
+  table.newCommunity()
+
+  fmt.Printf("b4l player.IsVacant == %v\n", player.IsVacant)
+  for i, p := range table.players {
+    if player == nil || player.Name != p.Name {
+      p.Clear()
+    } else {
+      fmt.Printf("reset(): skipped %s\n", p.Name)
+      // we swap t.p[0] and p so that winner is the new dealer regardless
+      // of current position
+      table.players[i], table.players[0] = table.players[0], table.players[i]
+      player.NewCards()
+      player.Action.Action, player.Action.Amount = NETDATA_FIRSTACTION, 0
+    }
+  }
+
+  table.Winners, table.better = nil, nil
+
+  table.curPlayer = player
+
+  table.Pot, table.Bet, table.NumPlayers, table.roundCount = 0, 0, 0, 0
+
+  if player != nil {
+    table.NumPlayers++
+  }
+
+  table.WinInfo = ""
+
+  table.State = TABLESTATE_NOTSTARTED
+
+  table.Dealer = table.players[0]
+
+  if table.NumSeats < 3 {
+    table.SmallBlind = table.players[1]
+    table.BigBlind   = table.players[0]
+  } else {
+    table.SmallBlind = table.players[1]
+    table.BigBlind   = table.players[2]
+  }
 }
 
 func (table *Table) newCommunity() {
@@ -498,11 +559,13 @@ func (table *Table) addNewPlayers() {
 }
 
 func (table *Table) removeEliminatedPlayers() []*Player {
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
+
   ret := make([]*Player, 0)
 
   for _, player := range table.getNonFoldedPlayers() {
     if player.ChipCount == 0 {
-      player.IsVacant = true
       ret = append(ret, player)
     }
   }
@@ -520,7 +583,7 @@ func (table *Table) removeEliminatedPlayers() []*Player {
 func (table *Table) reorderPlayers() {
   defer func() {
     for _, player := range table.players {
-      if player.Action.Action != NETDATA_FOLD {
+      if !player.IsVacant && player.Action.Action != NETDATA_FOLD {
         table.curPlayer = player
         fmt.Printf("reorderPlayers(): setting curPlayer to %s\n", player.Name)
         return
@@ -818,24 +881,33 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
   switch action.Action {
   case NETDATA_ALLIN:
-    table.Pot        += player.ChipCount
-    player.ChipCount  = 0
+    player.Action.Action = NETDATA_ALLIN
+    player.Action.Amount = player.ChipCount
+    player.ChipCount     = 0
 
-    if action.Amount > table.Bet {
-      table.Bet = action.Amount
+    if player.Action.Amount > table.Bet {
+      table.Bet    = player.Action.Amount
+      table.State  = TABLESTATE_PLAYERRAISED
+      table.better = player
     }
-  case NETDATA_BET:
-    // we need to add the blind's chips back, otherwise it would get added to current bet
-    player.Action.Amount -= blindRequiredBet
-    player.ChipCount     += blindRequiredBet
 
-    if action.Amount > player.ChipCount {
-      return errors.New("not enough chips")
-    } else if action.Amount < table.Ante {
+    table.Pot    += player.Action.Amount
+  case NETDATA_BET:
+    if action.Amount < table.Ante {
       p := message.NewPrinter(language.English)
 
       return errors.New(p.Sprintf("bet must be greater than the ante (%d chips)", table.Ante))
+    } else if action.Amount <= table.Bet {
+      p := message.NewPrinter(language.English)
+
+      return errors.New(p.Sprintf("bet must be greater than the current bet (%d chips)", table.Bet))
+    } else if action.Amount + blindRequiredBet > player.ChipCount {
+      return errors.New("not enough chips")
     }
+
+    // we need to add the blind's chips back, otherwise it would get added to current bet
+    //player.Action.Amount -= blindRequiredBet
+    player.ChipCount     += blindRequiredBet
 
     if action.Amount == player.ChipCount {
       player.Action.Action = NETDATA_ALLIN
@@ -849,32 +921,38 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     table.Bet             = player.Action.Amount
 
     table.better = player
-    table.State = TABLESTATE_PLAYERRAISED
+    table.State  = TABLESTATE_PLAYERRAISED
   case NETDATA_CALL:
+    if table.State != TABLESTATE_PLAYERRAISED && !isSmallBlindPreFlop {
+        return errors.New("nothing to call")
+    }
+
     // we need to add the blind's chips back, otherwise it would get added to current bet
+    // NOTE: Amount is always >= blindRequiredBet
     player.Action.Amount -= blindRequiredBet
     player.ChipCount     += blindRequiredBet
 
-    if table.Bet >= player.ChipCount {
+    // delta of bet & curPlayer's last bet
+    betDiff := table.Bet - player.Action.Amount
+
+    if betDiff >= player.ChipCount {
       player.Action.Action  = NETDATA_ALLIN
 
       table.Pot            += player.ChipCount
       player.Action.Amount  = player.ChipCount
       player.ChipCount      = 0
     } else {
-      if table.State != TABLESTATE_PLAYERRAISED && !isSmallBlindPreFlop {
-        return errors.New("nothing to call")
-      }
-
       player.Action.Action = NETDATA_CALL
 
-      table.Pot            += table.Bet
       player.Action.Amount  = table.Bet
-      player.ChipCount     -= table.Bet
+      player.ChipCount     -= betDiff
+      table.Pot            += betDiff
     }
   case NETDATA_CHECK:
     if table.State == TABLESTATE_PLAYERRAISED {
-      return errors.New("must call")
+      p := message.NewPrinter(language.English)
+
+      return errors.New(p.Sprintf("must call the raise (%d chips)", table.Bet))
     }
 
     if isSmallBlindPreFlop {
@@ -884,9 +962,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     }
 
     player.Action.Action = NETDATA_CHECK
-    
+
     // for bigblind preflop
-    table.Pot        += blindRequiredBet
+    table.Pot        += minUInt(player.ChipCount, blindRequiredBet)
   case NETDATA_FOLD:
     player.Action.Action = NETDATA_FOLD
 
@@ -935,7 +1013,7 @@ func (table *Table) PrintSortedCommunity() {
 
 // sort community cards by number
 func (table *Table) SortCommunity() {
-  cards_sort(&table._comsorted)
+  cardsSort(&table._comsorted)
 }
 
 func (table *Table) nextCommunityAction() {
@@ -1023,7 +1101,7 @@ func (table *Table) DoRiver() {
 
 // we need to define this function at this scope because
 // it is recursive.
-func check_ties(players []*Player, cardidx int) []*Player {
+func checkTies(players []*Player, cardidx int) []*Player {
   if len(players) == 1 || cardidx == -1 {
   // one player left or remaining players tied fully
     return players
@@ -1035,11 +1113,11 @@ func check_ties(players []*Player, cardidx int) []*Player {
     if player.Hand.Cards[cardidx].NumValue == best[0].Hand.Cards[cardidx].NumValue {
       best = append(best, player)
     } else if player.Hand.Cards[cardidx].NumValue > best[0].Hand.Cards[cardidx].NumValue {
-        best = []*Player{ player }
+      best = []*Player{ player }
     }
   }
 
-  return check_ties(best, cardidx-1)
+  return checkTies(best, cardidx-1)
 }
 
 func (table *Table) getNonFoldedPlayers() []*Player {
@@ -1070,8 +1148,13 @@ func (table *Table) newRound() {
 
   table.newCommunity()
 
+  table.roundCount++
+
+  if table.roundCount % 10 == 0 {
+    table.Ante *= 2 // TODO increase with time interval instead
+  }
+
   table.better  = nil
-  table.Ante   *= 2 // XXX
   table.Bet     = table.Ante // min bet is big blind bet
   table.Pot     = 0 // XXX
   table.State   = TABLESTATE_NEWROUND
@@ -1106,7 +1189,7 @@ func (table *Table) finishRound() {
     table.State = TABLESTATE_SPLITPOT
   }
 
-  table.Winners = players
+  table.Winners = bestPlayers
 }
 
 func (table *Table) BestHand(players []*Player) []*Player {
@@ -1135,7 +1218,7 @@ func (table *Table) BestHand(players []*Player) []*Player {
     }
   }
 
-  tiedPlayers := check_ties(bestPlayers, 4)
+  tiedPlayers := checkTies(bestPlayers, 4)
 
   if len(tiedPlayers) > 1 {
     // split pot
@@ -1189,7 +1272,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   }
 
   cards := append(table.Community, player.Hole.Cards...)
-  cards_sort(&cards)
+  cardsSort(&cards)
   bestcard := len(cards)
 
   // get all the pairs/threes/fours into one slice
@@ -1344,7 +1427,11 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       player.Hand.Rank = R_STRAIGHT
     }
 
-    player.Hand.Cards = append(player.Hand.Cards, (*cards)[high-4:high+1]...)
+    if acelow {
+      player.Hand.Cards = append(Cards{(*cards)[len(*cards)-1]}, (*cards)[:4]...)
+    } else {
+      player.Hand.Cards = append(player.Hand.Cards, (*cards)[high-4:high+1]...)
+    }
     assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
     return true
@@ -1561,7 +1648,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   return
 }
 
-func cards_sort(cards *Cards) error {
+func cardsSort(cards *Cards) error {
   sort.Slice((*cards), func(i, j int) bool {
     return (*cards)[i].NumValue < (*cards)[j].NumValue
   })
@@ -1631,6 +1718,14 @@ func assert(cond bool, msg string) {
   }
 }
 
+func absUint(x, y uint) uint {
+  if x > y {
+    return x - y
+  }
+
+  return y - x
+}
+
 func minUInt(x, y uint) uint {
   if x < y {
       return x
@@ -1659,6 +1754,21 @@ func (p *Panic) Init() {
       deferredFunc()
     }
   }
+}
+
+func panicRetToError(err interface{}) error {
+  var typedErr error
+
+  switch errType := err.(type) {
+  case string:
+    typedErr = errors.New(errType)
+  case error:
+    typedErr = errType
+  default:
+    typedErr = errors.New("unknown panic")
+  }
+
+  return typedErr
 }
 
 // requests/responses sent between client and server
@@ -1705,6 +1815,7 @@ const (
   NETDATA_BESTHAND
   NETDATA_ROUNDOVER
 
+  NETDATA_SERVERMSG
   NETDATA_BADREQUEST
 )
 
@@ -1797,6 +1908,8 @@ func netDataReqToString(netData *NetData) string {
   case NETDATA_ROUNDOVER:
     return "NETDATA_ROUNDOVER"
 
+  case NETDATA_SERVERMSG:
+    return "NETDATA_SERVERMSG"
   case NETDATA_BADREQUEST:
     return "NETDATA_BADREQUEST"
 
@@ -1913,6 +2026,16 @@ func runServer(table *Table, addr string) (err error) {
     }
   }
 
+  getPlayerConn := func(player *Player) *websocket.Conn {
+    for conn, p := range playerMap {
+      if p.Name == player.Name {
+        return conn
+      }
+    }
+
+    return nil
+  }
+
   sendPlayerTurn := func(conn *websocket.Conn) {
     if (table.curPlayer == nil) {
       return
@@ -2014,17 +2137,31 @@ func runServer(table *Table, addr string) (err error) {
           netData.Msg        = ""
           netData.PlayerData = player
 
+          removePlayer(player)
           sendResponseToAll(netData, nil)
         }
 
         if table.State == TABLESTATE_GAMEOVER {
-          netData.Response = NETDATA_BADREQUEST
-          netData.Msg      = "game over"
+          winner := table.Winners[0]
+
+          netData.Response = NETDATA_SERVERMSG
+          netData.Msg      = "game over, " + winner.Name + " wins"
           netData.Table, netData.PlayerData = nil, nil
 
           sendResponseToAll(netData, nil)
 
-          table.State = TABLESTATE_NOTSTARTED // make a new game
+          table.reset(winner) // make a new game while keeping winner connected
+
+          if winnerConn := getPlayerConn(winner); winnerConn != tableAdmin {
+            if winnerConn == nil {
+              fmt.Printf("getPlayerConn(): winner (%s) not found\n", winner.Name)
+              return
+            }
+
+            tableAdmin = winnerConn
+            sendData(&NetData{ Response: NETDATA_MAKEADMIN }, winnerConn)
+            sendPlayerTurnToAll()
+          }
 
           return
         }
@@ -2071,13 +2208,25 @@ func runServer(table *Table, addr string) (err error) {
         }
 
         if table.State == TABLESTATE_GAMEOVER {
-          netData.Response = NETDATA_BADREQUEST
-          netData.Msg      = "game over"
+          winner := table.Winners[0]
+
+          netData.Response = NETDATA_SERVERMSG
+          netData.Msg      = "game over, " + winner.Name + " wins"
           netData.Table, netData.PlayerData = nil, nil
 
           sendResponseToAll(netData, nil)
 
-          table.State = TABLESTATE_NOTSTARTED // make a new game
+          table.reset(winner) // make a new game while keeping winner connected
+
+          if winnerConn := getPlayerConn(winner); winnerConn != tableAdmin {
+            if winnerConn == nil {
+              fmt.Printf("getPlayerConn(): winner (%s) not found\n", winner.Name)
+              return
+            }
+            tableAdmin = winnerConn
+            sendData(&NetData{ Response: NETDATA_MAKEADMIN }, winnerConn)
+            sendPlayerTurnToAll()
+          }
 
           return
         }
@@ -2093,6 +2242,11 @@ func runServer(table *Table, addr string) (err error) {
         netData.PlayerData = nil
 
         sendResponseToAll(netData, nil)
+
+        table.Bet, table.better = 0, nil
+        for _, player := range table.players {
+          player.Action.Amount = 0
+        }
 
         sendPlayerTurnToAll()
 
@@ -2138,7 +2292,7 @@ func runServer(table *Table, addr string) (err error) {
 
     defer func() {
       if err := recover(); err != nil {
-        serverError(errors.New(err.(string))) // XXX type switch this
+        serverError(panicRetToError(err))
       }
     }()
 
@@ -2252,7 +2406,7 @@ func runServer(table *Table, addr string) (err error) {
             netData.Table    = nil
 
             sendData(&netData, conn)
-          } else if table.NumConnected < 2 {
+          } else if table.NumPlayers < 2 {
             netData.Response = NETDATA_BADREQUEST
             netData.Msg      = "not enough players to start"
             netData.Table    = nil
@@ -2285,7 +2439,7 @@ func runServer(table *Table, addr string) (err error) {
           }
 
           sendResponseToAll(&netData, nil)
-        case NETDATA_BET, NETDATA_CALL, NETDATA_CHECK, NETDATA_FOLD:
+        case NETDATA_ALLIN, NETDATA_BET, NETDATA_CALL, NETDATA_CHECK, NETDATA_FOLD:
           player := playerMap[conn]
 
           if player == nil {
@@ -2428,19 +2582,8 @@ func runClient(addr string, isGUI bool) (err error) {
 
   recoverFunc := func() {
     if err := recover(); err != nil {
-      var typedErr error
-
-      switch errType := err.(type) {
-      case string:
-        typedErr = errors.New(errType)
-      case error:
-        typedErr = errType
-      default:
-        typedErr = errors.New("unknown panic")
-      }
-
       if (frontEnd != nil) {
-        frontEnd.Finish() <- typedErr
+        frontEnd.Finish() <- panicRetToError(err)
       }
       fmt.Printf("recover() done\n")
     }
@@ -2510,8 +2653,8 @@ func runGame(opts *options) (err error) {
       return err
     }
 
-    table := &Table{ NumSeats: 7 } // FIXME: tmp
-    if err := table.Init(deck, []bool{false, false, false, false, false, false, false}); err != nil {
+    table := &Table{ NumSeats: opts.numSeats }
+    if err := table.Init(deck, make([]bool, opts.numSeats)); err != nil {
       return err
     }
 
@@ -2552,6 +2695,7 @@ type options struct {
   serverMode string
   connect    string
   gui        bool
+  numSeats   uint
 }
 
 /*
@@ -2569,20 +2713,25 @@ func main() {
     serverMode string
     connect    string
     gui        bool
+    numSeats   uint
   )
+
   flag.Usage = func() {
     fmt.Println(usage)
     flag.PrintDefaults()
   }
+
   flag.StringVar(&serverMode, "s", "", "host a poker table on <port>")
   flag.StringVar(&connect, "c", "", "connect to a gopoker table")
   flag.BoolVar(&gui, "g", false, "run with a GUI")
+  flag.UintVar(&numSeats, "ns", 7, "max number of players allowed at the table")
   flag.Parse()
 
   opts := &options{
     serverMode: serverMode,
     connect:    connect,
     gui:        gui,
+    numSeats:   numSeats,
   }
 
   if err := runGame(opts); err != nil {
