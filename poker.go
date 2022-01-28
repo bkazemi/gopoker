@@ -32,11 +32,11 @@ const (
   R_HIGHCARD
   R_PAIR
   R_2PAIR
-  R_THREES
+  R_TRIPS
   R_STRAIGHT
   R_FLUSH
   R_FULLHOUSE
-  R_FOURS
+  R_QUADS
   R_STRAIGHTFLUSH
   R_ROYALFLUSH
 )
@@ -113,7 +113,7 @@ func (hand *Hand) RankName() string {
     return "pair"
   case R_2PAIR:
     return "two pair"
-  case R_THREES:
+  case R_TRIPS:
     return "three of a kind"
   case R_STRAIGHT:
     return "straight"
@@ -121,7 +121,7 @@ func (hand *Hand) RankName() string {
     return "flush"
   case R_FULLHOUSE:
     return "full house"
-  case R_FOURS:
+  case R_QUADS:
     return "four of a kind"
   case R_STRAIGHTFLUSH:
     return "straight flush"
@@ -1273,17 +1273,17 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
   cards := append(table.Community, player.Hole.Cards...)
   cardsSort(&cards)
-  bestcard := len(cards)
+  bestCard := len(cards)
 
-  // get all the pairs/threes/fours into one slice
+  // get all the pairs/trips/quads into one slice
   // NOTE: ascending order
   //
   // this struct keeps a slice of the match type indexes
   // in ascending order
-  var match_hands struct {
-    fours  []uint
-    threes []uint
-    pairs  []uint
+  var matchHands struct {
+    quads []uint
+    trips []uint
+    pairs []uint
   }
 
   matching_cards := false
@@ -1308,11 +1308,11 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       var matchmemb *[]uint
       switch match_num {
       case 4:
-        matchmemb = &match_hands.fours
+        matchmemb = &matchHands.quads
       case 3:
-        matchmemb = &match_hands.threes
+        matchmemb = &matchHands.trips
       case 2:
-        matchmemb = &match_hands.pairs
+        matchmemb = &matchHands.pairs
       }
       *matchmemb = append(*matchmemb, uint(i))
 
@@ -1352,7 +1352,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   }
 
   // flush search function //
-  got_flush := func(cards Cards, player *Player, addToCards bool) (bool, int) {
+  gotFlush := func(cards Cards, player *Player, addToCards bool) (bool, int) {
     type _suitstruct struct{cnt uint; cards Cards}
     suits := make(map[int]*_suitstruct)
 
@@ -1383,7 +1383,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   }
 
   // straight flush/straight search function //
-  got_straight := func(cards *Cards, player *Player, high int, acelow bool) (bool) {
+  gotStraight := func(cards *Cards, player *Player, high int, acelow bool) (bool) {
     straightFlush := true
 
     if acelow {
@@ -1446,7 +1446,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     isStraight := false
 
     for i := 1; i < len(cards) - 3; i++ {
-      if got_straight(&cards, player, bestcard-i, false) {
+      if gotStraight(&cards, player, bestCard-i, false) {
         isStraight = true
         break
       }
@@ -1457,13 +1457,13 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
          return
     }
 
-    if isFlush, _ := got_flush(cards, player, true); isFlush {
+    if isFlush, _ := gotFlush(cards, player, true); isFlush {
       return
     }
 
     // check for A to 5
     if !isStraight && cards[len(cards)-1].NumValue == C_ACE {
-      got_straight(&cards, player, 3, true)
+      gotStraight(&cards, player, 3, true)
     }
 
     if player.Hand.Rank == R_STRAIGHT {
@@ -1472,31 +1472,31 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
     // muck
     player.Hand.Rank   = R_HIGHCARD
-    player.Hand.Cards  = append(player.Hand.Cards, cards[bestcard-1],
-                                cards[bestcard-2], cards[bestcard-3],
-                                cards[bestcard-4], cards[bestcard-5])
+    player.Hand.Cards  = append(player.Hand.Cards, cards[bestCard-1],
+                                cards[bestCard-2], cards[bestCard-3],
+                                cards[bestCard-4], cards[bestCard-5])
 
     assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
     return
   }
 
-  // fours search //
-  if match_hands.fours != nil {
-    foursidx := int(match_hands.fours[0]) // 0 because it's impossible to
-                                          // get fours twice
+  // quads search //
+  if matchHands.quads != nil {
+    quadsIdx := int(matchHands.quads[0]) // 0 because it's impossible to
+                                          // get quads twice
     kicker := &Card{}
-    for i := bestcard-1; i >= 0; i-- { // kicker search
-      if cards[i].NumValue > cards[foursidx].NumValue {
+    for i := bestCard-1; i >= 0; i-- { // kicker search
+      if cards[i].NumValue > cards[quadsIdx].NumValue {
         kicker = cards[i]
         break
       }
     }
 
-   assert(kicker != nil, "fours: kicker == nil")
+   assert(kicker != nil, "quads: kicker == nil")
 
-   player.Hand.Rank  = R_FOURS
-   player.Hand.Cards = append(Cards{kicker}, cards[foursidx:foursidx+4]...)
+   player.Hand.Rank  = R_QUADS
+   player.Hand.Cards = append(Cards{kicker}, cards[quadsIdx:quadsIdx+4]...)
 
    return
   }
@@ -1506,14 +1506,14 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   // NOTE: we check for a fullhouse before a straight flush because it's
   // impossible to have both at the same time and searching for the fullhouse
   // first saves some cycles+space
-  if match_hands.threes != nil && match_hands.pairs != nil {
+  if matchHands.trips != nil && matchHands.pairs != nil {
     player.Hand.Rank = R_FULLHOUSE
 
-    pairidx   := int(match_hands.pairs [len(match_hands.pairs )-1])
-    threesidx := int(match_hands.threes[len(match_hands.threes)-1])
+    pairIdx  := int(matchHands.pairs[len(matchHands.pairs)-1])
+    tripsIdx := int(matchHands.trips[len(matchHands.trips)-1])
 
-    player.Hand.Cards = append(player.Hand.Cards, cards[pairidx:pairidx+2]...)
-    player.Hand.Cards = append(player.Hand.Cards, cards[threesidx:threesidx+3]...)
+    player.Hand.Cards = append(player.Hand.Cards, cards[pairIdx:pairIdx+2]...)
+    player.Hand.Cards = append(player.Hand.Cards, cards[tripsIdx:tripsIdx+3]...)
 
     assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
@@ -1523,12 +1523,12 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   // flush search //
   //
   // NOTE: we search for the flush here to ease the straight flush logic
-  have_flush, suit := got_flush(cards, player, false)
+  haveFlush, suit := gotFlush(cards, player, false)
 
   // remove duplicate card (by number) for easy straight search
-  unique_cards  := Cards{}
+  uniqueCards  := Cards{}
 
-  if have_flush {
+  if haveFlush {
   // check for possible RF/straight flush suit
     cardmap := make(map[int]int) // key == num, val == suit
 
@@ -1537,39 +1537,39 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
       if found && mappedsuit != suit && card.Suit == suit {
         cardmap[card.NumValue] = card.Suit
-        assert(unique_cards[len(unique_cards)-1].NumValue == card.NumValue, "unique_cards problem")
-        unique_cards[len(unique_cards)-1] = card // should _always_ be last card
+        assert(uniqueCards[len(uniqueCards)-1].NumValue == card.NumValue, "uniqueCards problem")
+        uniqueCards[len(uniqueCards)-1] = card // should _always_ be last card
       } else if !found {
         cardmap[card.NumValue] = card.Suit
-        unique_cards = append(unique_cards, card)
+        uniqueCards = append(uniqueCards, card)
       }
     }
 
-    assert((len(unique_cards) <= 7 && len(unique_cards) >= 3),
-           fmt.Sprintf("impossible number of unique cards (%v)", len(unique_cards)))
+    assert((len(uniqueCards) <= 7 && len(uniqueCards) >= 3),
+           fmt.Sprintf("impossible number of unique cards (%v)", len(uniqueCards)))
   } else {
     cardmap := make(map[int]bool)
 
     for _, card := range cards {
       if _, val := cardmap[card.NumValue]; !val {
         cardmap[card.NumValue] = true
-        unique_cards = append(unique_cards, card)
+        uniqueCards = append(uniqueCards, card)
       }
     }
 
-    assert((len(unique_cards) <= 7 && len(unique_cards) >= 1),
+    assert((len(uniqueCards) <= 7 && len(uniqueCards) >= 1),
            "impossible number of unique cards")
   }
 
   // RF, SF and straight search //
-  if len(unique_cards) >= 5 {
-    unique_bestcard := len(unique_cards)
-    iter := unique_bestcard - 4
+  if len(uniqueCards) >= 5 {
+    uniqueBestCard := len(uniqueCards)
+    iter := uniqueBestCard - 4
     isStraight := false
-    //fmt.Printf("iter %v len(uc) %d\n)", iter, len(unique_cards))
+    //fmt.Printf("iter %v len(uc) %d\n)", iter, len(uniqueCards))
 
     for i := 1; i <= iter; i++ {
-      if got_straight(&unique_cards, player, unique_bestcard-i, false) {
+      if gotStraight(&uniqueCards, player, uniqueBestCard-i, false) {
         assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
         isStraight = true
         break
@@ -1581,14 +1581,14 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       return
     }
 
-    if !isStraight && unique_cards[unique_bestcard-1].NumValue == C_ACE &&
-        got_straight(&unique_cards, player, 4, true) {
+    if !isStraight && uniqueCards[uniqueBestCard-1].NumValue == C_ACE &&
+        gotStraight(&uniqueCards, player, 4, true) {
       assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
     }
   }
 
-  if have_flush {
-      got_flush(cards, player, true)
+  if haveFlush {
+      gotFlush(cards, player, true)
 
       assert(player.Hand.Rank == R_FLUSH, "player should have a flush")
 
@@ -1599,39 +1599,39 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     return
   }
 
-  // threes search
-  if match_hands.threes != nil {
-    firstcard := int(match_hands.threes[len(match_hands.threes)-1])
+  // trips search
+  if matchHands.trips != nil {
+    firstCard := int(matchHands.trips[len(matchHands.trips)-1])
 
-    threeslice := make(Cards, 0, 3)
-    threeslice  = append(threeslice, cards[firstcard:firstcard+3]...)
+    tripslice := make(Cards, 0, 3)
+    tripslice  = append(tripslice, cards[firstCard:firstCard+3]...)
 
-    kickers := top_cards(cards, 2, []int{cards[firstcard].NumValue})
-    // order => [kickers][threes]
-    kickers = append(kickers, threeslice...)
+    kickers := top_cards(cards, 2, []int{cards[firstCard].NumValue})
+    // order => [kickers][trips]
+    kickers = append(kickers, tripslice...)
 
-    player.Hand.Rank  = R_THREES
+    player.Hand.Rank  = R_TRIPS
     player.Hand.Cards = kickers
 
     return
   }
 
   // two pair & pair search
-  if match_hands.pairs != nil {
-    if len(match_hands.pairs) > 1 {
+  if matchHands.pairs != nil {
+    if len(matchHands.pairs) > 1 {
       player.Hand.Rank   = R_2PAIR
-      highpairidx := int(match_hands.pairs[len(match_hands.pairs)-1])
-      lowpairidx  := int(match_hands.pairs[len(match_hands.pairs)-2])
+      highPairIdx := int(matchHands.pairs[len(matchHands.pairs)-1])
+      lowPairIdx  := int(matchHands.pairs[len(matchHands.pairs)-2])
 
-      player.Hand.Cards = append(player.Hand.Cards, cards[lowpairidx:lowpairidx+2]...)
-      player.Hand.Cards = append(player.Hand.Cards, cards[highpairidx:highpairidx+2]...)
+      player.Hand.Cards = append(player.Hand.Cards, cards[lowPairIdx:lowPairIdx+2]...)
+      player.Hand.Cards = append(player.Hand.Cards, cards[highPairIdx:highPairIdx+2]...)
 
-      kicker := top_cards(cards, 1, []int{cards[highpairidx].NumValue,
-                                          cards[lowpairidx ].NumValue})
+      kicker := top_cards(cards, 1, []int{cards[highPairIdx].NumValue,
+                                          cards[lowPairIdx ].NumValue})
       player.Hand.Cards = append(kicker, player.Hand.Cards...)
     } else {
       player.Hand.Rank = R_PAIR
-      pairidx := match_hands.pairs[0]
+      pairidx := matchHands.pairs[0]
       kickers := top_cards(cards, 3, []int{cards[pairidx].NumValue})
       player.Hand.Cards = append(kickers, cards[pairidx:pairidx+2]...)
     }
@@ -1641,9 +1641,9 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
   // muck
   player.Hand.Rank   = R_HIGHCARD
-  player.Hand.Cards = append(player.Hand.Cards, cards[bestcard-1],
-                             cards[bestcard-2], cards[bestcard-3],
-                             cards[bestcard-4], cards[bestcard-5])
+  player.Hand.Cards = append(player.Hand.Cards, cards[bestCard-1],
+                             cards[bestCard-2], cards[bestCard-3],
+                             cards[bestCard-4], cards[bestCard-5])
 
   return
 }

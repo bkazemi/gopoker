@@ -91,13 +91,6 @@ func (cli *CLI) switchToPage(page string) {
 func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
   key := eventKey.Rune()
 
-  if key == 'q' {
-    cli.pages.SwitchToPage("exit")
-    cli.app.SetFocus(cli.exitModal)
-
-    return eventKey
-  }
-
   if cli.curPage != "game" {
     return eventKey
   }
@@ -118,6 +111,11 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
   }
 
   switch key {
+  case 'q':
+    cli.switchToPage("exit")
+    cli.app.SetFocus(cli.exitModal)
+
+    return eventKey
   case 'a':
     if cli.lastKey == 'a' {
       cli.lastKey = '_'
@@ -765,7 +763,7 @@ func (cli *CLI) Run() error {
 
   if err := cli.app.SetRoot(cli.pages, true).SetFocus(cli.actionsForm).Run(); err != nil {
     return err
-	}
+  }
 
   return nil
 }
