@@ -2497,7 +2497,7 @@ func runServer(table *Table, addr string) (err error) {
 
   server := &http.Server{
     Addr: addr,
-    IdleTimeout: 30 * time.Minute,
+    //IdleTimeout: 30 * time.Minute,
   }
 
   server.SetKeepAlivesEnabled(true)
