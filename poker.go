@@ -2503,7 +2503,7 @@ func runServer(table *Table, addr string) (err error) {
   server := &http.Server{
     Addr: addr,
     IdleTimeout: 0,
-    ReadTimeOut: 0,
+    ReadTimeout: 0,
   }
 
   server.SetKeepAlivesEnabled(true)
