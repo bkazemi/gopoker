@@ -2315,7 +2315,7 @@ func runServer(table *Table, addr string) (err error) {
     fmt.Printf("=> new conn from %s\n", req.Host)
 
     go func() {
-      ticker := time.NewTicker(1 * time.Minute)
+      ticker := time.NewTicker(10 * time.Second)
 
       for {
         <-ticker.C
