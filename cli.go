@@ -155,6 +155,9 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
   case 'm':
     cli.app.SetFocus(cli.chatInputField)
     cli.chatInputField.SetText("") // NOTE: otherwise `m` shows up in field
+    cli.chatFlex.SetBorderColor(tcell.ColorWhite)
+
+    return nil
 
   case 's':
     if cli.actionsForm.GetButtonCount() < 7 {
@@ -604,6 +607,7 @@ func cliInputLoop(cli *CLI) {
         cli.updateInfoList("# connected", netData.Table)
       case NETDATA_CHATMSG:
         cli.updateChat(netData.Msg)
+        cli.chatFlex.SetBorderColor(tcell.ColorGreen)
       case NETDATA_YOURPLAYER:
         assert(netData.PlayerData != nil, "PlayerData == nil")
         cli.updateInfoList("# players", netData.Table)
@@ -625,6 +629,8 @@ func cliInputLoop(cli *CLI) {
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start")
         })
+
+        cli.app.Draw()
 
       case NETDATA_DEAL:
         cli.commView.Clear()

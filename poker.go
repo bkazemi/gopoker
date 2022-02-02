@@ -2279,6 +2279,11 @@ func runServer(table *Table, addr string) (err error) {
   upgrader := websocket.Upgrader{}
 
   WSCLIClient := func(w http.ResponseWriter, req *http.Request) {
+    if req.Header.Get("keepalive") != "" {
+      fmt.Println("keepalive detected properly")
+      return // NOTE: for heroku
+    }
+
     conn, err := upgrader.Upgrade(w, req, nil)
     if err != nil {
       fmt.Printf("WS upgrade err %s\n", err.Error())
@@ -2310,7 +2315,7 @@ func runServer(table *Table, addr string) (err error) {
     fmt.Printf("=> new conn from %s\n", req.Host)
 
     go func() {
-      ticker := time.NewTicker(15 * time.Second)
+      ticker := time.NewTicker(1 * time.Minute)
 
       for {
         <-ticker.C
@@ -2566,6 +2571,31 @@ func runClient(addr string, isGUI bool) (err error) {
     return err
   }
 
+  go func() {
+    ticker := time.NewTicker(20 * time.Minute)
+
+    client := &http.Client{}
+
+    req, err := http.NewRequest("GET", "http://" + addr[5:], nil)
+    if err != nil {
+      fmt.Fprintf(os.Stderr, "problem setting up keepalive request %s\n", err.Error())
+
+      return
+    }
+    req.Header.Add("keepalive", "true")
+
+    for {
+      <-ticker.C
+
+      _, err := client.Do(req)
+      if err != nil {
+        fmt.Fprintf(os.Stderr, "problem sending a keepalive request %s\n", err.Error())
+
+        return
+      }
+    }
+  }()
+
   defer func() {
     fmt.Fprintf(os.Stderr, "closing connection\n")
 
@@ -2583,6 +2613,7 @@ func runClient(addr string, isGUI bool) (err error) {
     case <-time.After(time.Second * 3):
       fmt.Fprintf(os.Stderr, "timeout: couldn't close connection properly.\n")
     }
+
     return
   }()
 
