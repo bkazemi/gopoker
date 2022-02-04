@@ -6,6 +6,7 @@ import (
   //"net"
   "bufio"
   "bytes"
+  "encoding/binary"
   "encoding/gob"
   //"io"
   "os"
@@ -14,11 +15,13 @@ import (
   "strconv"
   "sort"
   "errors"
-  "math/rand"
   "time"
   "net/http"
   "sync"
   "context"
+
+  math_rand "math/rand"
+  crypto_rand "crypto/rand"
 
   "golang.org/x/text/language"
   "golang.org/x/text/message"
@@ -240,13 +243,9 @@ func (deck *Deck) Init() error {
 }
 
 func (deck *Deck) Shuffle() {
-  // XXX: get better rands
-  rand.Seed(time.Now().UnixNano())
-
-  for i := rand.Intn(4)+1; i > 0; i-- {
-    //rand.Seed(time.Now().UnixNano())
+  for i := math_rand.Intn(4)+1; i > 0; i-- {
     for i := 0; i < 52; i++ {
-      randidx := rand.Intn(52)
+      randidx := math_rand.Intn(52)
       // swap
       deck.cards[randidx], deck.cards[i] = deck.cards[i], deck.cards[randidx]
     }
@@ -352,7 +351,6 @@ func (table *Table) reset(player *Player) {
 
   table.newCommunity()
 
-  fmt.Printf("b4l player.IsVacant == %v\n", player.IsVacant)
   for i, p := range table.players {
     if player == nil || player.Name != p.Name {
       p.Clear()
@@ -1771,6 +1769,31 @@ func panicRetToError(err interface{}) error {
   return typedErr
 }
 
+func randSeed() {
+  var b [8]byte
+
+  _, err := crypto_rand.Read(b[:])
+  if err != nil {
+    panic("problem with crypto/rand")
+  }
+
+  math_rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
+}
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+func randString(n int) string {
+  b := make([]rune, n)
+
+  for i := range b {
+    b[i] = letters[math_rand.Intn(len(letters))]
+  }
+
+  randSeed() // re-seed just in case
+
+  return string(b)
+}
+
 // requests/responses sent between client and server
 const (
   NETDATA_CLOSE = iota
@@ -1820,6 +1843,7 @@ const (
 )
 
 type NetData struct {
+  ID          string
   Request     int
   Response    int
   Msg         string // server msg or client chat msg
@@ -1951,8 +1975,9 @@ func serverCloseConn(conn *websocket.Conn) {
 }
 
 func runServer(table *Table, addr string) (err error) {
-  clients := make([]*websocket.Conn, 0)
-  playerMap := make(map[*websocket.Conn]*Player)
+  clients     := make([]*websocket.Conn, 0)
+  clientIDMap := make(map[*websocket.Conn]string)
+  playerMap   := make(map[*websocket.Conn]*Player)
   var tableAdmin *websocket.Conn
 
   sendResponseToAll := func(data *NetData, except *websocket.Conn) {
@@ -2280,7 +2305,6 @@ func runServer(table *Table, addr string) (err error) {
 
   WSCLIClient := func(w http.ResponseWriter, req *http.Request) {
     if req.Header.Get("keepalive") != "" {
-      fmt.Println("keepalive detected properly")
       return // NOTE: for heroku
     }
 
@@ -2304,11 +2328,13 @@ func runServer(table *Table, addr string) (err error) {
     defer func() {
     // NOTE: we need this in case the client doesn't exit cleanly
       if player := playerMap[conn]; player != nil &&
+         table.curPlayer != nil                   &&
          player.Name == table.curPlayer.Name      &&
          player.Action.Action != NETDATA_FOLD {
         // XXX just autofolding for now
-        table.PlayerAction(player, Action{ Action: NETDATA_FOLD })
-        tmp_tableLogicAfterPlayerAction(player, &NetData{}, conn)
+        if err := table.PlayerAction(player, Action{ Action: NETDATA_FOLD }); err == nil {
+          tmp_tableLogicAfterPlayerAction(player, &NetData{}, conn)
+        }
       }
     }()
 
@@ -2326,7 +2352,10 @@ func runServer(table *Table, addr string) (err error) {
       }
     }()
 
+    clientIDMap[conn] = randString(20)
+
     netData := NetData{
+      ID:       clientIDMap[conn],
       Response: NETDATA_NEWCONN,
       Table:    table,
     }
@@ -2392,6 +2421,7 @@ func runServer(table *Table, addr string) (err error) {
 
           sendResponseToAll(&netData, conn)
 
+          netData.ID         = clientIDMap[conn]
           netData.Response   = NETDATA_YOURPLAYER
           netData.PlayerData = player
           sendData(&netData, conn)
@@ -2410,9 +2440,14 @@ func runServer(table *Table, addr string) (err error) {
         switch netData.Request {
         case NETDATA_CLIENTEXITED:
           if player := playerMap[conn]; player != nil && player.Name == table.curPlayer.Name {
-            // XXX just autofolding for now
-            table.PlayerAction(player, Action{ Action: NETDATA_FOLD })
-            tmp_tableLogicAfterPlayerAction(player, &netData, conn)
+            if table.NumPlayers > 1 {
+              // XXX just autofolding for now
+              if err := table.PlayerAction(player, Action{ Action: NETDATA_FOLD }); err == nil {
+                tmp_tableLogicAfterPlayerAction(player, &netData, conn)
+              }
+            } else { // last player left at table
+              table.reset(nil)
+            }
           }
 
           return
@@ -2443,6 +2478,7 @@ func runServer(table *Table, addr string) (err error) {
             sendTable()
           }
         case NETDATA_CHATMSG:
+          netData.ID       = clientIDMap[conn]
           netData.Response = NETDATA_CHATMSG
 
           if len(netData.Msg) > 256 {
@@ -2707,6 +2743,7 @@ func runGame(opts *options) (err error) {
       return err
     }
 
+    randSeed()
     deck.Shuffle()
 
     if err := runServer(table, "0.0.0.0:" + opts.serverMode); err != nil {

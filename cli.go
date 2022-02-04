@@ -26,6 +26,7 @@ type CLI struct {
   lastKey            rune
 
   yourName           string
+  yourID             string
 
   bet                uint
 
@@ -95,11 +96,17 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
     return eventKey
   }
 
-  switch eventKey.Key() {
+  /*switch eventKey.Key() {
   case tcell.KeyLeft:
     cli.focusList = cli.focusList.prev
     cli.app.SetFocus(cli.focusList.prim)
   case tcell.KeyRight:
+    cli.focusList = cli.focusList.next
+    cli.app.SetFocus(cli.focusList.prim)
+  }*/
+
+  switch eventKey.Key() {
+  case tcell.KeyTab:
     cli.focusList = cli.focusList.next
     cli.app.SetFocus(cli.focusList.prim)
   }
@@ -108,6 +115,45 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
   // the runes below are pressed
   if cli.app.GetFocus() == cli.chatInputField {
     return eventKey
+  }
+
+  if cli.actionsForm.HasFocus() {
+    switch eventKey.Key() {
+    case tcell.KeyLeft:
+      _, idx := cli.actionsForm.GetFocusedItemIndex()
+
+      if idx == 0 {
+        idx = cli.actionsForm.GetFormItemCount() + cli.actionsForm.GetButtonCount() - 1
+      } else {
+        idx--
+      }
+
+      cli.actionsForm.SetFocus(idx)
+      cli.app.SetFocus(cli.actionsForm)
+    case tcell.KeyRight:
+      _, idx := cli.actionsForm.GetFocusedItemIndex()
+
+      if idx == cli.actionsForm.GetFormItemCount() + cli.actionsForm.GetButtonCount() {
+        idx = 0
+      } else {
+        idx++
+      }
+
+      cli.actionsForm.SetFocus(idx)
+      cli.app.SetFocus(cli.actionsForm)
+    }
+  }
+
+  switch eventKey.Key() {
+  case tcell.KeyUp, tcell.KeyDown:
+    // since there are only two primitives in this flex, there is no need to make a list.
+    if cli.actionsFlex.HasFocus() {
+      if cli.actionsForm.HasFocus() {
+        cli.app.SetFocus(cli.betInputField)
+      } else {
+        cli.app.SetFocus(cli.actionsForm)
+      }
+    }
   }
 
   switch key {
@@ -137,6 +183,13 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
     } else {
       cli.app.SetFocus(cli.actionsForm.GetButton(0))
     }
+  case 'C':
+    if cli.lastKey == 'C' {
+      cli.lastKey = '_'
+      cli.handleButton("call")
+    } else {
+      cli.app.SetFocus(cli.actionsForm.GetButton(1))
+    }
   case 'r':
     if cli.lastKey == 'r' {
       cli.lastKey = '_'
@@ -154,7 +207,6 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
 
   case 'm':
     cli.app.SetFocus(cli.chatInputField)
-    cli.chatInputField.SetText("") // NOTE: otherwise `m` shows up in field
     cli.chatFlex.SetBorderColor(tcell.ColorWhite)
 
     return nil
@@ -423,6 +475,9 @@ func (cli *CLI) Init() error {
         // should never happen, input is checked in accept func
         panic("bad bet val: " + n)
       }
+
+      cli.actionsForm.SetFocus(cli.actionsForm.GetButtonIndex("raise"))
+      cli.app.SetFocus(cli.actionsForm)
     })
 
   cli.actionsForm = tview.NewForm().SetHorizontal(true).
@@ -607,12 +662,16 @@ func cliInputLoop(cli *CLI) {
         cli.updateInfoList("# connected", netData.Table)
       case NETDATA_CHATMSG:
         cli.updateChat(netData.Msg)
-        cli.chatFlex.SetBorderColor(tcell.ColorGreen)
+
+        if netData.ID != cli.yourID {
+          cli.chatFlex.SetBorderColor(tcell.ColorGreen)
+        }
       case NETDATA_YOURPLAYER:
         assert(netData.PlayerData != nil, "PlayerData == nil")
         cli.updateInfoList("# players", netData.Table)
 
         cli.yourName = netData.PlayerData.Name
+        cli.yourID   = netData.ID
         cli.playersTextViewMap[cli.yourName] = cli.yourInfoView
 
         cli.updatePlayer(netData.PlayerData, nil)
