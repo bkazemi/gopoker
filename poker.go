@@ -183,21 +183,17 @@ func (player *Player) Clear() {
 }
 
 func (player *Player) ChipCountToString() string {
-  p := message.NewPrinter(language.English)
-
-  return p.Sprintf("%d", player.ChipCount)
+  return printer.Sprintf("%d", player.ChipCount)
 }
 
 func (player *Player) ActionToString() string {
-  p := message.NewPrinter(language.English)
-
   switch player.Action.Action {
   case NETDATA_ALLIN:
-    return p.Sprintf("all in (%d chips)", player.Action.Amount)
+    return printer.Sprintf("all in (%d chips)", player.Action.Amount)
   case NETDATA_BET:
-    return p.Sprintf("raise (bet %d chips)", player.Action.Amount)
+    return printer.Sprintf("raise (bet %d chips)", player.Action.Amount)
   case NETDATA_CALL:
-    return p.Sprintf("call (%d chips)", player.Action.Amount)
+    return printer.Sprintf("call (%d chips)", player.Action.Amount)
   case NETDATA_CHECK:
     return "check"
   case NETDATA_FOLD:
@@ -281,12 +277,48 @@ const (
   TABLESTATE_GAMEOVER
 )
 
+type Pot struct {
+  Bet      uint
+  Pot      uint
+  Players  map[string]*Player
+  IsClosed bool
+}
+
+type SidePot Pot
+
+func (sidePot *SidePot) Init(playerMap map[string]*Player, player *Player) {
+  if playerMap == nil && player == nil {
+    sidePot.Players = make(map[string]*Player, 0)
+
+    return
+  }
+
+  if playerMap != nil {
+    sidePot.Players = make(map[string]*Player, len(playerMap) + 1)
+
+    for pName, p := range playerMap {
+      sidePot.Players[pName] = p
+    }
+
+    if player != nil {
+      if p := sidePot.Players[player.Name]; p == nil {
+        sidePot.Players[player.Name] = player
+      }
+    }
+  } else if player != nil {
+    sidePot.Players = make(map[string]*Player, 1)
+
+    sidePot.Players[player.Name] = player
+  }
+}
+
 type Table struct {
   deck        *Deck       // deck of cards
   Community    Cards      // community cards
   _comsorted   Cards      // sorted community cards
 
-  Pot          uint       // table pot
+  MainPot     *Pot        // table pot
+  SidePot      []*SidePot // sidepots for allins
   Ante         uint       // current ante TODO allow both ante & blind modes
   Bet          uint       // current bet
 
@@ -316,6 +348,10 @@ func (table *Table) Init(deck *Deck, CPUPlayers []bool) error {
   table.Ante = 10
 
   table.newCommunity()
+
+  table.MainPot = &Pot{}
+
+  table.SidePot = make([]*SidePot, 0)
 
   table.players = make([]*Player, table.NumSeats, 7) // 2 players min, 7 max
 
@@ -368,7 +404,9 @@ func (table *Table) reset(player *Player) {
 
   table.curPlayer = player
 
-  table.Pot, table.Bet, table.NumPlayers, table.roundCount = 0, 0, 0, 0
+  table.MainPot = &Pot{}
+
+  table.Bet, table.NumPlayers, table.roundCount = 0, 0, 0
 
   if player != nil {
     table.NumPlayers++
@@ -456,16 +494,12 @@ func (table *Table) commState2NetDataResponse() int {
 }
 
 func (table *Table) PotToString() string {
-  p := message.NewPrinter(language.English)
-
-  return p.Sprintf("%d chips", table.Pot)
+  return printer.Sprintf("%d chips", table.MainPot.Pot)
 }
 
 func (table *Table) BigBlindToString() string {
   if table.BigBlind != nil {
-    p := message.NewPrinter(language.English)
-
-    return p.Sprintf("%s (%d chip bet)", table.BigBlind.Name, table.Ante)
+    return printer.Sprintf("%s (%d chip bet)", table.BigBlind.Name, table.Ante)
   }
 
   return ""
@@ -473,9 +507,7 @@ func (table *Table) BigBlindToString() string {
 
 func (table *Table) SmallBlindToString() string {
   if table.SmallBlind != nil {
-    p := message.NewPrinter(language.English)
-
-    return p.Sprintf("%s (%d chip bet)", table.SmallBlind.Name, table.Ante / 2)
+    return printer.Sprintf("%s (%d chip bet)", table.SmallBlind.Name, table.Ante / 2)
   }
 
   return ""
@@ -487,6 +519,70 @@ func (table *Table) PublicPlayerInfo(player Player) *Player {
   }
 
   return &player
+}
+
+func (table *Table) bettingIsImpossible() bool {
+  // allin players >= nonfolded players - 1
+  // i.e. only <= 1 player(s) has any chips left to bet
+
+  allInCount := 0
+
+  players := table.getNonFoldedPlayers(false)
+
+  for _, player := range players {
+    if player.ChipCount == 0 { // XXX should check Action.Action but it gets reset
+      allInCount++
+    }
+  }
+
+  return (allInCount >= len(players) - 1)
+}
+
+func (table *Table) closeSidePots() {
+  if len(table.SidePot) == 0 {
+    return
+  }
+
+  if !table.MainPot.IsClosed {
+    fmt.Printf("closing mainpot\n")
+    table.MainPot.IsClosed = true
+  }
+
+  for i, sidePot := range table.SidePot[:len(table.SidePot)-1] {
+    if !sidePot.IsClosed {
+      fmt.Printf("closing sidepot #%d\n", i)
+      sidePot.IsClosed = true
+    }
+  }
+}
+
+func (table *Table) getChipLeaders(players []*Player) (uint, uint) {
+  if players == nil {
+    players = table.getNonFoldedPlayers(false)
+  }
+
+  if len(players) < 2 {
+    panic("BUG: getChipLeaders() called with < 2 non-folded players")
+  }
+
+  var (
+    chipLeader       uint = 0
+    secondChipLeader uint = 0
+  )
+
+  for _, p := range players {
+    if p.ChipCount > chipLeader {
+      chipLeader = p.ChipCount
+    }
+  }
+
+  for _, p := range players {
+    if p.ChipCount != chipLeader && p.ChipCount > secondChipLeader {
+      secondChipLeader = p.ChipCount
+    }
+  }
+
+  return chipLeader, secondChipLeader
 }
 
 func (table *Table) getOpenSeat() *Player {
@@ -562,7 +658,7 @@ func (table *Table) removeEliminatedPlayers() []*Player {
 
   ret := make([]*Player, 0)
 
-  for _, player := range table.getNonFoldedPlayers() {
+  for _, player := range table.getNonFoldedPlayers(false) {
     if player.ChipCount == 0 {
       ret = append(ret, player)
     }
@@ -746,9 +842,19 @@ func (table *Table) setNextPlayerTurn() {
   table.mtx.Lock()
   defer table.mtx.Unlock()
 
-  players := table.getNonFoldedPlayers()
+  Panic := &Panic{}
+  Panic.Init()
 
-  if len(players) == 1 {
+  defer Panic.ifNoPanic(func(){
+    if table.State == TABLESTATE_DONEBETTING {
+      table.better = nil
+      table.closeSidePots()
+    }
+  })
+
+  if numNonFolded := len(table.getNonFoldedPlayers(false)); numNonFolded == 1 {
+    // win by folds
+    fmt.Println("numNonFolded == 1")
     table.State = TABLESTATE_ROUNDOVER // XXX
 
     return
@@ -761,8 +867,10 @@ func (table *Table) setNextPlayerTurn() {
       if player.Name == table.curPlayer.Name {
         // check successive players for a non-folder
         for _, op := range otherPlayers[i+1:] {
-          if op.Action.Action != NETDATA_FOLD {
-            fmt.Printf("%s folded setting curP to %s\n", player.Name, op.Name)
+          if op.Action.Action != NETDATA_FOLD  &&
+             op.Action.Action != NETDATA_ALLIN &&
+             op.ChipCount > 0 { // XXX should just check Action
+            fmt.Printf("%s is folded, setting curP to %s\n", player.Name, op.Name)
             table.curPlayer = op
             break
           } else {
@@ -774,16 +882,17 @@ func (table *Table) setNextPlayerTurn() {
            table.curPlayer.Name == player.Name {
           // folder is last active player and didn't raise, betting is done
           table.State = TABLESTATE_DONEBETTING
-          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX
+          table.curPlayer = table.getNonFoldedPlayers(false)[0] // XXX
+
           return
         }
 
         if table.State       == TABLESTATE_PLAYERRAISED &&
            table.better.Name == table.curPlayer.Name      {
-        // last player did not re-raise, betting is done
+          // last player did not re-raise, betting is done
           table.State  = TABLESTATE_DONEBETTING
-          table.better = nil // XXX
-          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX
+          table.curPlayer = table.getNonFoldedPlayers(false)[0] // XXX
+
           return
         }
 
@@ -791,17 +900,19 @@ func (table *Table) setNextPlayerTurn() {
           // if curPlayers wasn't incremented, it means that all the successive
           // players had already folded and the next active player is located [:i]
           for _, player := range otherPlayers {
-            if player.Action.Action != NETDATA_FOLD {
+            if player.Action.Action != NETDATA_FOLD  &&
+               player.Action.Action != NETDATA_ALLIN &&
+               player.ChipCount > 0 {
               table.curPlayer = player
               break
             }
           }
 
-          assert(table.curPlayer.Name != player.Name, "BUG: curPlayer not incremented after a fold")
+          //assert(table.curPlayer.Name != player.Name, "BUG: curPlayer not incremented after a fold")
 
-          if table.curPlayer.Name == table.better.Name {
+          if table.curPlayer.Name == player.Name ||
+             table.curPlayer.Name == table.better.Name {
             table.State = TABLESTATE_DONEBETTING
-            table.better = nil
             return
           }
         }
@@ -812,6 +923,27 @@ func (table *Table) setNextPlayerTurn() {
 
     return // XXX
   }
+
+  if table.curPlayer.ChipCount == 0 {
+    // XXX if curPlayer is allin, then they get filtered out in
+    // getNonFoldedPlayers(true) and we can't find their position at the table.
+    // temporarily change their action so that we can do so.
+
+    tmpCurPlayer       := table.curPlayer
+    curPlayerAction    := table.curPlayer.Action.Action
+    curPlayerChipCount := table.curPlayer.ChipCount
+
+    table.curPlayer.Action.Action = NETDATA_CHECK
+    table.curPlayer.ChipCount     = 1
+
+    defer func() {
+      tmpCurPlayer.Action.Action = curPlayerAction
+      tmpCurPlayer.ChipCount     = curPlayerChipCount
+      fmt.Printf("curPlayer aa?: %v cc %v\n", table.curPlayer.Action.Action == NETDATA_ALLIN, table.curPlayer.ChipCount)
+    }()
+  }
+
+  players := table.getNonFoldedPlayers(true)
 
   for i, player := range players {
     if player.Name == table.curPlayer.Name {
@@ -824,9 +956,9 @@ func (table *Table) setNextPlayerTurn() {
         } ;fmt.Println("]")
         table.curPlayer = players[0]
 
-        if table.better == nil {
+        if table.better == nil || table.better.Action.Action == NETDATA_ALLIN {
           table.State = TABLESTATE_DONEBETTING
-          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX
+          table.curPlayer = table.getNonFoldedPlayers(false)[0] // XXX
           return
         } else {
           fmt.Printf("better: %s\n", table.better.Name)
@@ -838,10 +970,11 @@ func (table *Table) setNextPlayerTurn() {
       if table.State       == TABLESTATE_PLAYERRAISED &&
          table.better.Name == table.curPlayer.Name    &&
          player.Action.Action != NETDATA_BET {
-        // last player did not re-raise, round over
+          // last player did not re-raise, round over
           table.State  = TABLESTATE_DONEBETTING
           table.better = nil // XXX
-          table.curPlayer = table.getNonFoldedPlayers()[0] // XXX
+          table.curPlayer = table.getNonFoldedPlayers(false)[0] // XXX
+
           return
       }
 
@@ -849,7 +982,7 @@ func (table *Table) setNextPlayerTurn() {
     }
   }
 
-  panic("setNextPlayerTurn() player not found?")
+  Panic.panic(fmt.Sprintf("setNextPlayerTurn() player (%s) not found?", table.curPlayer.Name))
 }
 
 func (table *Table) PlayerAction(player *Player, action Action) error {
@@ -877,11 +1010,152 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     }
   }
 
+  handleSidePots := func(isFirstSidePot bool) {
+    if isFirstSidePot {
+      sidePot := &SidePot{
+        Bet: table.Bet - player.Action.Amount,
+      }
+      sidePot.Init(nil, nil)
+
+      // get players who already called the last bet,
+      // sub the delta of the last bet and this players
+      // chipcount in mainpot, then add them to the sidepot.
+      for _, p := range table.getNonFoldedPlayers(false) {
+        if p.Name == player.Name {
+          break // this player pos is same as table pos
+        }
+
+        table.MainPot.Pot -= sidePot.Bet
+
+        printer.Printf("is1stSP: <%s> sub %d from mainpot, add same amt to sidePot\n", p.Name, sidePot.Bet)
+
+        sidePot.Pot += sidePot.Bet
+        sidePot.Players[p.Name] = p
+      }
+
+      table.SidePot = append(table.SidePot, sidePot)
+
+      table.MainPot.Bet  = player.Action.Amount
+      table.MainPot.Pot += table.MainPot.Bet
+
+      return
+    }
+
+    if table.SidePot[len(table.SidePot)-1].IsClosed {
+      sidePot := &SidePot{
+        Bet: player.Action.Amount,
+        Pot: player.Action.Amount,
+      }
+      sidePot.Init(nil, player)
+
+      table.SidePot = append(table.SidePot, sidePot)
+      printer.Printf("isClosed: added new sidepot bet: %d pot: %d p: %d\n",
+          sidePot.Bet, sidePot.Pot, sidePot.Players[player.Name].Name)
+    } else {
+      latestSidePotIdx := len(table.SidePot)-1
+      latestSidePot    := table.SidePot[latestSidePotIdx]
+
+      /*if len(latestSidePot.Players) == len(players) {
+        // finished adding all players to the open sidepot
+        latestSidePot.IsClosed = true
+      }*/
+
+      if player.Action.Action == NETDATA_ALLIN &&
+         player.Action.Amount < latestSidePot.Bet {
+        // make a new sidepot if player is allin with amt < bet
+        sidePot := &SidePot{
+          Bet: player.Action.Amount,
+          Pot: player.Action.Amount * uint(len(latestSidePot.Players)),
+        }
+
+        if p := latestSidePot.Players[player.Name]; p == nil {
+          // current players wasn't part of previous sidepot
+          sidePot.Pot += sidePot.Bet
+        }
+
+        sidePot.Init(latestSidePot.Players, player)
+
+        table.SidePot = append(table.SidePot, sidePot)
+
+        // swap to make sure betting sidepot is the tail
+        table.SidePot[latestSidePotIdx+1], table.SidePot[latestSidePotIdx] = table.SidePot[latestSidePotIdx],
+                                                                             table.SidePot[latestSidePotIdx+1]
+
+        fmt.Printf("!isClosed: p.amt (%d) < bet (%d): added new sidepot bet: %v pot: %v p: %v\n",
+            player.Action.Amount, latestSidePot.Bet, sidePot.Bet, sidePot.Pot, sidePot.Players[player.Name].Name)
+      } else {
+        if !table.MainPot.IsClosed {
+          assert(player.ChipCount >= table.MainPot.Bet, "TMP: player cant match mainpot bet")
+
+          table.MainPot.Pot    += table.MainPot.Bet
+          player.Action.Amount -= table.MainPot.Bet
+          player.ChipCount     -= table.MainPot.Bet
+        }
+
+        if latestSidePot.Players[player.Name] == nil {
+          latestSidePot.Players[player.Name] = player
+        }
+
+        // add current player to open sidepots. this happens when multiple
+        // players go all-in.
+        for i, sidePot := range table.SidePot[:len(table.SidePot)-1] {
+          if !sidePot.IsClosed {
+            assert(player.ChipCount >= sidePot.Bet, "TMP: player cant match a sidePot bet")
+
+            sidePot.Pot += sidePot.Bet
+
+            sidePot.Players[player.Name] = player
+
+            printer.Printf("adding %s to open sidePot (#%d), prev: p.amt %d p.cc %d", i,
+              player.Action.Amount, player.ChipCount)
+
+            player.Action.Amount -= sidePot.Bet // all-ins get subtracted from this bet
+            player.ChipCount     -= sidePot.Bet
+
+            printer.Printf(" new: p.amt %d p.cc %d\n", player.Action.Amount, player.ChipCount)
+          }
+        }
+
+        switch player.Action.Action {
+        case NETDATA_BET:
+          lspb := latestSidePot.Bet
+          if table.State == TABLESTATE_PLAYERRAISED &&
+             player.Action.Amount > latestSidePot.Bet {
+            fmt.Printf("!isClosed: %s re-raised\n", player.Name)
+            latestSidePot.Pot += player.Action.Amount - latestSidePot.Bet
+            latestSidePot.Bet  = player.Action.Amount
+          } else {
+            fmt.Printf("!isClosed: %s made new bet\n", player.Name)
+            latestSidePot.Bet  = player.Action.Amount
+            latestSidePot.Pot += latestSidePot.Bet
+          }
+          if latestSidePot.Bet != lspb {
+            printer.Printf("!isClosed: %s changed sidepot bet from %d to %d\n", player.Name,
+              lspb, player.Action.Amount)
+          }
+        case NETDATA_CALL:
+          fmt.Printf("!isClosed: %s called\n", player.Name)
+          latestSidePot.Pot += latestSidePot.Bet
+        }
+
+      }
+    }
+  }
+
   switch action.Action {
   case NETDATA_ALLIN:
     player.Action.Action = NETDATA_ALLIN
-    player.Action.Amount = player.ChipCount
-    player.ChipCount     = 0
+
+    players := table.getNonFoldedPlayers(false)
+
+    chipLeaderCount, secondChipLeaderCount := table.getChipLeaders(players)
+
+    // NOTE: A chipleader can only bet what at least one other player can match.
+    if player.ChipCount == chipLeaderCount {
+      player.Action.Amount = secondChipLeaderCount
+    } else {
+      player.Action.Amount = player.ChipCount
+    }
 
     if player.Action.Amount > table.Bet {
       table.Bet    = player.Action.Amount
@@ -889,23 +1163,59 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       table.better = player
     }
 
-    table.Pot    += player.Action.Amount
+    if len(table.SidePot) > 0 { // then some active player can't match bet
+      handleSidePots(false)
+    } else if table.State == TABLESTATE_PLAYERRAISED &&
+              player.Action.Amount < table.Bet { // first sidepot
+      handleSidePots(true)
+    } else { // this player can match bet
+      table.MainPot.Pot += player.Action.Amount
+    }
+
+    player.ChipCount    -= player.Action.Amount
+
+    /*var chipCountArr := make([]uint, len(players))
+    for i, p := range players {
+      chipCountArr[i] = p.ChipCount
+    }
+    sort.Slice(chipCountArr, func(i, j uint) bool {
+      return chipCountArr[i] < chipCountArr[j]
+    })
+
+    chipCountArrNoDups := make([]uint, 1)
+    chipCountArrNoDups[0] = 0
+
+    for _, chipCount := range chipCountArr {
+      if chipCount > chipCountArrNoDups[len(chipCountArrNoDups)-1] {
+        chipCountArrNoDups = append(chipCountArrNoDups, chipCount)
+      }
+    }
+    chipCountArr = chipCountArrNoDups*/
+
   case NETDATA_BET:
     if action.Amount < table.Ante {
-      p := message.NewPrinter(language.English)
-
-      return errors.New(p.Sprintf("bet must be greater than the ante (%d chips)", table.Ante))
+      return errors.New(printer.Sprintf("bet must be greater than the ante (%d chips)", table.Ante))
     } else if action.Amount <= table.Bet {
-      p := message.NewPrinter(language.English)
 
-      return errors.New(p.Sprintf("bet must be greater than the current bet (%d chips)", table.Bet))
+      return errors.New(printer.Sprintf("bet must be greater than the current bet (%d chips)", table.Bet))
     } else if action.Amount + blindRequiredBet > player.ChipCount {
       return errors.New("not enough chips")
     }
 
     // we need to add the blind's chips back, otherwise it would get added to current bet
     //player.Action.Amount -= blindRequiredBet
-    player.ChipCount     += blindRequiredBet
+    player.ChipCount += blindRequiredBet
+
+    players := table.getNonFoldedPlayers(false)
+
+    chipLeaderCount, secondChipLeaderCount := table.getChipLeaders(players)
+
+    // NOTE: A chipleader can only bet what at least one other player can match.
+    if player.ChipCount == chipLeaderCount {
+      player.Action.Amount = minUInt(action.Amount, secondChipLeaderCount)
+    } else {
+      player.Action.Amount = action.Amount
+    }
 
     if action.Amount == player.ChipCount {
       player.Action.Action = NETDATA_ALLIN
@@ -913,10 +1223,19 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       player.Action.Action = NETDATA_BET
     }
 
-    player.Action.Amount  = action.Amount
-    player.ChipCount     -= player.Action.Amount
-    table.Pot            += player.Action.Amount
-    table.Bet             = player.Action.Amount
+    fmt.Printf("%s bet b4 splogic: %v\n", player.Name, player.Action.Amount)
+
+    if len(table.SidePot) > 0 {
+      handleSidePots(false)
+    } else {
+      table.MainPot.Pot += player.Action.Amount
+    }
+
+    fmt.Printf("after splogic %v\n", player.Action.Amount)
+
+    player.ChipCount -= player.Action.Amount
+
+    table.Bet = player.Action.Amount
 
     table.better = player
     table.State  = TABLESTATE_PLAYERRAISED
@@ -935,38 +1254,46 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
     if betDiff >= player.ChipCount {
       player.Action.Action  = NETDATA_ALLIN
-
-      table.Pot            += player.ChipCount
       player.Action.Amount  = player.ChipCount
-      player.ChipCount      = 0
+
+      if len(table.SidePot) > 0 {
+        handleSidePots(false)
+      } else if betDiff > player.ChipCount {
+        handleSidePots(true)
+      } else {
+        table.MainPot.Pot += player.ChipCount
+      }
+
+      player.ChipCount = 0
     } else {
       player.Action.Action = NETDATA_CALL
 
       player.Action.Amount  = table.Bet
-      player.ChipCount     -= betDiff
-      table.Pot            += betDiff
+
+      if len(table.SidePot) > 0 {
+        handleSidePots(false)
+      } else {
+        player.ChipCount     -= betDiff
+        table.MainPot.Pot    += betDiff
+      }
     }
   case NETDATA_CHECK:
     if table.State == TABLESTATE_PLAYERRAISED {
-      p := message.NewPrinter(language.English)
-
-      return errors.New(p.Sprintf("must call the raise (%d chips)", table.Bet))
+      return errors.New(printer.Sprintf("must call the raise (%d chips)", table.Bet))
     }
 
     if isSmallBlindPreFlop {
-      p := message.NewPrinter(language.English)
-
-      return errors.New(p.Sprintf("must call the big blind (+%d chips)", blindRequiredBet))
+      return errors.New(printer.Sprintf("must call the big blind (+%d chips)", blindRequiredBet))
     }
 
     player.Action.Action = NETDATA_CHECK
 
     // for bigblind preflop
-    table.Pot        += minUInt(player.ChipCount, blindRequiredBet)
+    table.MainPot.Pot += minUInt(player.ChipCount, blindRequiredBet)
   case NETDATA_FOLD:
     player.Action.Action = NETDATA_FOLD
 
-    table.Pot        += blindRequiredBet
+    table.MainPot.Pot += blindRequiredBet
     //player.ChipCount -= blindRequiredBet
   default:
     return errors.New("BUG: invalid player action: " + strconv.Itoa(action.Action))
@@ -1118,11 +1445,15 @@ func checkTies(players []*Player, cardidx int) []*Player {
   return checkTies(best, cardidx-1)
 }
 
-func (table *Table) getNonFoldedPlayers() []*Player {
+func (table *Table) getNonFoldedPlayers(filterOutAllIns bool) []*Player {
   players := make([]*Player, 0)
 
   for _, player := range table.getActiveSeats() {
     if player.Action.Action != NETDATA_FOLD {
+      if filterOutAllIns &&
+         (player.Action.Action == NETDATA_ALLIN || player.ChipCount == 0) {
+        continue
+      }
       players = append(players, player)
     }
   }
@@ -1152,17 +1483,26 @@ func (table *Table) newRound() {
     table.Ante *= 2 // TODO increase with time interval instead
   }
 
-  table.better  = nil
-  table.Bet     = table.Ante // min bet is big blind bet
-  table.Pot     = 0 // XXX
-  table.State   = TABLESTATE_NEWROUND
+  table.better      = nil
+  table.Bet         = table.Ante // min bet is big blind bet
+  table.MainPot.Pot = 0 // XXX
+  table.State       = TABLESTATE_NEWROUND
 }
 
 func (table *Table) finishRound() {
-  players := table.getNonFoldedPlayers()
+  players := table.getNonFoldedPlayers(false)
 
-  if (len(players) == 1) {
-    players[0].ChipCount += table.Pot
+  printer.Printf("mainpot: %d\n", table.MainPot.Pot)
+  for i, sidePot := range table.SidePot {
+    printer.Printf("sp %v - bet: %v pot: %v closed: %v\n", i, sidePot.Bet, sidePot.Pot, sidePot.IsClosed)
+    printer.Printf(" players: ")
+    for p, _ := range sidePot.Players {
+      printer.Printf("%s, ", p)
+    }; fmt.Println()
+  }
+
+  if len(players) == 1 {
+    players[0].ChipCount += table.MainPot.Pot
 
     table.State = TABLESTATE_ROUNDOVER
 
@@ -1176,9 +1516,9 @@ func (table *Table) finishRound() {
   bestPlayers := table.BestHand(players)
 
   if len(bestPlayers) == 1 {
-    bestPlayers[0].ChipCount += table.Pot
+    bestPlayers[0].ChipCount += table.MainPot.Pot
   } else {
-    splitChips := table.Pot / uint(len(bestPlayers))
+    splitChips := table.MainPot.Pot / uint(len(bestPlayers))
 
     for _, player := range bestPlayers {
       player.ChipCount += splitChips
@@ -2115,7 +2455,7 @@ func runServer(table *Table, addr string) (err error) {
   sendHands := func() {
     netData := &NetData{ Response: NETDATA_SHOWHAND }
 
-    for _, player := range table.getNonFoldedPlayers() {
+    for _, player := range table.getNonFoldedPlayers(false) {
       netData.PlayerData = table.PublicPlayerInfo(*player)
 
       var conn *websocket.Conn
@@ -2138,6 +2478,70 @@ func runServer(table *Table, addr string) (err error) {
     }
 
     sendResponseToAll(netData, nil)
+  }
+
+  gameOver := func() {
+    winner := table.Winners[0]
+
+    netData := &NetData{
+      Response: NETDATA_SERVERMSG,
+      Msg:      "game over, " + winner.Name + " wins",
+    }
+
+    sendResponseToAll(netData, nil)
+
+    table.reset(winner) // make a new game while keeping winner connected
+
+    if winnerConn := getPlayerConn(winner); winnerConn != tableAdmin {
+      if winnerConn == nil {
+        fmt.Printf("getPlayerConn(): winner (%s) not found\n", winner.Name)
+        return
+      }
+      tableAdmin = winnerConn
+      sendData(&NetData{ Response: NETDATA_MAKEADMIN }, winnerConn)
+      sendPlayerTurnToAll()
+    }
+  }
+
+  roundOver := func() {
+    table.finishRound()
+    sendHands()
+
+    netData := &NetData{
+      Response: NETDATA_ROUNDOVER,
+      Table:    table,
+      Msg:      table.WinInfo,
+    }
+
+    sendResponseToAll(netData, nil)
+
+    netData.Response           = NETDATA_UPDATEPLAYER
+    netData.Table, netData.Msg = nil, ""
+    for _, player := range table.getNonFoldedPlayers(false) {
+      netData.PlayerData = player
+
+      sendResponseToAll(netData, nil)
+    }
+
+    for _, player := range table.removeEliminatedPlayers() {
+      netData.Response   = NETDATA_ELIMINATED
+      netData.PlayerData = player
+
+      removePlayer(player)
+      sendResponseToAll(netData, nil)
+    }
+
+    if table.State == TABLESTATE_GAMEOVER {
+      gameOver()
+
+      return
+    }
+
+    table.newRound()
+    table.nextTableAction()
+    sendDeals()
+    sendPlayerTurnToAll()
+    sendTable()
   }
 
   // TODO: this is temporary.
@@ -2167,91 +2571,7 @@ func runServer(table *Table, addr string) (err error) {
         }
 
         if table.State == TABLESTATE_GAMEOVER {
-          winner := table.Winners[0]
-
-          netData.Response = NETDATA_SERVERMSG
-          netData.Msg      = "game over, " + winner.Name + " wins"
-          netData.Table, netData.PlayerData = nil, nil
-
-          sendResponseToAll(netData, nil)
-
-          table.reset(winner) // make a new game while keeping winner connected
-
-          if winnerConn := getPlayerConn(winner); winnerConn != tableAdmin {
-            if winnerConn == nil {
-              fmt.Printf("getPlayerConn(): winner (%s) not found\n", winner.Name)
-              return
-            }
-
-            tableAdmin = winnerConn
-            sendData(&NetData{ Response: NETDATA_MAKEADMIN }, winnerConn)
-            sendPlayerTurnToAll()
-          }
-
-          return
-        }
-
-        table.newRound()
-        table.nextTableAction()
-        sendDeals()
-        sendPlayerTurnToAll()
-      } else {
-        sendPlayerActionToAll(player, conn)
-        sendPlayerTurnToAll()
-      }
-    } else {
-      sendPlayerActionToAll(player, conn)
-      sendPlayerTurnToAll()
-
-      fmt.Println("** done betting...")
-      table.nextCommunityAction()
-
-      if table.State == TABLESTATE_ROUNDOVER {
-        table.finishRound()
-        sendHands()
-
-        netData.Response   = NETDATA_ROUNDOVER
-        netData.Table      = table
-        netData.Msg        = table.WinInfo
-
-        sendResponseToAll(netData, nil)
-
-        netData.Response           = NETDATA_UPDATEPLAYER
-        netData.Table, netData.Msg = nil, ""
-        for _, player := range table.getNonFoldedPlayers() {
-          netData.PlayerData = player
-
-          sendResponseToAll(netData, nil)
-        }
-
-        for _, player := range table.removeEliminatedPlayers() {
-          netData.Response   = NETDATA_ELIMINATED
-          netData.PlayerData = player
-
-          removePlayer(player)
-          sendResponseToAll(netData, nil)
-        }
-
-        if table.State == TABLESTATE_GAMEOVER {
-          winner := table.Winners[0]
-
-          netData.Response = NETDATA_SERVERMSG
-          netData.Msg      = "game over, " + winner.Name + " wins"
-          netData.Table, netData.PlayerData = nil, nil
-
-          sendResponseToAll(netData, nil)
-
-          table.reset(winner) // make a new game while keeping winner connected
-
-          if winnerConn := getPlayerConn(winner); winnerConn != tableAdmin {
-            if winnerConn == nil {
-              fmt.Printf("getPlayerConn(): winner (%s) not found\n", winner.Name)
-              return
-            }
-            tableAdmin = winnerConn
-            sendData(&NetData{ Response: NETDATA_MAKEADMIN }, winnerConn)
-            sendPlayerTurnToAll()
-          }
+          gameOver()
 
           return
         }
@@ -2261,6 +2581,32 @@ func runServer(table *Table, addr string) (err error) {
         sendDeals()
         sendPlayerTurnToAll()
         sendTable()
+      } else {
+        sendPlayerActionToAll(player, conn)
+        sendPlayerTurnToAll()
+      }
+    } else {
+      sendPlayerActionToAll(player, conn)
+      sendPlayerTurnToAll()
+
+      fmt.Println("** done betting...")
+
+      if table.bettingIsImpossible() {
+        fmt.Println("2: no more betting possible...")
+
+        for table.State != TABLESTATE_ROUNDOVER {
+          table.nextCommunityAction()
+        }
+      } else {
+        table.nextCommunityAction()
+      }
+
+      if table.State == TABLESTATE_ROUNDOVER {
+        roundOver()
+
+        if table.State == TABLESTATE_GAMEOVER {
+          return // XXX
+        }
       } else { // new community card(s)
         netData.Response   = table.commState2NetDataResponse()
         netData.Table      = table
@@ -2322,18 +2668,17 @@ func runServer(table *Table, addr string) (err error) {
     defer func() {
       if err := recover(); err != nil {
         serverError(panicRetToError(err))
-      }
-    }()
-
-    defer func() {
-    // NOTE: we need this in case the client doesn't exit cleanly
-      if player := playerMap[conn]; player != nil &&
-         table.curPlayer != nil                   &&
-         player.Name == table.curPlayer.Name      &&
-         player.Action.Action != NETDATA_FOLD {
-        // XXX just autofolding for now
-        if err := table.PlayerAction(player, Action{ Action: NETDATA_FOLD }); err == nil {
-          tmp_tableLogicAfterPlayerAction(player, &NetData{}, conn)
+      } else { // not a server panic()
+        // NOTE: we need this in case the client doesn't exit cleanly
+        if player := playerMap[conn]; player != nil &&
+           table.curPlayer != nil                   &&
+           player.Name == table.curPlayer.Name      &&
+           player.Action.Action != NETDATA_FOLD {
+          // XXX just autofolding for now
+          fmt.Printf("%s had an unclean exit, autofolding\n", player.Name)
+          if err := table.PlayerAction(player, Action{ Action: NETDATA_FOLD }); err == nil {
+            tmp_tableLogicAfterPlayerAction(player, &NetData{}, conn)
+          }
         }
       }
     }()
@@ -2775,6 +3120,12 @@ func runGame(opts *options) (err error) {
   }*/
 
   return nil
+}
+
+var printer *message.Printer
+
+func init() {
+  printer = message.NewPrinter(language.English)
 }
 
 type options struct {
