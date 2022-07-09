@@ -156,6 +156,7 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
     }
   }
 
+  // TODO: use a map here
   switch key {
   case 'q':
     cli.switchToPage("exit")
@@ -230,40 +231,41 @@ func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
 }
 
 func (cli *CLI) handleButton(btn string) {
-  req := NETDATA_BADREQUEST
   msg := ""
 
   switch btn {
-  case "allin":
-    req = NETDATA_ALLIN
-  case "call":
-    req = NETDATA_CALL
-  case "check":
-    req = NETDATA_CHECK
-  case "fold":
-    req = NETDATA_FOLD
   case "raise":
-    req = NETDATA_BET
     cli.betInputField.SetText("")
   case "msg":
-    req = NETDATA_CHATMSG
     msg = cli.chatMsg
 
     cli.chatMsg = ""
-  case "start":
-    req = NETDATA_STARTGAME
   case "quit":
     cli.switchToPage("exit")
     cli.app.SetFocus(cli.exitModal)
     return
   }
 
-  cli.outputChan <- &NetData{
-    Request: req,
-    PlayerData: &Player{
-      Action: Action{ Action: req, Amount: cli.bet, },
-    }, // XXX action x3!
-    Msg: msg,
+  buttonRequestMap := map[string]int{
+    "allin": NETDATA_ALLIN,
+    "call":  NETDATA_CALL,
+    "check": NETDATA_CHECK,
+    "fold":  NETDATA_FOLD,
+    "raise": NETDATA_BET,
+    "msg":   NETDATA_CHATMSG,
+    "start": NETDATA_STARTGAME,
+  }
+
+  if req, ok := buttonRequestMap[btn]; ok {
+    cli.outputChan <- &NetData{
+      Request: req,
+      PlayerData: &Player{
+        Action: Action{ Action: req, Amount: cli.bet, },
+      }, // XXX action x3!
+      Msg: msg,
+    }
+  } else {
+    cli.outputChan <- &NetData{ Request: NETDATA_BADREQUEST }
   }
 }
 

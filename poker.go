@@ -107,32 +107,24 @@ type Hand struct {
 }
 
 func (hand *Hand) RankName() string {
-  switch hand.Rank {
-  case R_MUCK:
-    return "muck"
-  case R_HIGHCARD:
-    return "high card"
-  case R_PAIR:
-    return "pair"
-  case R_2PAIR:
-    return "two pair"
-  case R_TRIPS:
-    return "three of a kind"
-  case R_STRAIGHT:
-    return "straight"
-  case R_FLUSH:
-    return "flush"
-  case R_FULLHOUSE:
-    return "full house"
-  case R_QUADS:
-    return "four of a kind"
-  case R_STRAIGHTFLUSH:
-    return "straight flush"
-  case R_ROYALFLUSH:
-    return "royal flush"
-  default:
-    panic("RankName(): BUG")
+  rankNameMap := map[int]string{
+    R_MUCK: "muck",
+    R_HIGHCARD: "high card",
+    R_PAIR: "pair",
+    R_2PAIR: "two pair",
+    R_TRIPS: "three of a kind",
+    R_STRAIGHT: "straight",
+    R_FLUSH: "flush",
+    R_FULLHOUSE: "full house",
+    R_QUADS: "four of a kind",
+    R_STRAIGHTFLUSH: "straight flush",
   }
+
+  if rankName, ok := rankNameMap[hand.Rank]; ok {
+    return rankName
+  }
+
+  panic("RankName(): BUG")
 }
 
 type Action struct {
@@ -334,7 +326,7 @@ type Table struct {
   NumSeats     uint       // number of total possible players
   roundCount   uint       // total number of rounds played
 
-  WinInfo      string 		// XXX tmp
+  WinInfo      string     // XXX tmp
 
   State        TableState // current status of table
   CommState    TableState // current status of community
@@ -443,54 +435,45 @@ func (table *Table) CommunityToString() string {
 }
 
 func (table *Table) TableStateToString() string {
-  switch table.State {
-  case TABLESTATE_NOTSTARTED:
-    return "waiting for start"
+  tableStateNameMap := map[TableState]string{
+    TABLESTATE_NOTSTARTED: "waiting for start",
 
-  case TABLESTATE_PREFLOP:
-    return "pre flop"
-  case TABLESTATE_FLOP:
-    return "flop"
-  case TABLESTATE_TURN:
-    return "turn"
-  case TABLESTATE_RIVER:
-    return "river"
+    TABLESTATE_PREFLOP: "preflop",
+    TABLESTATE_FLOP: "flop",
+    TABLESTATE_TURN: "turn",
+    TABLESTATE_RIVER: "river",
 
-  case TABLESTATE_ROUNDS:
-    return "betting rounds"
-  case TABLESTATE_ROUNDOVER:
-    return "round over"
-  case TABLESTATE_NEWROUND:
-    return "new round"
-  case TABLESTATE_GAMEOVER:
-    return "game over"
+    TABLESTATE_ROUNDS: "betting rounds",
+    TABLESTATE_ROUNDOVER: "round over",
+    TABLESTATE_NEWROUND: "new round",
+    TABLESTATE_GAMEOVER: "game over",
 
-  case TABLESTATE_PLAYERRAISED:
-    return "player raised"
-  case TABLESTATE_DONEBETTING:
-    return "finished betting"
-  case TABLESTATE_SHOWHANDS:
-    return "showing hands"
-  case TABLESTATE_SPLITPOT:
-    return "split pot"
-
-  default:
-    return "BUG: bad table state"
+    TABLESTATE_PLAYERRAISED: "player raised",
+    TABLESTATE_DONEBETTING: "finished betting",
+    TABLESTATE_SHOWHANDS: "showing hands",
+    TABLESTATE_SPLITPOT: "split pot",
   }
+
+  if state, ok := tableStateNameMap[table.State]; ok {
+    return state
+  }
+
+  return "BUG: bad table state"
 }
 
 func (table *Table) commState2NetDataResponse() int {
-  switch table.CommState {
-  case TABLESTATE_FLOP:
-    return NETDATA_FLOP
-  case TABLESTATE_TURN:
-    return NETDATA_TURN
-  case TABLESTATE_RIVER:
-    return NETDATA_RIVER
-  default:
-    fmt.Printf("commState2NetDataResponse(): bad state `%v`\n", table.CommState)
-    return NETDATA_BADREQUEST
+  commStateNetDataMap := map[TableState]int{
+    TABLESTATE_FLOP: NETDATA_FLOP,
+    TABLESTATE_TURN: NETDATA_TURN,
+    TABLESTATE_RIVER: NETDATA_RIVER,
   }
+
+  if netDataResponse, ok := commStateNetDataMap[table.CommState]; ok {
+    return netDataResponse
+  }
+
+  fmt.Printf("commState2NetDataResponse(): bad state `%v`\n", table.CommState)
+  return NETDATA_BADREQUEST
 }
 
 func (table *Table) PotToString() string {
@@ -775,7 +758,7 @@ func (table *Table) rotatePlayers() {
 
 Loop:
   if loopCnt > 1 {
-    Panic.panic("goto called more than once")
+    Panic.panic("rotatePlayers(): goto called more than once")
   }
 
   for i, player := range players {
@@ -822,6 +805,7 @@ Loop:
             break
           }
         }
+        fmt.Printf("BUG: rotatePlayers(): Loop: non-vacant dealer replacement not found.\n")
       }
 
       loopCnt++
@@ -1486,6 +1470,7 @@ func (table *Table) newRound() {
   table.better      = nil
   table.Bet         = table.Ante // min bet is big blind bet
   table.MainPot.Pot = 0 // XXX
+  table.SidePot     = nil
   table.State       = TABLESTATE_NEWROUND
 }
 
@@ -1501,8 +1486,16 @@ func (table *Table) finishRound() {
     }; fmt.Println()
   }
 
-  if len(players) == 1 {
-    players[0].ChipCount += table.MainPot.Pot
+  if len(players) == 1 { // win by folds
+    player := players[0]
+
+    player.ChipCount += table.MainPot.Pot
+
+    for _, sidePot := range table.SidePot {
+      if sidePot.Players[player.Name] != nil {
+        player.ChipCount += sidePot.Pot
+      }
+    }
 
     table.State = TABLESTATE_ROUNDOVER
 
@@ -1513,7 +1506,7 @@ func (table *Table) finishRound() {
 
   table.State = TABLESTATE_SHOWHANDS
 
-  bestPlayers := table.BestHand(players)
+  bestPlayers := table.BestHand(players, false)
 
   if len(bestPlayers) == 1 {
     bestPlayers[0].ChipCount += table.MainPot.Pot
@@ -1530,7 +1523,7 @@ func (table *Table) finishRound() {
   table.Winners = bestPlayers
 }
 
-func (table *Table) BestHand(players []*Player) []*Player {
+func (table *Table) BestHand(players []*Player, isSidePot bool) []*Player {
   table.WinInfo = table.CommunityToString() + "\n\n"
 
   for _, player := range players {
@@ -1995,54 +1988,45 @@ func cardsSort(cards *Cards) error {
 }
 
 func cardNumToString(card *Card) error {
-  var name, suit, suit_full string
-  switch card.NumValue {
-  case C_TWO:
-    name  = "2"
-  case C_THREE:
-    name = "3"
-  case C_FOUR:
-    name = "4"
-  case C_FIVE:
-    name = "5"
-  case C_SIX:
-    name = "6"
-  case C_SEVEN:
-    name = "7"
-  case C_EIGHT:
-    name = "8"
-  case C_NINE:
-    name = "9"
-  case C_TEN:
-    name = "10"
-  case C_JACK:
-    name = "J"
-  case C_QUEEN:
-    name = "Q"
-  case C_KING:
-    name = "K"
-  case C_ACE:
-    name = "A"
-  default:
+  cardNumStringMap := map[int]string{
+    C_TWO:   "2",
+    C_THREE: "3",
+    C_FOUR:  "4",
+    C_FIVE:  "5",
+    C_SIX:   "6",
+    C_SEVEN: "7",
+    C_EIGHT: "8",
+    C_NINE:  "9",
+    C_TEN:   "10",
+    C_JACK:  "J",
+    C_QUEEN: "Q",
+    C_KING:  "K",
+    C_ACE:   "A",
+  }
+
+  name := cardNumStringMap[card.NumValue]
+  if name == "" {
     fmt.Println("cardNumToString(): BUG")
     fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
     return errors.New("cardNumToString")
   }
 
-  switch card.Suit {
-  case S_CLUB:
-    suit  = "♣"
-    suit_full = "clubs"
-  case S_DIAMOND:
-    suit  = "♦"
-    suit_full = "diamonds"
-  case S_HEART:
-    suit  = "♥"
-    suit_full = "hearts"
-  case S_SPADE:
-    suit  = "♠"
-    suit_full = "spades"
+  cardSuitStringMap := map[int][]string{
+    S_CLUB:    {"♣", "clubs"},
+    S_DIAMOND: {"♦", "diamonds"},
+    S_HEART:   {"♥", "hearts"},
+    S_SPADE:   {"♠", "spades"},
   }
+
+  suitName := cardSuitStringMap[card.Suit]
+  if suitName == nil {
+    // TODO: fix redundancy.
+    fmt.Println("cardNumToString(): BUG")
+    fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
+    return errors.New("cardNumToString")
+  }
+
+  suit, suit_full := suitName[0], suitName[1]
 
   card.Name     = name + " "    + suit
   card.FullName = name + " of " + suit_full
@@ -2201,85 +2185,54 @@ func netDataReqToString(netData *NetData) string {
     return "netData == nil"
   }
 
-  switch netData.Request {
-  case NETDATA_CLOSE:
-    return "NETDATA_CLOSE"
-  case NETDATA_NEWCONN:
-    return "NETDATA_NEWCONN"
-  case NETDATA_YOURPLAYER:
-    return "NETDATA_YOURPLAYER"
-  case NETDATA_NEWPLAYER:
-    return "NETDATA_NEWPLAYER"
-  case NETDATA_CURPLAYERS:
-    return "NETDATA_CURPLAYERS"
-  case NETDATA_UPDATEPLAYER:
-    return "NETDATA_UPDATEPLAYER"
-  case NETDATA_UPDATETABLE:
-    return "NETDATA_UPDATETABLE"
-  case NETDATA_PLAYERLEFT:
-    return "NETDATA_PLAYERLEFT"
-  case NETDATA_CLIENTEXITED:
-    return "NETDATA_CLIENTEXITED"
+  netDataReqStringMap := map[int]string{
+    NETDATA_CLOSE: "NETDATA_CLOSE",
+    NETDATA_NEWCONN: "NETDATA_NEWCONN",
+    NETDATA_YOURPLAYER: "NETDATA_YOURPLAYER",
+    NETDATA_NEWPLAYER: "NETDATA_NEWPLAYER",
+    NETDATA_CURPLAYERS: "NETDATA_CURPLAYERS",
+    NETDATA_UPDATEPLAYER: "NETDATA_UPDATEPLAYER",
+    NETDATA_UPDATETABLE: "NETDATA_UPDATETABLE",
+    NETDATA_PLAYERLEFT: "NETDATA_PLAYERLEFT",
+    NETDATA_CLIENTEXITED: "NETDATA_CLIENTEXITED",
 
-  case NETDATA_MAKEADMIN:
-    return "NETDATA_MAKEADMIN"
-  case NETDATA_STARTGAME:
-    return "NETDATA_STARTGAME"
+    NETDATA_MAKEADMIN: "NETDATA_MAKEADMIN",
+    NETDATA_STARTGAME: "NETDATA_STARTGAME",
 
-  case NETDATA_CHATMSG:
-    return "NETDATA_CHATMSG"
+    NETDATA_CHATMSG: "NETDATA_CHATMSG",
 
-  case NETDATA_PLAYERACTION:
-    return "NETDATA_PLAYERACTION"
-  case NETDATA_PLAYERTURN:
-    return "NETDATA_PLAYERTURN"
-  case NETDATA_ALLIN:
-    return "NETDATA_ALLIN"
-  case NETDATA_BET:
-    return "NETDATA_BET"
-  case NETDATA_CALL:
-    return "NETDATA_CALL"
-  case NETDATA_CHECK:
-    return "NETDATA_CHECK"
-  case NETDATA_RAISE:
-    return "NETDATA_RAISE"
-  case NETDATA_FOLD:
-    return "NETDATA_FOLD"
-  case NETDATA_CURHAND:
-    return "NETDATA_CURHAND"
-  case NETDATA_SHOWHAND:
-    return "NETDATA_SHOWHAND"
+    NETDATA_PLAYERACTION: "NETDATA_PLAYERACTION",
+    NETDATA_PLAYERTURN: "NETDATA_PLAYERTURN",
+    NETDATA_ALLIN: "NETDATA_ALLIN",
+    NETDATA_BET: "NETDATA_BET",
+    NETDATA_CALL: "NETDATA_CALL",
+    NETDATA_CHECK: "NETDATA_CHECK",
+    NETDATA_RAISE: "NETDATA_RAISE",
+    NETDATA_FOLD: "NETDATA_FOLD",
+    NETDATA_CURHAND: "NETDATA_CURHAND",
+    NETDATA_SHOWHAND: "NETDATA_SHOWHAND",
 
-  case NETDATA_FIRSTACTION:
-    return "NETDATA_FIRSTACTION"
-  case NETDATA_MIDROUNDADDITION:
-    return "NETDATA_MIDROUNDADDITION"
-  case NETDATA_ELIMINATED:
-    return "NETDATA_ELIMINATED"
-  case NETDATA_VACANTSEAT:
-    return "NETDATA_VACANTSEAT"
+    NETDATA_FIRSTACTION: "NETDATA_FIRSTACTION",
+    NETDATA_MIDROUNDADDITION: "NETDATA_MIDROUNDADDITION",
+    NETDATA_ELIMINATED: "NETDATA_ELIMINATED",
+    NETDATA_VACANTSEAT: "NETDATA_VACANTSEAT",
 
-  case NETDATA_DEAL:
-    return "NETDATA_DEAL"
-  case NETDATA_FLOP:
-    return "NETDATA_FLOP"
-  case NETDATA_TURN:
-    return "NETDATA_TURN"
-  case NETDATA_RIVER:
-    return "NETDATA_RIVER"
-  case NETDATA_BESTHAND:
-    return "NETDATA_BESTHAND"
-  case NETDATA_ROUNDOVER:
-    return "NETDATA_ROUNDOVER"
+    NETDATA_DEAL: "NETDATA_DEAL",
+    NETDATA_FLOP: "NETDATA_FLOP",
+    NETDATA_TURN: "NETDATA_TURN",
+    NETDATA_RIVER: "NETDATA_RIVER",
+    NETDATA_BESTHAND: "NETDATA_BESTHAND",
+    NETDATA_ROUNDOVER: "NETDATA_ROUNDOVER",
 
-  case NETDATA_SERVERMSG:
-    return "NETDATA_SERVERMSG"
-  case NETDATA_BADREQUEST:
-    return "NETDATA_BADREQUEST"
-
-  default:
-    return "invalid NetData request"
+    NETDATA_SERVERMSG: "NETDATA_SERVERMSG",
+    NETDATA_BADREQUEST: "NETDATA_BADREQUEST",
   }
+
+  if netDataStr, ok := netDataReqStringMap[netData.Request]; ok {
+    return netDataStr
+  }
+
+  return "invalid NetData request"
 }
 
 func sendData(data *NetData, conn *websocket.Conn) {
@@ -2623,11 +2576,11 @@ func runServer(table *Table, addr string) (err error) {
 
         // let players know they should update their current hand after the community action
         // NOTE: hand is currently computed on client side
-	      netData.Response = NETDATA_CURHAND
-	      for conn, player := range playerMap {
+        netData.Response = NETDATA_CURHAND
+        for conn, player := range playerMap {
           netData.PlayerData = player
           sendData(netData, conn)
-	      }
+        }
       }
     }
   }
@@ -2989,12 +2942,10 @@ func runClient(addr string, isGUI bool) (err error) {
       fmt.Fprintf(os.Stderr, "write close err: %s\n", err.Error())
     }
 
-    return
-
-    select {
+    /*select {
     case <-time.After(time.Second * 3):
       fmt.Fprintf(os.Stderr, "timeout: couldn't close connection properly.\n")
-    }
+    }*/
 
     return
   }()
