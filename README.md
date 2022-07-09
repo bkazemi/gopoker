@@ -12,7 +12,7 @@ go build
 ```sh
 # *nix
 ./gopoker -s 777 # create a new poker server on localhost:777
-./gopoker -c ws://locallost:777/cli # connect to the server as a CLI client
+./gopoker -c ws://localhost:777/cli # connect to the server as a CLI client
 ```
 
 ```cmd
