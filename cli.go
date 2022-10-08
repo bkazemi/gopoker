@@ -1,14 +1,15 @@
 package main
 
 import (
-  "fmt"
-  "strconv"
-  "errors"
-  "strings"
-  //"os"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 
-  "github.com/gdamore/tcell/v2"
-  "github.com/rivo/tview"
+	//"os"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 type CLIFocusList struct {
@@ -449,9 +450,9 @@ func (cli *CLI) Init() error {
     SetAcceptanceFunc(func(inp string, lastChar rune) bool {
       if _, err := strconv.ParseUint(inp, 10, 64); err != nil {
         return false
-      } else {
-        return true
       }
+
+      return true
     }).
     SetChangedFunc(func(inp string) {
       if inp == "" {
