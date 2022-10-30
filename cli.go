@@ -272,6 +272,18 @@ func (cli *CLI) handleButton(btn string) {
 
 func (cli *CLI) updateInfoList(item string, table *Table) {
   switch item {
+  case "all":
+    cli.tableInfoList.SetItemText(2, "# connected",
+      strconv.FormatUint(uint64(table.NumConnected), 10))
+    cli.tableInfoList.SetItemText(0, "# players",
+      strconv.FormatUint(uint64(table.NumPlayers), 10))
+    cli.tableInfoList.SetItemText(1, "# open seats",
+      strconv.FormatUint(uint64(table.GetNumOpenSeats()), 10))
+    cli.tableInfoList.SetItemText(4, "pot",         table.PotToString())
+    cli.tableInfoList.SetItemText(5, "dealer",      table.DealerToString())
+    cli.tableInfoList.SetItemText(6, "small blind", table.SmallBlindToString())
+    cli.tableInfoList.SetItemText(7, "big blind",   table.BigBlindToString())
+    cli.tableInfoList.SetItemText(8, "status",      table.TableStateToString())
   case "# connected":
     cli.tableInfoList.SetItemText(2, "# connected",
       strconv.FormatUint(uint64(table.NumConnected), 10))
@@ -282,7 +294,7 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
       strconv.FormatUint(uint64(table.GetNumOpenSeats()), 10))
   case "status":
     cli.tableInfoList.SetItemText(4, "pot",         table.PotToString())
-    cli.tableInfoList.SetItemText(5, "dealer",      table.Dealer.Name)
+    cli.tableInfoList.SetItemText(5, "dealer",      table.DealerToString())
     cli.tableInfoList.SetItemText(6, "small blind", table.SmallBlindToString())
     cli.tableInfoList.SetItemText(7, "big blind",   table.BigBlindToString())
     cli.tableInfoList.SetItemText(8, "status",      table.TableStateToString())
@@ -687,6 +699,8 @@ func cliInputLoop(cli *CLI) {
       case NETDATA_PLAYERLEFT:
         cli.removePlayer(netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)
+        cli.updateChat(fmt.Sprintf("<server-msg>: %s left the table",
+                                   netData.PlayerData.Name))
       case NETDATA_MAKEADMIN:
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start")
@@ -764,6 +778,20 @@ func cliInputLoop(cli *CLI) {
         }
 
         cli.app.Draw()
+      case NETDATA_RESET:
+        if netData.PlayerData != nil {
+          for name, textView := range cli.playersTextViewMap {
+            if name != netData.PlayerData.Name {
+              cli.otherPlayersFlex.RemoveItem(textView)
+            }
+          }
+        } else {
+          for _, textView := range cli.playersTextViewMap {
+            cli.otherPlayersFlex.RemoveItem(textView)
+          }
+        }
+				cli.holeView.Clear()
+        cli.updateInfoList("all", netData.Table)
       case NETDATA_ELIMINATED:
         if netData.PlayerData.Name == cli.yourName {
           cli.errorModal.SetText("you were eliminated")
