@@ -137,6 +137,7 @@ type Action struct {
 }
 
 type Player struct {
+  defaultName string
   Name  string // NOTE: must have unique names
   IsCPU bool
 
@@ -147,6 +148,16 @@ type Player struct {
   Hand      *Hand
   PreHand   Hand // XXX tmp
   Action    Action
+}
+
+func (p *Player) setName(name string) {
+  oldName := p.Name
+  if name == "" {
+    p.Name = p.defaultName
+  } else {
+    p.Name = name
+  }
+  fmt.Printf("%s.setName(): '%s' => '%s'\n", p.defaultName, oldName, p.Name)
 }
 
 func (p *Player) canBet() bool {
@@ -359,6 +370,7 @@ func (list *playerList) ToPlayerArray() []*Player {
 }
 
 func (player *Player) Init(name string, isCPU bool) error {
+  player.defaultName = name
   player.Name = name
   player.IsCPU = isCPU
 
@@ -378,6 +390,7 @@ func (player *Player) NewCards() {
 }
 
 func (player *Player) Clear() {
+  player.Name = player.defaultName
   player.IsVacant = true
 
   player.ChipCount = 1e5 // XXX
@@ -2345,6 +2358,7 @@ const (
   NETDATA_UPDATETABLE
   NETDATA_PLAYERLEFT
   NETDATA_CLIENTEXITED
+  NETDATA_CLIENTSETTINGS
   NETDATA_RESET
 
   NETDATA_SERVERCLOSED
@@ -2387,8 +2401,10 @@ type NetData struct {
   Request    int
   Response   int
   Msg        string // server msg or client chat msg
-  Table      *Table
-  PlayerData *Player
+
+  ClientSettings *ClientSettings // client requested settings
+  Table          *Table
+  PlayerData     *Player
 }
 
 func (netData *NetData) Init() {
@@ -2402,16 +2418,17 @@ func netDataReqToString(netData *NetData) string {
   }
 
   netDataReqStringMap := map[int]string{
-    NETDATA_CLOSE:        "NETDATA_CLOSE",
-    NETDATA_NEWCONN:      "NETDATA_NEWCONN",
-    NETDATA_YOURPLAYER:   "NETDATA_YOURPLAYER",
-    NETDATA_NEWPLAYER:    "NETDATA_NEWPLAYER",
-    NETDATA_CURPLAYERS:   "NETDATA_CURPLAYERS",
-    NETDATA_UPDATEPLAYER: "NETDATA_UPDATEPLAYER",
-    NETDATA_UPDATETABLE:  "NETDATA_UPDATETABLE",
-    NETDATA_PLAYERLEFT:   "NETDATA_PLAYERLEFT",
-    NETDATA_CLIENTEXITED: "NETDATA_CLIENTEXITED",
-    NETDATA_RESET:        "NETDATA_RESET",
+    NETDATA_CLOSE:          "NETDATA_CLOSE",
+    NETDATA_NEWCONN:        "NETDATA_NEWCONN",
+    NETDATA_YOURPLAYER:     "NETDATA_YOURPLAYER",
+    NETDATA_NEWPLAYER:      "NETDATA_NEWPLAYER",
+    NETDATA_CURPLAYERS:     "NETDATA_CURPLAYERS",
+    NETDATA_UPDATEPLAYER:   "NETDATA_UPDATEPLAYER",
+    NETDATA_UPDATETABLE:    "NETDATA_UPDATETABLE",
+    NETDATA_PLAYERLEFT:     "NETDATA_PLAYERLEFT",
+    NETDATA_CLIENTEXITED:   "NETDATA_CLIENTEXITED",
+    NETDATA_CLIENTSETTINGS: "NETDATA_CLIENTSETTINGS",
+    NETDATA_RESET:          "NETDATA_RESET",
 
     NETDATA_MAKEADMIN: "NETDATA_MAKEADMIN",
     NETDATA_STARTGAME: "NETDATA_STARTGAME",
@@ -2603,6 +2620,7 @@ func (server *Server) removePlayerByConn(conn *websocket.Conn) {
     player.Clear()
 
     netData := &NetData{
+      ID:         server.clientIDMap[conn],
       Response:   NETDATA_PLAYERLEFT,
       Table:      server.table,
       PlayerData: player,
@@ -2656,9 +2674,13 @@ func (server *Server) sendPlayerTurn(conn *websocket.Conn) {
     return
   }
 
+  curPlayer := server.table.curPlayer.Player
+  id := server.clientIDMap[server.getPlayerConn(curPlayer)]
+
   netData := &NetData{
+    ID:         id,
     Response:   NETDATA_PLAYERTURN,
-    PlayerData: server.table.PublicPlayerInfo(*server.table.curPlayer.Player),
+    PlayerData: server.table.PublicPlayerInfo(*curPlayer),
   }
 
   netData.PlayerData.Action.Action = NETDATA_PLAYERTURN
@@ -2667,9 +2689,17 @@ func (server *Server) sendPlayerTurn(conn *websocket.Conn) {
 }
 
 func (server *Server) sendPlayerTurnToAll() {
+  if server.table.curPlayer == nil {
+    return
+  }
+
+  curPlayer := server.table.curPlayer.Player
+  id := server.clientIDMap[server.getPlayerConn(curPlayer)]
+
   netData := &NetData{
+    ID:         id,
     Response:   NETDATA_PLAYERTURN,
-    PlayerData: server.table.PublicPlayerInfo(*server.table.curPlayer.Player),
+    PlayerData: server.table.PublicPlayerInfo(*curPlayer),
   }
 
   netData.PlayerData.Action.Action = NETDATA_PLAYERTURN
@@ -2681,6 +2711,7 @@ func (server *Server) sendPlayerActionToAll(player *Player, conn *websocket.Conn
   fmt.Printf("%s action => %s\n", player.Name, player.ActionToString())
 
   netData := &NetData{
+    ID:         server.clientIDMap[conn],
     Response:   NETDATA_PLAYERACTION,
     Table:      server.table,
     PlayerData: server.table.PublicPlayerInfo(*player),
@@ -2698,6 +2729,7 @@ func (server *Server) sendDeals() {
   netData := &NetData{Response: NETDATA_DEAL}
 
   for conn, player := range server.playerMap {
+    netData.ID = server.clientIDMap[conn]
     netData.PlayerData = player
 
     sendData(netData, conn)
@@ -2708,16 +2740,11 @@ func (server *Server) sendHands() {
   netData := &NetData{Response: NETDATA_SHOWHAND}
 
   for _, player := range server.table.curPlayers.ToPlayerArray() {
-    netData.PlayerData = server.table.PublicPlayerInfo(*player)
-
-    var conn *websocket.Conn
-    for k, v := range server.playerMap {
-      if v == player {
-        conn = k
-        break
-      }
-    }
+    conn := server.getPlayerConn(player)
     assert(conn != nil, "sendHands(): player not in playerMap")
+    netData.ID = server.clientIDMap[conn]
+
+    netData.PlayerData = server.table.PublicPlayerInfo(*player)
 
     server.sendResponseToAll(netData, conn)
   }
@@ -2751,6 +2778,9 @@ func (server *Server) roundOver() {
   netData.Response = NETDATA_UPDATEPLAYER
   netData.Table, netData.Msg = nil, ""
   for _, player := range server.table.activePlayers.ToPlayerArray() {
+    conn := server.getPlayerConn(player) // XXX slow
+
+    netData.ID = server.clientIDMap[conn]
     netData.PlayerData = player
 
     server.sendResponseToAll(netData, nil)
@@ -2920,6 +2950,7 @@ func (server *Server) tmp_tableLogicAfterPlayerAction(player *Player, netData *N
       // NOTE: hand is currently computed on client side
       netData.Response = NETDATA_CURHAND
       for conn, player := range server.playerMap {
+        netData.ID = server.clientIDMap[conn]
         netData.PlayerData = player
         sendData(netData, conn)
       }
@@ -2939,6 +2970,69 @@ func (server *Server) serverError(err error) {
 
   server.errChan <- err
   server.panicked = true
+}
+
+type ClientSettings struct {
+  Name string
+}
+
+func (server *Server) handleClientSettings(conn *websocket.Conn, settings *ClientSettings) error {
+  errs := ""
+
+  if conn == nil || settings == nil {
+    fmt.Println("handleClientSettings(): called with a nil parameter")
+
+    return errors.New("handleClientSettings(): BUG: called with a nil parameter")
+  }
+
+  settings.Name = strings.TrimSpace(settings.Name)
+  if settings.Name != "" {
+    if len(settings.Name) > 15 {
+      fmt.Printf("handleClientSettings(): %p requested a name that was longer than 15 characters. " +
+                 "using a default name\n", conn)
+      errs += "You've requested a name that was longer than 15 characters. Using a default name.\n\n"
+      settings.Name = ""
+    } else {
+      if player := server.playerMap[conn]; player != nil {
+        if player.Name == settings.Name {
+          fmt.Println("handleClientSettings(): name unchanged")
+          errs += "name: unchanged\n\n"
+        } else {
+          for _, p := range server.table.players {
+            if settings.Name == p.Name {
+              fmt.Printf("%p requested the name `%s` which is reserved or already taken",
+                         conn, settings.Name)
+              errs += fmt.Sprintf("Name '%s' already in use. Current name unchanged.\n\n", settings.Name)
+              break
+            }
+          }
+        }
+      } else {
+        for _, player := range server.table.players {
+          if settings.Name == player.Name {
+            fmt.Printf("%p requested the name `%s` which is reserved or already taken. " +
+                       "using a default name\n", conn, settings.Name)
+            errs += fmt.Sprintf("Name '%s' already in use. Using a default name.\n\n", settings.Name)
+            settings.Name = ""
+            break
+          }
+        }
+      }
+    }
+  }
+
+  if errs != "" {
+    errs = "server response: settings changes: \n\n" + errs
+    return errors.New(errs)
+  }
+
+  return nil
+}
+
+func (server *Server) applyClientSettings(conn *websocket.Conn, settings *ClientSettings) {
+  if player := server.playerMap[conn]; player != nil {
+    player.setName(settings.Name)
+  }
 }
 
 func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
@@ -2973,8 +3067,8 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         }
       }
 
-      server.removeClient(conn)
       server.removePlayerByConn(conn)
+      server.removeClient(conn)
       server.closeConn(conn)
     }
   }()
@@ -3013,7 +3107,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
     _, rawData, err := conn.ReadMessage()
     if err != nil {
       if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
-        fmt.Printf("runServer(): readConn() conn: %v err: %v\n", conn, err)
+        fmt.Printf("runServer(): readConn() conn: %p err: %v\n", conn, err)
       }
 
       return
@@ -3044,13 +3138,21 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         netData.Table = server.table
 
         for _, player := range server.table.activePlayers.ToPlayerArray() {
+          netData.ID = server.clientIDMap[server.getPlayerConn(player)]
           netData.PlayerData = server.table.PublicPlayerInfo(*player)
           sendData(&netData, conn)
         }
       }
 
+      if err := server.handleClientSettings(conn, netData.ClientSettings); err != nil {
+        sendData(&NetData{Response: NETDATA_BADREQUEST, Msg: err.Error()}, conn)
+      }
+
       if player := server.table.getOpenSeat(); player != nil {
-        fmt.Printf("adding %p as player %s\n", &conn, player.Name)
+        server.playerMap[conn] = player
+
+        server.applyClientSettings(conn, netData.ClientSettings)
+        fmt.Printf("adding %p as player '%s'\n", &conn, player.Name)
 
         if server.table.State == TABLESTATE_NOTSTARTED {
           player.Action.Action = NETDATA_FIRSTACTION
@@ -3059,8 +3161,6 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           player.Action.Action = NETDATA_MIDROUNDADDITION
         }
         server.table.activePlayers.AddPlayer(player)
-
-        server.playerMap[conn] = player
 
         if server.table.curPlayer == nil {
           server.table.curPlayer = server.table.curPlayers.node
@@ -3074,6 +3174,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           server.table.BigBlind = server.table.SmallBlind.next
         }
 
+        netData.ID = server.clientIDMap[conn]
         netData.Response = NETDATA_NEWPLAYER
         netData.Table = server.table
         netData.PlayerData = server.table.PublicPlayerInfo(*player)
@@ -3106,6 +3207,28 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         cleanExit = true
 
         return
+      case NETDATA_CLIENTSETTINGS:
+        if err := server.handleClientSettings(conn, netData.ClientSettings); err == nil {
+          server.applyClientSettings(conn, netData.ClientSettings)
+
+          if player := server.playerMap[conn]; player != nil {
+            netData.Response = NETDATA_UPDATEPLAYER
+            netData.ID = server.clientIDMap[conn]
+            netData.PlayerData = server.table.PublicPlayerInfo(*player)
+            netData.Table, netData.Msg = nil, ""
+
+            server.sendResponseToAll(&netData, conn)
+
+            netData.Response = NETDATA_YOURPLAYER
+            sendData(&netData, conn)
+
+            netData.Response = NETDATA_SERVERMSG
+            netData.Msg = "server updated your settings"
+            sendData(&netData, conn)
+          }
+        } else {
+          sendData(&NetData{Response: NETDATA_SERVERMSG, Msg: err.Error()}, conn)
+        }
       case NETDATA_STARTGAME:
         if conn != server.tableAdmin {
           netData.Response = NETDATA_BADREQUEST
@@ -3141,9 +3264,9 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         }
 
         if player := server.playerMap[conn]; player != nil {
-          netData.Msg = fmt.Sprintf("[%s id: %s]: %s", player.Name, netData.ID, netData.Msg)
+          netData.Msg = fmt.Sprintf("[%s id: %s]: %s", player.Name, netData.ID[:7], netData.Msg)
         } else {
-          netData.Msg = fmt.Sprintf("[spectator id: %s]: %s", netData.ID, netData.Msg)
+          netData.Msg = fmt.Sprintf("[spectator id: %s]: %s", netData.ID[:7], netData.Msg)
         }
 
         server.sendResponseToAll(&netData, nil)
@@ -3250,7 +3373,7 @@ type FrontEnd interface {
   Error() chan error
 }
 
-func runClient(addr string, isGUI bool) (err error) {
+func runClient(addr string, name string, isGUI bool) (err error) {
   if !strings.HasPrefix(addr, "ws://") {
     if strings.HasPrefix(addr, "http://") {
       addr = addr[7:]
@@ -3336,7 +3459,8 @@ func runClient(addr string, isGUI bool) (err error) {
   go func() {
     defer recoverFunc()
 
-    sendData(&NetData{Request: NETDATA_NEWCONN}, conn)
+    sendData(&NetData{Request: NETDATA_NEWCONN,
+                      ClientSettings: &ClientSettings{Name: name}}, conn)
 
     for {
       _, data, err := conn.ReadMessage()
@@ -3422,7 +3546,7 @@ func runGame(opts *options) (err error) {
       //table.BestHand()
     }
   } else if opts.connect != "" { // client mode
-    if err := runClient(opts.connect, opts.gui); err != nil {
+    if err := runClient(opts.connect, opts.name, opts.gui); err != nil {
       return err
     }
   } else { // offline game
@@ -3448,12 +3572,17 @@ func init() {
 type options struct {
   serverMode string
   connect    string
+  name       string
   gui        bool
   numSeats   uint
 }
 
 /*
-  TODO: check if bets always have to be a multiple of blind(s)?
+  TODO: - check if bets always have to be a multiple of blind(s)?
+        - wrap errors
+
+        cli.go:
+        - figure out why refocusing on a primitive increments the highlighted sub element
 */
 func main() {
   processName, err := os.Executable()
@@ -3466,6 +3595,7 @@ func main() {
   var (
     serverMode string
     connect    string
+    name       string
     gui        bool
     numSeats   uint
   )
@@ -3477,6 +3607,7 @@ func main() {
 
   flag.StringVar(&serverMode, "s", "", "host a poker table on <port>")
   flag.StringVar(&connect, "c", "", "connect to a gopoker table")
+  flag.StringVar(&name, "n", "", "name you wish to be identified by while connected")
   flag.BoolVar(&gui, "g", false, "run with a GUI")
   flag.UintVar(&numSeats, "ns", 7, "max number of players allowed at the table")
   flag.Parse()
@@ -3484,6 +3615,7 @@ func main() {
   opts := &options{
     serverMode: serverMode,
     connect:    connect,
+    name:       name,
     gui:        gui,
     numSeats:   numSeats,
   }

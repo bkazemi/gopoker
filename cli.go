@@ -22,7 +22,7 @@ type CLI struct {
   pages             *tview.Pages
   gameGrid          *tview.Grid
 
-  curPage            string
+  pagesToPrimFocus   map[string]tview.Primitive
 
   lastKey            rune
 
@@ -30,6 +30,7 @@ type CLI struct {
   yourID             string
 
   bet                uint
+  betAddedCommas     bool // XXX tmp
 
   commView,
   otherPlayersView,
@@ -41,6 +42,10 @@ type CLI struct {
 
   playersTextViewMap  map[string]*tview.TextView
   curPlayerTextView  *tview.TextView
+
+  settingsForm       *tview.Form
+  settingsFlex       *tview.Flex
+  settings           *ClientSettings
 
   betInputField      *tview.InputField
   actionsFlex        *tview.Flex
@@ -82,151 +87,18 @@ func (cli *CLI) switchToPage(page string) {
       })
 
     cli.pages.SwitchToPage("error")
-    cli.app.SetFocus(cli.errorModal)
   } else {
-    cli.curPage = page
-
     cli.pages.SwitchToPage(page)
   }
+
+  cli.app.SetFocus(cli.pagesToPrimFocus[page])
 }
 
 func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
-  key := eventKey.Rune()
-
-  if cli.curPage != "game" {
-    return eventKey
-  }
-
-  /*switch eventKey.Key() {
-  case tcell.KeyLeft:
-    cli.focusList = cli.focusList.prev
-    cli.app.SetFocus(cli.focusList.prim)
-  case tcell.KeyRight:
-    cli.focusList = cli.focusList.next
-    cli.app.SetFocus(cli.focusList.prim)
-  }*/
-
-  switch eventKey.Key() {
-  case tcell.KeyTab:
-    cli.focusList = cli.focusList.next
-    cli.app.SetFocus(cli.focusList.prim)
-  }
-
-  // if we don't check this we will switch out of chat input when
-  // the runes below are pressed
-  if cli.app.GetFocus() == cli.chatInputField {
-    return eventKey
-  }
-
-  if cli.actionsForm.HasFocus() {
-    switch eventKey.Key() {
-    case tcell.KeyLeft:
-      _, idx := cli.actionsForm.GetFocusedItemIndex()
-
-      if idx == 0 {
-        idx = cli.actionsForm.GetFormItemCount() + cli.actionsForm.GetButtonCount() - 1
-      } else {
-        idx--
-      }
-
-      cli.actionsForm.SetFocus(idx)
-      cli.app.SetFocus(cli.actionsForm)
-    case tcell.KeyRight:
-      _, idx := cli.actionsForm.GetFocusedItemIndex()
-
-      if idx == cli.actionsForm.GetFormItemCount() + cli.actionsForm.GetButtonCount() {
-        idx = 0
-      } else {
-        idx++
-      }
-
-      cli.actionsForm.SetFocus(idx)
-      cli.app.SetFocus(cli.actionsForm)
-    }
-  }
-
-  switch eventKey.Key() {
-  case tcell.KeyUp, tcell.KeyDown:
-    // since there are only two primitives in this flex, there is no need to make a list.
-    if cli.actionsFlex.HasFocus() {
-      if cli.actionsForm.HasFocus() {
-        cli.app.SetFocus(cli.betInputField)
-      } else {
-        cli.app.SetFocus(cli.actionsForm)
-      }
-    }
-  }
-
-  // TODO: use a map here
-  switch key {
-  case 'q':
+  // the one universal key is esc to quit the game
+  if eventKey.Key() == tcell.KeyEscape {
     cli.switchToPage("exit")
-    cli.app.SetFocus(cli.exitModal)
-
-    return eventKey
-  case 'a':
-    if cli.lastKey == 'a' {
-      cli.lastKey = '_'
-      cli.handleButton("allin")
-    } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(3))
-    }
-  case 'b':
-    if cli.lastKey == 'b' {
-      cli.lastKey = '_'
-      cli.handleButton("bet")
-    } else {
-      cli.app.SetFocus(cli.betInputField)
-    }
-  case 'c':
-    if cli.lastKey == 'c' {
-      cli.lastKey = '_'
-      cli.handleButton("check")
-    } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(0))
-    }
-  case 'C':
-    if cli.lastKey == 'C' {
-      cli.lastKey = '_'
-      cli.handleButton("call")
-    } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(1))
-    }
-  case 'r':
-    if cli.lastKey == 'r' {
-      cli.lastKey = '_'
-      cli.handleButton("raise")
-    } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(2))
-    }
-  case 'f':
-    if cli.lastKey == 'f' {
-      cli.lastKey = '_'
-      cli.handleButton("fold")
-    } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(4))
-    }
-
-  case 'm':
-    cli.app.SetFocus(cli.chatInputField)
-    cli.chatFlex.SetBorderColor(tcell.ColorWhite)
-
-    return nil
-
-  case 's':
-    if cli.actionsForm.GetButtonCount() < 7 {
-      break
-    }
-
-    if cli.lastKey == 's' {
-      cli.lastKey = '_'
-      cli.handleButton("start")
-    } else {
-      cli.app.SetFocus(cli.actionsForm.GetButton(6))
-    }
   }
-
-  cli.lastKey = key
 
   return eventKey
 }
@@ -243,27 +115,28 @@ func (cli *CLI) handleButton(btn string) {
     cli.chatMsg = ""
   case "quit":
     cli.switchToPage("exit")
-    cli.app.SetFocus(cli.exitModal)
     return
   }
 
-  buttonRequestMap := map[string]int{
-    "allin": NETDATA_ALLIN,
-    "call":  NETDATA_CALL,
-    "check": NETDATA_CHECK,
-    "fold":  NETDATA_FOLD,
-    "raise": NETDATA_BET,
-    "msg":   NETDATA_CHATMSG,
-    "start": NETDATA_STARTGAME,
+  buttonLabelRequestMap := map[string]int{
+    "all-in":     NETDATA_ALLIN,
+    "call":       NETDATA_CALL,
+    "check":      NETDATA_CHECK,
+    "fold":       NETDATA_FOLD,
+    "raise":      NETDATA_BET,
+    "msg":        NETDATA_CHATMSG,
+    "start game": NETDATA_STARTGAME,
+    "settings":   NETDATA_CLIENTSETTINGS,
   }
 
-  if req, ok := buttonRequestMap[btn]; ok {
+  if req, ok := buttonLabelRequestMap[btn]; ok {
     cli.outputChan <- &NetData{
       Request: req,
       PlayerData: &Player{
         Action: Action{ Action: req, Amount: cli.bet, },
       }, // XXX action x3!
       Msg: msg,
+      ClientSettings: cli.settings,
     }
   } else {
     cli.outputChan <- &NetData{ Request: NETDATA_BADREQUEST }
@@ -299,12 +172,10 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
     cli.tableInfoList.SetItemText(7, "big blind",   table.BigBlindToString())
     cli.tableInfoList.SetItemText(8, "status",      table.TableStateToString())
   }
-
-  cli.app.Draw()
 }
 
-func (cli *CLI) addNewPlayer(player *Player) {
-  if player.Name == cli.yourName {
+func (cli *CLI) addNewPlayer(clientID string, player *Player) {
+  if clientID == cli.yourID {
     return
   }
 
@@ -314,29 +185,38 @@ func (cli *CLI) addNewPlayer(player *Player) {
            SetBorder(true).
            SetTitle(player.Name)
 
-  cli.playersTextViewMap[player.Name] = textView
+  cli.playersTextViewMap[clientID] = textView
 
   cli.otherPlayersFlex.AddItem(textView, 0, 1, false)
-
-  cli.app.Draw()
 }
 
-func (cli *CLI) removePlayer(player *Player) {
+func (cli *CLI) removePlayer(clientID string, player *Player) {
   if player.Name == cli.yourName {
     return
   }
 
-  textView := cli.playersTextViewMap[player.Name]
+  textView := cli.playersTextViewMap[clientID]
 
   cli.otherPlayersFlex.RemoveItem(textView)
-
-  cli.app.Draw()
 }
 
-func (cli *CLI) updatePlayer(player *Player, table *Table) {
-  textView := cli.playersTextViewMap[player.Name]
+func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
+  // FIXME
+  if player.Name != cli.yourName && clientID == "" {
+    for ID, textView := range cli.playersTextViewMap {
+      if textView.GetTitle() == player.Name {
+        clientID = ID
+        break
+      }
+    }
+    if clientID == "" {
+      panic(fmt.Sprintf("updatePlayer(): couldnt find %s's clientID", player.Name))
+    }
+  }
 
-  if player.Name == cli.yourName {
+  textView := cli.playersTextViewMap[clientID]
+
+  if clientID == cli.yourID {
     if table != nil {
       assembleBestHand(true, table, player)
 
@@ -356,6 +236,7 @@ func (cli *CLI) updatePlayer(player *Player, table *Table) {
       return
     }
 
+    textView.SetTitle(player.Name)
     textViewSetLine(textView, 1, "current action: " + player.ActionToString())
     textViewSetLine(textView, 2, "chip count: "     + player.ChipCountToString() + "\n")
 
@@ -363,7 +244,6 @@ func (cli *CLI) updatePlayer(player *Player, table *Table) {
       textViewSetLine(textView, 3, cli.cards2String(player.Hole.Cards))
     }
   }
-
 }
 
 func (cli *CLI) clearPlayerScreens() {
@@ -402,7 +282,7 @@ func (cli *CLI) Init() error {
   cli.exitModal  = tview.NewModal()
   cli.errorModal = tview.NewModal()
 
-  cli.curPage    = "game"
+  cli.settings = &ClientSettings{}
 
   cli.inputChan  = make(chan *NetData)
   cli.outputChan = make(chan *NetData)
@@ -460,10 +340,12 @@ func (cli *CLI) Init() error {
     SetLabel("bet amount: ").
     SetFieldWidth(20).
     SetAcceptanceFunc(func(inp string, lastChar rune) bool {
+      inp = strings.ReplaceAll(inp, ",", "")
       if _, err := strconv.ParseUint(inp, 10, 64); err != nil {
         return false
       }
 
+      cli.betAddedCommas = false
       return true
     }).
     SetChangedFunc(func(inp string) {
@@ -471,11 +353,21 @@ func (cli *CLI) Init() error {
         return
       }
 
+      inp = strings.ReplaceAll(inp, ",", "")
       n, err := strconv.ParseUint(inp, 10, 64)
       if err != nil {
         cli.bet = 0
       } else {
         cli.bet = uint(n) // XXX
+      }
+
+      if !cli.betAddedCommas {
+        go func() { // XXX yep..
+            cli.app.QueueUpdateDraw(func() {
+              cli.betInputField.SetText(printer.Sprintf("%d", cli.bet))
+            })
+        }()
+        cli.betAddedCommas = true
       }
     }).
     SetFinishedFunc(func(_ tcell.Key) {
@@ -484,6 +376,8 @@ func (cli *CLI) Init() error {
       if n == "" {
         return
       }
+
+      n = strings.ReplaceAll(n, ",", "")
 
       _, err := strconv.ParseUint(n, 10, 64)
       if err != nil {
@@ -521,36 +415,96 @@ func (cli *CLI) Init() error {
       cli.handleButton("raise")
     }).
     AddButton("all-in", func() {
-      cli.handleButton("allin")
+      cli.handleButton("all-in")
     }).
     AddButton("fold",  func() {
       cli.handleButton("fold")
     }).
     AddButton("quit",  func() {
       cli.handleButton("quit")
+    }).
+    AddButton("settings", func() {
+      cli.switchToPage("settings")
     })
-  /*cli.actionsForm.GetFormItem(0).SetFinishedFunc(func(_ tcell.Key) {
-    label := cli.actionsForm.GetFormItem(0).GetLabel()
+  cli.actionsForm.SetBorder(false).
+    SetInputCapture(func(eventKey *tcell.EventKey) *tcell.EventKey {
+     switch eventKey.Key() {
+     case tcell.KeyLeft:
+       _, idx := cli.actionsForm.GetFocusedItemIndex()
 
-    _, err := strconv.ParseUint(label, 10, 64)
-    if err != nil {
-      // should never happen, input is checked in accept()
-      panic("bad bet val: " + label)
-    }
-  })*/
-  cli.actionsForm.SetBorder(false)//.SetTitle("Actions")
+       if idx == 0 {
+         idx = cli.actionsForm.GetFormItemCount() + cli.actionsForm.GetButtonCount() - 1
+       } else {
+         idx--
+       }
+
+       cli.actionsForm.SetFocus(idx)
+       cli.app.SetFocus(cli.actionsForm)
+     case tcell.KeyRight:
+       _, idx := cli.actionsForm.GetFocusedItemIndex()
+
+       if idx == cli.actionsForm.GetFormItemCount() + cli.actionsForm.GetButtonCount() {
+         idx = 0
+       } else {
+         idx++
+       }
+
+       cli.actionsForm.SetFocus(idx)
+       cli.app.SetFocus(cli.actionsForm)
+     }
+
+      return eventKey
+    })
+
+  cli.settingsForm = tview.NewForm().
+    AddInputField("name", cli.yourName, 15, nil, func(newName string) {
+        cli.settings.Name = newName
+    }).
+    AddButton("request changes", func() {
+      cli.handleButton("settings")
+      cli.switchToPage("game")
+    }).
+    AddButton("cancel", func() {
+      cli.switchToPage("game")
+    })
+  cli.settingsForm.SetFocus(0).SetBorder(true).SetTitle("Settings").
+    SetBlurFunc(func(){
+      cli.settingsForm.SetFocus(0)
+    })
+
+  cli.settingsFlex = tview.NewFlex().
+    AddItem(nil, 0, 1, false).
+    AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+              AddItem(nil, 0, 1, false).
+              AddItem(cli.settingsForm, 0, 1, true).
+              AddItem(nil, 0, 1, false), 0, 1, true).
+    AddItem(nil, 0, 1, false)
 
   cli.actionsFlex = tview.NewFlex().SetDirection(tview.FlexRow).
     AddItem(tview.NewBox(),     0, 1, false).
     AddItem(cli.betInputField,  0, 1, false).
     AddItem(cli.actionsForm,    0, 8, false)
-  cli.actionsFlex.SetBorder(true).SetTitle("Actions")
+  cli.actionsFlex.SetBorder(true).SetTitle("Actions").
+    SetFocusFunc(func(){
+      cli.app.SetFocus(cli.actionsForm)
+    }).
+    SetInputCapture(func(eventKey *tcell.EventKey) *tcell.EventKey {
+      switch eventKey.Key() {
+      case tcell.KeyUp, tcell.KeyDown:
+        if cli.betInputField.HasFocus() {
+          cli.app.SetFocus(cli.actionsForm)
+        } else {
+          cli.app.SetFocus(cli.betInputField)
+        }
+      }
+
+      return eventKey
+    })
 
   cli.yourInfoFlex = tview.NewFlex().SetDirection(tview.FlexRow)
 
   cli.yourInfoView = newTextView("Your Info", true)
   cli.yourInfoView.SetTextAlign(tview.AlignLeft)
-  //cli.yourInfoView.SetText("name: \ncurrent action: \nchip count: \n")
 
   cli.holeView = newTextView("Hole", true)
 
@@ -578,7 +532,76 @@ func (cli *CLI) Init() error {
     AddItem(cli.otherPlayersFlex, 1, 0, 1, 3, 0, 0, false).
     AddItem(cli.actionsFlex,      2, 0, 1, 1, 0, 0, false).
     AddItem(cli.yourInfoFlex,     2, 1, 1, 1, 0, 0, false).
-    AddItem(cli.tableInfoList,    2, 2, 1, 1, 0, 0, false)
+    AddItem(cli.tableInfoList,    2, 2, 1, 1, 0, 0, false).
+    SetFocusFunc(func(){
+      cli.app.SetFocus(cli.focusList.prim)
+    }).
+    SetInputCapture(func(eventKey *tcell.EventKey) *tcell.EventKey {
+      defer func() {
+        cli.lastKey = eventKey.Rune()
+      }()
+
+      switch eventKey.Key() {
+      case tcell.KeyTab:
+        if !cli.focusList.prim.HasFocus() {
+          cli.app.SetFocus(cli.focusList.prim)
+        } else {
+          cli.focusList = cli.focusList.next
+          cli.app.SetFocus(cli.focusList.prim)
+        }
+
+        return eventKey
+      }
+
+      if cli.chatFlex.HasFocus() {
+        return eventKey
+      }
+
+      keyToActionsButtonLabel := map[rune]string{
+          'a': "all-in",
+          'c': "check",
+          'C': "call",
+          'r': "raise",
+          'f': "fold",
+          's': "start game",
+          '.': "settings",
+      }
+
+      keyRune := eventKey.Rune()
+      if label, ok := keyToActionsButtonLabel[keyRune]; ok {
+        if cli.lastKey == keyRune {
+          if label == "settings" {
+            cli.switchToPage("settings")
+          } else {
+            cli.handleButton(label)
+          }
+        } else {
+          buttonIdx := cli.actionsForm.GetButtonIndex(label)
+          if buttonIdx == -1 {
+            return nil
+          }
+
+          cli.actionsForm.SetFocus(buttonIdx)
+          cli.app.SetFocus(cli.actionsFlex)
+        }
+
+        return nil
+      }
+
+      switch keyRune {
+      case 'b':
+        cli.app.SetFocus(cli.betInputField)
+      case 'q':
+        cli.switchToPage("exit")
+      case 'm':
+        cli.app.SetFocus(cli.chatInputField)
+        cli.chatFlex.SetBorderColor(tcell.ColorWhite)
+
+        return nil
+      }
+
+      return eventKey
+    })
 
   cli.exitModal.SetText("do you want to quit the game?").
     AddButtons([]string{"quit", "cancel"}).
@@ -588,7 +611,6 @@ func (cli *CLI) Init() error {
         cli.app.Stop()
       case "cancel":
         cli.switchToPage("game")
-        cli.app.SetFocus(cli.actionsForm)
       }
     })
 
@@ -598,14 +620,13 @@ func (cli *CLI) Init() error {
       switch btnLabel {
       case "close":
         cli.switchToPage("game")
-        cli.app.SetFocus(cli.actionsForm)
         cli.errorModal.SetText("")
       }
     })
 
   cli.focusList = &CLIFocusList{
     prev: &CLIFocusList{ prim: cli.tableInfoList },
-    prim: cli.actionsForm,
+    prim: cli.actionsFlex,
   }
   cli.focusList.next = &CLIFocusList{
     prev: cli.focusList,
@@ -615,9 +636,20 @@ func (cli *CLI) Init() error {
   cli.focusList.prev.prev = cli.focusList.next
   cli.focusList.prev.next = cli.focusList
 
-  cli.pages.AddPage("game",  cli.gameGrid,   true, true)
-  cli.pages.AddPage("exit",  cli.exitModal,  true, false)
-  cli.pages.AddPage("error", cli.errorModal, true, false)
+  cli.pages.AddPage("game",     cli.gameGrid,     true, true)
+  cli.pages.AddPage("exit",     cli.exitModal,    true, false)
+  cli.pages.AddPage("error",    cli.errorModal,   true, false)
+  cli.pages.AddPage("settings", cli.settingsFlex, true, false)
+
+  // XXX: i probably shouldn't need this. sometimes pages weren't being focused
+  //       properly back when i was learning the library. check back
+  cli.pagesToPrimFocus = map[string]tview.Primitive{
+    "game":          cli.gameGrid,
+    "exit":          cli.exitModal,
+    "error":         cli.errorModal,
+    "errorMustQuit": cli.errorModal,
+    "settings":      cli.settingsFlex,
+  }
 
   cli.app.SetInputCapture(cli.eventHandler)
 
@@ -641,11 +673,16 @@ func (cli *CLI) Error() chan error {
 }
 
 func (cli *CLI) cards2String(cards Cards) string {
+  if len(cards) == 0 {
+    return ""
+  }
+
   txt := "\n"
 
   for i := 0; i < len(cards); i++ {
     txt += fmt.Sprintf("┌───────┐")
-  } ; txt += "\n"
+  }
+  txt += "\n"
 
   for _, card := range cards {
     pad := " "
@@ -655,11 +692,13 @@ func (cli *CLI) cards2String(cards Cards) string {
     }
 
     txt += fmt.Sprintf("│ %s%s  │", card.Name, pad)
-  } ; txt += "\n"
+  }
+  txt += "\n"
 
   for i := 0; i < len(cards); i++ {
     txt += fmt.Sprintf("└───────┘")
-  } ; txt += "\n"
+  }
+  txt += "\n"
 
   return txt
 }
@@ -671,9 +710,18 @@ func cliInputLoop(cli *CLI) {
     select {
     case netData := <-cli.inputChan:
       switch netData.Response {
-      case NETDATA_NEWCONN, NETDATA_CLIENTEXITED:
+      case NETDATA_NEWCONN, NETDATA_CLIENTEXITED, NETDATA_UPDATETABLE:
         assert(netData.Table != nil, "netData.Table == nil")
+      case NETDATA_YOURPLAYER, NETDATA_NEWPLAYER, NETDATA_CURPLAYERS,
+           NETDATA_PLAYERLEFT, NETDATA_PLAYERACTION, NETDATA_PLAYERTURN,
+           NETDATA_UPDATEPLAYER, NETDATA_CURHAND, NETDATA_SHOWHAND,
+           NETDATA_ELIMINATED:
+        assert(netData.PlayerData != nil, "PlayerData == nil")
+        assert(netData.ID != "", "ID empty")
+      }
 
+      switch netData.Response {
+      case NETDATA_NEWCONN, NETDATA_CLIENTEXITED:
         cli.updateInfoList("# connected", netData.Table)
       case NETDATA_CHATMSG:
         cli.updateChat(netData.Msg)
@@ -681,54 +729,49 @@ func cliInputLoop(cli *CLI) {
         if netData.ID != cli.yourID {
           cli.chatFlex.SetBorderColor(tcell.ColorGreen)
         }
-      case NETDATA_YOURPLAYER:
-        assert(netData.PlayerData != nil, "PlayerData == nil")
-        cli.updateInfoList("# players", netData.Table)
+      case NETDATA_YOURPLAYER: // TODO: i shouldn't use this for client settings.
+        if netData.Table != nil {
+          cli.updateInfoList("# players", netData.Table)
+        }
 
         cli.yourName = netData.PlayerData.Name
-        cli.yourID   = netData.ID
-        cli.playersTextViewMap[cli.yourName] = cli.yourInfoView
 
-        cli.updatePlayer(netData.PlayerData, nil)
+        if netData.ID != "" && netData.ID != cli.yourID {
+          cli.yourID   = netData.ID
+        }
+
+        cli.playersTextViewMap[cli.yourID] = cli.yourInfoView
+
+        cli.updatePlayer(cli.yourID, netData.PlayerData, nil)
       case NETDATA_NEWPLAYER, NETDATA_CURPLAYERS:
-        assert(netData.PlayerData != nil, "PlayerData == nil")
-
         cli.updateInfoList("# players", netData.Table)
 
-        cli.addNewPlayer(netData.PlayerData)
+        cli.addNewPlayer(netData.ID, netData.PlayerData)
       case NETDATA_PLAYERLEFT:
-        cli.removePlayer(netData.PlayerData)
+        cli.removePlayer(netData.ID, netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)
         cli.updateChat(fmt.Sprintf("<server-msg>: %s left the table",
                                    netData.PlayerData.Name))
       case NETDATA_MAKEADMIN:
         cli.actionsForm.AddButton("start game", func() {
-          cli.handleButton("start")
+          cli.handleButton("start game")
         })
-
-        cli.app.Draw()
-
       case NETDATA_DEAL:
         cli.commView.Clear()
         cli.clearPlayerScreens()
 
         if netData.PlayerData != nil {
-          cli.updatePlayer(netData.PlayerData, netData.Table)
+          cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
 
           txt := cli.cards2String(netData.PlayerData.Hole.Cards)
 
           cli.holeView.SetText(txt)
         }
-
       case NETDATA_PLAYERACTION:
-        assert(netData.PlayerData != nil, "PlayerData == nil")
-
-        cli.updatePlayer(netData.PlayerData, netData.Table)
+        cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
         cli.updateInfoList("status", netData.Table)
       case NETDATA_PLAYERTURN:
-        assert(netData.PlayerData != nil, "PlayerData == nil")
-
-        curPlayerTextView := cli.playersTextViewMap[netData.PlayerData.Name]
+        curPlayerTextView := cli.playersTextViewMap[netData.ID]
 
         if curPlayerTextView == nil {
           continue // XXX probably would be a bug
@@ -748,25 +791,14 @@ func cliInputLoop(cli *CLI) {
             cli.app.SetFocus(cli.actionsForm)
           }
         }
-
-        cli.app.Draw()
       case NETDATA_UPDATEPLAYER:
-        assert(netData.PlayerData != nil, "PlayerData == nil")
-
-        cli.updatePlayer(netData.PlayerData, netData.Table)
+        cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
       case NETDATA_UPDATETABLE:
-        assert(netData.Table != nil, "Table == nil")
-
         cli.updateInfoList("status", netData.Table)
       case NETDATA_CURHAND:
-        assert(netData.PlayerData != nil, "PlayerData == nil")
-
-        cli.updatePlayer(netData.PlayerData, netData.Table)
+        cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
       case NETDATA_SHOWHAND:
-        assert(netData.PlayerData != nil, "Playerdata == nil")
-
-        cli.updatePlayer(netData.PlayerData, nil)
-
+        cli.updatePlayer(netData.ID, netData.PlayerData, nil)
       case NETDATA_ROUNDOVER:
         //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
@@ -774,10 +806,8 @@ func cliInputLoop(cli *CLI) {
         cli.switchToPage("error")
 
         for _, player := range netData.Table.Winners {
-          cli.updatePlayer(player, nil)
+          cli.updatePlayer("", player, nil)
         }
-
-        cli.app.Draw()
       case NETDATA_RESET:
         if netData.PlayerData != nil {
           for name, textView := range cli.playersTextViewMap {
@@ -790,7 +820,7 @@ func cliInputLoop(cli *CLI) {
             cli.otherPlayersFlex.RemoveItem(textView)
           }
         }
-				cli.holeView.Clear()
+        cli.holeView.Clear()
         cli.updateInfoList("all", netData.Table)
       case NETDATA_ELIMINATED:
         if netData.PlayerData.Name == cli.yourName {
@@ -799,8 +829,6 @@ func cliInputLoop(cli *CLI) {
           cli.playersTextViewMap[cli.yourName].SetText("eliminated")
           cli.holeView.Clear()
           cli.switchToPage("error")
-
-          cli.app.Draw()
         }
 
         //cli.removePlayer(netData.PlayerData)
@@ -809,7 +837,6 @@ func cliInputLoop(cli *CLI) {
 
         cli.commView.SetText(txt)
         cli.updateInfoList("status", netData.Table)
-
       case NETDATA_BADREQUEST, NETDATA_SERVERMSG:
         if netData.Msg == "" {
           if netData.Response == NETDATA_BADREQUEST {
@@ -821,12 +848,12 @@ func cliInputLoop(cli *CLI) {
 
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
-        cli.app.Draw()
       case NETDATA_SERVERCLOSED:
         cli.finish <- errors.New("server closed")
       default:
         cli.finish <- errors.New("bad response")
       }
+      cli.app.Draw()
 
     case err := <-cli.finish: // XXX
       if err != nil {
@@ -857,7 +884,7 @@ func (cli *CLI) Run() error {
     }
   }()
 
-  if err := cli.app.SetRoot(cli.pages, true).SetFocus(cli.actionsForm).Run(); err != nil {
+  if err := cli.app.SetRoot(cli.pages, true).SetFocus(cli.actionsFlex).Run(); err != nil {
     return err
   }
 
