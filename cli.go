@@ -26,6 +26,7 @@ type CLI struct {
 
   lastKey            rune
 
+  isTableAdmin       bool
   yourName           string
   yourID             string
 
@@ -146,17 +147,7 @@ func (cli *CLI) handleButton(btn string) {
 func (cli *CLI) updateInfoList(item string, table *Table) {
   switch item {
   case "all":
-    cli.tableInfoList.SetItemText(2, "# connected",
-      strconv.FormatUint(uint64(table.NumConnected), 10))
-    cli.tableInfoList.SetItemText(0, "# players",
-      strconv.FormatUint(uint64(table.NumPlayers), 10))
-    cli.tableInfoList.SetItemText(1, "# open seats",
-      strconv.FormatUint(uint64(table.GetNumOpenSeats()), 10))
-    cli.tableInfoList.SetItemText(4, "pot",         table.PotToString())
-    cli.tableInfoList.SetItemText(5, "dealer",      table.DealerToString())
-    cli.tableInfoList.SetItemText(6, "small blind", table.SmallBlindToString())
-    cli.tableInfoList.SetItemText(7, "big blind",   table.BigBlindToString())
-    cli.tableInfoList.SetItemText(8, "status",      table.TableStateToString())
+    fallthrough
   case "# connected":
     cli.tableInfoList.SetItemText(2, "# connected",
       strconv.FormatUint(uint64(table.NumConnected), 10))
@@ -200,6 +191,8 @@ func (cli *CLI) removePlayer(clientID string, player *Player) {
   cli.otherPlayersFlex.RemoveItem(textView)
 }
 
+//var postOut string
+
 func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
   // FIXME
   if player.Name != cli.yourName && clientID == "" {
@@ -209,12 +202,14 @@ func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
         break
       }
     }
+    //postOut += fmt.Sprintf("updatePlayer(): cID nil %s ID is %s\n", player.Name, clientID)
     if clientID == "" {
       panic(fmt.Sprintf("updatePlayer(): couldnt find %s's clientID", player.Name))
     }
   }
 
   textView := cli.playersTextViewMap[clientID]
+  //postOut += fmt.Sprintf("updatePlayer(): %s ID is %s tvTitle %s\n", player.Name, clientID, textView.GetTitle())
 
   if clientID == cli.yourID {
     if table != nil {
@@ -239,10 +234,15 @@ func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
     textView.SetTitle(player.Name)
     textViewSetLine(textView, 1, "current action: " + player.ActionToString())
     textViewSetLine(textView, 2, "chip count: "     + player.ChipCountToString() + "\n")
-
-    if (player.Hole != nil) {
+    if player.Hole != nil {
       textViewSetLine(textView, 3, cli.cards2String(player.Hole.Cards))
     }
+
+    /*if player.Action.Action == NETDATA_BET {
+      textView.SetBorderColor(tcell.ColorOrange)
+    } else {
+      textView.SetBorderColor(tcell.ColorWhite)
+    }*/
   }
 }
 
@@ -252,8 +252,16 @@ func (cli *CLI) clearPlayerScreens() {
   }
 }
 
-func (cli *CLI) updateChat(msg string) {
+func (cli *CLI) updateChat(clientID string, msg string) {
+  if msg == "" {
+    return
+  }
+
   cli.chatTextView.SetText(cli.chatTextView.GetText(false) + msg)
+
+  if clientID != cli.yourID {
+    cli.chatFlex.SetBorderColor(tcell.ColorGreen)
+  }
 }
 
 // NOTE: make sure to call this with increasing lineNums
@@ -263,15 +271,24 @@ func textViewSetLine(textView *tview.TextView, lineNum int, txt string) {
     return
   }
 
-  tv := strings.Split(textView.GetText(false), "\n")
+  tvStr := strings.ReplaceAll(textView.GetText(false), "\n\n", "\n")
+  tv := strings.Split(tvStr, "\n")
+
+  lineCnt := strings.Count(txt, "\n")
 
   if lineNum > len(tv) { // line not added yet
-    textView.SetText(textView.GetText(false) + txt)
-  } else if tv[lineNum-1] == txt {
+    tv = append(tv, txt)
+    textView.SetText(strings.Join(tv, "\n") + "\n")
+  } else if lineCnt == 1 && tv[lineNum-1] == txt {
     return // no update
   } else {
+    if lineCnt > 1 {
+      for i, _ := range tv[lineNum:minUInt(uint(lineNum+lineCnt-1), uint(len(tv)))] {
+        tv[i] = ""
+      }
+    }
     tv[lineNum-1] = txt
-    textView.SetText(strings.Join(tv, "\n"))
+    textView.SetText(strings.Join(tv, "\n") + "\n")
   }
 }
 
@@ -321,15 +338,27 @@ func (cli *CLI) Init() error {
 
       cli.chatMsg = msg
       cli.chatInputField.SetText("")
+      cli.chatFlex.SetBorderColor(tcell.ColorWhite)
 
       cli.handleButton("msg")
+    })
+  cli.chatInputField.
+    SetBlurFunc(func() {
+      cli.chatFlex.SetBorderColor(tcell.ColorWhite)
     })
 
   cli.chatFlex = tview.NewFlex().SetDirection(tview.FlexRow).
     AddItem(cli.chatTextView,   0, 8, false).
     AddItem(tview.NewBox(),     0, 1, false).
     AddItem(cli.chatInputField, 0, 1, false)
-  cli.chatFlex.SetBorder(true).SetTitle("Chat")
+  cli.chatFlex.SetBorder(true).SetTitle("Chat").
+    SetFocusFunc(func() {
+      cli.chatFlex.SetBorderColor(tcell.ColorWhite)
+      cli.app.SetFocus(cli.chatInputField)
+    }).
+    SetBlurFunc(func() {
+      cli.chatFlex.SetBorderColor(tcell.ColorWhite)
+    })
 
   cli.otherPlayersFlex = tview.NewFlex()
 
@@ -385,8 +414,28 @@ func (cli *CLI) Init() error {
         panic("bad bet val: " + n)
       }
 
+      cli.betInputField.SetText("")
       cli.actionsForm.SetFocus(cli.actionsForm.GetButtonIndex("raise"))
       cli.app.SetFocus(cli.actionsForm)
+    })
+    cli.betInputField.
+    SetInputCapture(func(eventKey *tcell.EventKey) *tcell.EventKey {
+      switch eventKey.Key() {
+      case tcell.KeyBackspace, tcell.KeyBackspace2, tcell.KeyDelete:
+        go func() {
+          cli.app.QueueUpdateDraw(func() {
+            if len(cli.betInputField.GetText()) == 0 {
+              cli.betInputField.SetText("")
+              cli.bet = 0
+            } else {
+              cli.betInputField.SetText(printer.Sprintf("%d", cli.bet))
+              cli.betAddedCommas = true
+            }
+          })
+        }()
+      }
+
+      return eventKey
     })
 
   cli.actionsForm = tview.NewForm().SetHorizontal(true).
@@ -408,7 +457,7 @@ func (cli *CLI) Init() error {
     AddButton("check", func() {
       cli.handleButton("check")
     }).
-    AddButton("call",  func() {
+    AddButton("call", func() {
       cli.handleButton("call")
     }).
     AddButton("raise", func() {
@@ -417,10 +466,10 @@ func (cli *CLI) Init() error {
     AddButton("all-in", func() {
       cli.handleButton("all-in")
     }).
-    AddButton("fold",  func() {
+    AddButton("fold", func() {
       cli.handleButton("fold")
     }).
-    AddButton("quit",  func() {
+    AddButton("quit", func() {
       cli.handleButton("quit")
     }).
     AddButton("settings", func() {
@@ -572,6 +621,8 @@ func (cli *CLI) Init() error {
         if cli.lastKey == keyRune {
           if label == "settings" {
             cli.switchToPage("settings")
+          } else if label == "start game" && !cli.isTableAdmin {
+            return nil
           } else {
             cli.handleButton(label)
           }
@@ -594,8 +645,7 @@ func (cli *CLI) Init() error {
       case 'q':
         cli.switchToPage("exit")
       case 'm':
-        cli.app.SetFocus(cli.chatInputField)
-        cli.chatFlex.SetBorderColor(tcell.ColorWhite)
+        cli.app.SetFocus(cli.chatFlex)
 
         return nil
       }
@@ -711,24 +761,23 @@ func cliInputLoop(cli *CLI) {
     case netData := <-cli.inputChan:
       switch netData.Response {
       case NETDATA_NEWCONN, NETDATA_CLIENTEXITED, NETDATA_UPDATETABLE:
-        assert(netData.Table != nil, "netData.Table == nil")
+        assert(netData.Table != nil,
+          fmt.Sprintf("%s: netData.Table == nil", netDataReqToString(netData)))
       case NETDATA_YOURPLAYER, NETDATA_NEWPLAYER, NETDATA_CURPLAYERS,
            NETDATA_PLAYERLEFT, NETDATA_PLAYERACTION, NETDATA_PLAYERTURN,
            NETDATA_UPDATEPLAYER, NETDATA_CURHAND, NETDATA_SHOWHAND,
            NETDATA_ELIMINATED:
-        assert(netData.PlayerData != nil, "PlayerData == nil")
-        assert(netData.ID != "", "ID empty")
+        assert(netData.PlayerData != nil,
+          fmt.Sprintf("%s: PlayerData == nil", netDataReqToString(netData)))
+        assert(netData.ID != "",
+          fmt.Sprintf("%v %s: ID empty", netData.Response, netDataReqToString(netData)))
       }
 
       switch netData.Response {
       case NETDATA_NEWCONN, NETDATA_CLIENTEXITED:
         cli.updateInfoList("# connected", netData.Table)
       case NETDATA_CHATMSG:
-        cli.updateChat(netData.Msg)
-
-        if netData.ID != cli.yourID {
-          cli.chatFlex.SetBorderColor(tcell.ColorGreen)
-        }
+        cli.updateChat(netData.ID, netData.Msg)
       case NETDATA_YOURPLAYER: // TODO: i shouldn't use this for client settings.
         if netData.Table != nil {
           cli.updateInfoList("# players", netData.Table)
@@ -737,7 +786,9 @@ func cliInputLoop(cli *CLI) {
         cli.yourName = netData.PlayerData.Name
 
         if netData.ID != "" && netData.ID != cli.yourID {
-          cli.yourID   = netData.ID
+          //postOut += fmt.Sprintf("YOURPLAYER: ID change '%s' =>", cli.yourID)
+          cli.yourID = netData.ID
+          //postOut += fmt.Sprintf(" '%s'\n", cli.yourID)
         }
 
         cli.playersTextViewMap[cli.yourID] = cli.yourInfoView
@@ -750,12 +801,13 @@ func cliInputLoop(cli *CLI) {
       case NETDATA_PLAYERLEFT:
         cli.removePlayer(netData.ID, netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)
-        cli.updateChat(fmt.Sprintf("<server-msg>: %s left the table",
-                                   netData.PlayerData.Name))
+        cli.updateChat(netData.ID, fmt.Sprintf("<server-msg>: %s left the table",
+                                               netData.PlayerData.Name))
       case NETDATA_MAKEADMIN:
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start game")
         })
+        cli.isTableAdmin = true
       case NETDATA_DEAL:
         cli.commView.Clear()
         cli.clearPlayerScreens()
@@ -823,13 +875,22 @@ func cliInputLoop(cli *CLI) {
         cli.holeView.Clear()
         cli.updateInfoList("all", netData.Table)
       case NETDATA_ELIMINATED:
-        if netData.PlayerData.Name == cli.yourName {
+        if netData.ID == cli.yourID {
+          if cli.isTableAdmin {
+            if startGameBtnIdx := cli.actionsForm.GetButtonIndex("start game");
+               startGameBtnIdx != -1 {
+              cli.actionsForm.RemoveButton(startGameBtnIdx)
+            }
+            cli.isTableAdmin = false // XXX
+          }
           cli.errorModal.SetText("you were eliminated")
-          cli.playersTextViewMap[cli.yourName].SetTextAlign(tview.AlignCenter)
-          cli.playersTextViewMap[cli.yourName].SetText("eliminated")
+          cli.playersTextViewMap[cli.yourID].SetTextAlign(tview.AlignCenter)
+          cli.playersTextViewMap[cli.yourID].SetText("eliminated")
           cli.holeView.Clear()
           cli.switchToPage("error")
         }
+
+        cli.updateChat(netData.ID, netData.Msg)
 
         //cli.removePlayer(netData.PlayerData)
       case NETDATA_FLOP, NETDATA_TURN, NETDATA_RIVER:
@@ -887,6 +948,8 @@ func (cli *CLI) Run() error {
   if err := cli.app.SetRoot(cli.pages, true).SetFocus(cli.actionsFlex).Run(); err != nil {
     return err
   }
+
+  //fmt.Println(postOut)
 
   return nil
 }
