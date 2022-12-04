@@ -728,7 +728,6 @@ func (cli *CLI) cards2String(cards Cards) string {
   }
 
   txt := "\n"
-
   for i := 0; i < len(cards); i++ {
     txt += fmt.Sprintf("┌───────┐")
   }

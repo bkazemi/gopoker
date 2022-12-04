@@ -80,7 +80,7 @@ func randSeed() {
 
   _, err := crypto_rand.Read(b[:])
   if err != nil {
-    panic("problem with crypto/rand")
+    panic("randSeed(): problem with crypto/rand")
   }
 
   math_rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
