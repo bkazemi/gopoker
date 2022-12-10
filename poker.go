@@ -18,43 +18,43 @@ import (
 
 // ranks
 const (
-  R_MUCK = iota - 1
-  R_HIGHCARD
-  R_PAIR
-  R_2PAIR
-  R_TRIPS
-  R_STRAIGHT
-  R_FLUSH
-  R_FULLHOUSE
-  R_QUADS
-  R_STRAIGHTFLUSH
-  R_ROYALFLUSH
+  RankMuck = iota - 1
+  RankHighCard
+  RankPair
+  RankTwoPair
+  RankTrips
+  RankStraight
+  RankFlush
+  RankFullHouse
+  RankQuads
+  RankStraightFlush
+  RankRoyalFlush
 )
 
 // cards
 const (
-  C_ACELOW = iota + 1
-  C_TWO
-  C_THREE
-  C_FOUR
-  C_FIVE
-  C_SIX
-  C_SEVEN
-  C_EIGHT
-  C_NINE
-  C_TEN
-  C_JACK
-  C_QUEEN
-  C_KING
-  C_ACE
+  CardAceLow = iota + 1
+  CardTwo
+  CardThree
+  CardFour
+  CardFive
+  CardSix
+  CardSeven
+  CardEight
+  CardNine
+  CardTen
+  CardJack
+  CardQueen
+  CardKing
+  CardAce
 )
 
 // suits
 const (
-  S_CLUB = iota
-  S_DIAMOND
-  S_HEART
-  S_SPADE
+  SuitClub = iota
+  SuitDiamond
+  SuitHeart
+  SuitSpade
 )
 
 type Card struct {
@@ -95,16 +95,16 @@ type Hand struct {
 
 func (hand *Hand) RankName() string {
   rankNameMap := map[int]string{
-    R_MUCK:          "muck",
-    R_HIGHCARD:      "high card",
-    R_PAIR:          "pair",
-    R_2PAIR:         "two pair",
-    R_TRIPS:         "three of a kind",
-    R_STRAIGHT:      "straight",
-    R_FLUSH:         "flush",
-    R_FULLHOUSE:     "full house",
-    R_QUADS:         "four of a kind",
-    R_STRAIGHTFLUSH: "straight flush",
+    RankMuck:          "muck",
+    RankHighCard:      "high card",
+    RankPair:          "pair",
+    RankTwoPair:       "two pair",
+    RankTrips:         "three of a kind",
+    RankStraight:      "straight",
+    RankFlush:         "flush",
+    RankFullHouse:     "full house",
+    RankQuads:         "four of a kind",
+    RankStraightFlush: "straight flush",
   }
 
   if rankName, ok := rankNameMap[hand.Rank]; ok {
@@ -144,8 +144,8 @@ func (p *Player) setName(name string) {
 }
 
 func (p *Player) canBet() bool {
-  return !p.IsVacant && p.Action.Action != NETDATA_MIDROUNDADDITION &&
-         p.Action.Action != NETDATA_FOLD && p.Action.Action != NETDATA_ALLIN
+  return !p.IsVacant && p.Action.Action != NetDataMidroundAddition &&
+         p.Action.Action != NetDataFold && p.Action.Action != NetDataAllIn
 }
 
 type PlayerNode struct {
@@ -336,14 +336,14 @@ func (player *Player) Init(name string, isCPU bool) error {
   player.ChipCount = 1e5 // XXX
   player.NewCards()
 
-  player.Action = Action{Action: NETDATA_VACANTSEAT}
+  player.Action = Action{Action: NetDataVacantSeat}
 
   return nil
 }
 
 func (player *Player) NewCards() {
   player.Hole = &Hole{Cards: make(Cards, 0, 2)}
-  player.Hand = &Hand{Rank: R_MUCK, Cards: make(Cards, 0, 5)}
+  player.Hand = &Hand{Rank: RankMuck, Cards: make(Cards, 0, 5)}
 }
 
 func (player *Player) Clear() {
@@ -354,7 +354,7 @@ func (player *Player) Clear() {
   player.NewCards()
 
   player.Action.Amount = 0
-  player.Action.Action = NETDATA_VACANTSEAT
+  player.Action.Action = NetDataVacantSeat
 }
 
 func (player *Player) ChipCountToString() string {
@@ -363,24 +363,24 @@ func (player *Player) ChipCountToString() string {
 
 func (player *Player) ActionToString() string {
   switch player.Action.Action {
-  case NETDATA_ALLIN:
+  case NetDataAllIn:
     return printer.Sprintf("all in (%d chips)", player.Action.Amount)
-  case NETDATA_BET:
+  case NetDataBet:
     return printer.Sprintf("raise (bet %d chips)", player.Action.Amount)
-  case NETDATA_CALL:
+  case NetDataCall:
     return printer.Sprintf("call (%d chips)", player.Action.Amount)
-  case NETDATA_CHECK:
+  case NetDataCheck:
     return "check"
-  case NETDATA_FOLD:
+  case NetDataFold:
     return "fold"
 
-  case NETDATA_VACANTSEAT:
+  case NetDataVacantSeat:
     return "seat is open" // XXX
-  case NETDATA_PLAYERTURN:
+  case NetDataPlayerTurn:
     return "(player's turn) waiting for action"
-  case NETDATA_FIRSTACTION:
+  case NetDataFirstAction:
     return "waiting for first action"
-  case NETDATA_MIDROUNDADDITION:
+  case NetDataMidroundAddition:
     return "waiting to add to next round"
 
   default:
@@ -391,13 +391,15 @@ func (player *Player) ActionToString() string {
 type Deck struct {
   pos   uint
   cards Cards
+  size  int
 }
 
 func (deck *Deck) Init() error {
-  deck.cards = make(Cards, 52, 52) // 52 cards in a poker deck
+  deck.size = 52 // 52 cards in a poker deck
+  deck.cards = make(Cards, deck.size, deck.size)
 
-  for suit := S_CLUB; suit <= S_SPADE; suit++ {
-    for c_num := C_TWO; c_num <= C_ACE; c_num++ {
+  for suit := SuitClub; suit <= SuitSpade; suit++ {
+    for c_num := CardTwo; c_num <= CardAce; c_num++ {
       curCard := &Card{Suit: suit, NumValue: c_num}
       if err := cardNumToString(curCard); err != nil {
         return err
@@ -415,10 +417,10 @@ func (deck *Deck) Init() error {
 
 func (deck *Deck) Shuffle() {
   for i := math_rand.Intn(4) + 1; i > 0; i-- {
-    for i := 0; i < 52; i++ {
-      randidx := math_rand.Intn(52)
+    for i := 0; i < deck.size; i++ {
+      randIdx := math_rand.Intn(deck.size)
       // swap
-      deck.cards[randidx], deck.cards[i] = deck.cards[i], deck.cards[randidx]
+      deck.cards[randIdx], deck.cards[i] = deck.cards[i], deck.cards[randIdx]
     }
   }
 
@@ -434,23 +436,23 @@ func (deck *Deck) Pop() *Card {
 type TableState int
 
 const (
-  TABLESTATE_NOTSTARTED TableState = iota
+  TableStateNotStarted TableState = iota
 
-  TABLESTATE_PREFLOP
-  TABLESTATE_FLOP
-  TABLESTATE_TURN
-  TABLESTATE_RIVER
+  TableStatePreFlop
+  TableStateFlop
+  TableStateTurn
+  TableStateRiver
 
-  TABLESTATE_ROUNDS
-  TABLESTATE_PLAYERRAISED
-  TABLESTATE_DONEBETTING
+  TableStateRounds
+  TableStatePlayerRaised
+  TableStateDoneBetting
 
-  TABLESTATE_SHOWHANDS
-  TABLESTATE_SPLITPOT
-  TABLESTATE_ROUNDOVER
-  TABLESTATE_NEWROUND
-  TABLESTATE_GAMEOVER
-  TABLESTATE_RESET
+  TableStateShowHands
+  TableStateSplitPot
+  TableStateRoundOver
+  TableStateNewRound
+  TableStateGameOver
+  TableStateReset
 )
 
 type Pot struct {
@@ -725,7 +727,7 @@ func (table *Table) reset(player *Player) {
       table.curPlayers.node = node
 
       player.NewCards()
-      player.Action.Action, player.Action.Amount = NETDATA_FIRSTACTION, 0
+      player.Action.Action, player.Action.Amount = NetDataFirstAction, 0
     }
   }
 
@@ -755,7 +757,7 @@ func (table *Table) reset(player *Player) {
 
   table.WinInfo = ""
 
-  table.State = TABLESTATE_NOTSTARTED
+  table.State = TableStateNotStarted
 
   table.Dealer = table.activePlayers.node
 
@@ -779,13 +781,13 @@ func (table *Table) CommunityToString() string {
 }
 
 func (table *Table) InBettingState() bool {
-  if table.State == TABLESTATE_NOTSTARTED ||
-     table.State == TABLESTATE_DONEBETTING ||
-     table.State == TABLESTATE_ROUNDOVER ||
-     table.State == TABLESTATE_SHOWHANDS ||
-     table.State == TABLESTATE_SPLITPOT ||
-     table.State == TABLESTATE_NEWROUND ||
-     table.State == TABLESTATE_GAMEOVER {
+  if table.State == TableStateNotStarted ||
+     table.State == TableStateDoneBetting ||
+     table.State == TableStateRoundOver ||
+     table.State == TableStateShowHands ||
+     table.State == TableStateSplitPot ||
+     table.State == TableStateNewRound ||
+     table.State == TableStateGameOver {
     return false
   }
 
@@ -794,22 +796,22 @@ func (table *Table) InBettingState() bool {
 
 func (table *Table) TableStateToString() string {
   tableStateNameMap := map[TableState]string{
-    TABLESTATE_NOTSTARTED: "waiting for start",
+    TableStateNotStarted: "waiting for start",
 
-    TABLESTATE_PREFLOP: "preflop",
-    TABLESTATE_FLOP:    "flop",
-    TABLESTATE_TURN:    "turn",
-    TABLESTATE_RIVER:   "river",
+    TableStatePreFlop: "preflop",
+    TableStateFlop:    "flop",
+    TableStateTurn:    "turn",
+    TableStateRiver:   "river",
 
-    TABLESTATE_ROUNDS:    "betting rounds",
-    TABLESTATE_ROUNDOVER: "round over",
-    TABLESTATE_NEWROUND:  "new round",
-    TABLESTATE_GAMEOVER:  "game over",
+    TableStateRounds:    "betting rounds",
+    TableStateRoundOver: "round over",
+    TableStateNewRound:  "new round",
+    TableStateGameOver:  "game over",
 
-    TABLESTATE_PLAYERRAISED: "player raised",
-    TABLESTATE_DONEBETTING:  "finished betting",
-    TABLESTATE_SHOWHANDS:    "showing hands",
-    TABLESTATE_SPLITPOT:     "split pot",
+    TableStatePlayerRaised: "player raised",
+    TableStateDoneBetting:  "finished betting",
+    TableStateShowHands:    "showing hands",
+    TableStateSplitPot:     "split pot",
   }
 
   if state, ok := tableStateNameMap[table.State]; ok {
@@ -821,9 +823,9 @@ func (table *Table) TableStateToString() string {
 
 func (table *Table) commState2NetDataResponse() int {
   commStateNetDataMap := map[TableState]int{
-    TABLESTATE_FLOP:  NETDATA_FLOP,
-    TABLESTATE_TURN:  NETDATA_TURN,
-    TABLESTATE_RIVER: NETDATA_RIVER,
+    TableStateFlop:  NetDataFlop,
+    TableStateTurn:  NetDataTurn,
+    TableStateRiver: NetDataRiver,
   }
 
   if netDataResponse, ok := commStateNetDataMap[table.CommState]; ok {
@@ -831,7 +833,7 @@ func (table *Table) commState2NetDataResponse() int {
   }
 
   fmt.Printf("Table.commState2NetDataResponse(): bad state `%v`\n", table.CommState)
-  return NETDATA_BADREQUEST
+  return NetDataBadRequest
 }
 
 func (table *Table) PotToString() string {
@@ -863,7 +865,7 @@ func (table *Table) SmallBlindToString() string {
 }
 
 func (table *Table) PublicPlayerInfo(player Player) *Player {
-  if table.State != TABLESTATE_SHOWHANDS {
+  if table.State != TableStateShowHands {
     player.Hole, player.Hand = nil, nil
   }
 
@@ -875,7 +877,7 @@ func (table *Table) allInCount() int {
 
   for _, p := range table.activePlayers.ToPlayerArray() {
     fmt.Printf("Table.allInCount(): <%s> action: %v\n", p.Name, p.ActionToString())
-    if p.Action.Action == NETDATA_ALLIN {
+    if p.Action.Action == NetDataAllIn {
       allIns++
     }
   }
@@ -998,7 +1000,7 @@ func (table *Table) getActiveSeats() []*Player {
 
   for _, seat := range table.players {
     if !seat.IsVacant &&
-      seat.Action.Action != NETDATA_MIDROUNDADDITION {
+      seat.Action.Action != NetDataMidroundAddition {
       seats = append(seats, seat)
     }
   }
@@ -1012,9 +1014,9 @@ func (table *Table) GetNumOpenSeats() uint {
 
 func (table *Table) addNewPlayers() {
   for _, player := range table.activePlayers.ToPlayerArray() {
-    if player.Action.Action == NETDATA_MIDROUNDADDITION {
+    if player.Action.Action == NetDataMidroundAddition {
       fmt.Printf("Table.addNewPlayers(): adding new player: %s\n", player.Name)
-      player.Action.Action = NETDATA_FIRSTACTION
+      player.Action.Action = NetDataFirstAction
     }
   }
 }
@@ -1032,7 +1034,7 @@ func (table *Table) getEliminatedPlayers() []*Player {
   }
 
   if uint(len(ret)) == table.NumPlayers-1 {
-    table.State = TABLESTATE_GAMEOVER
+    table.State = TableStateGameOver
   } else {
     fmt.Printf("Table.getEliminatedPlayers(): len ret: %v NP-1: %v\n",
                uint(len(ret)), table.NumPlayers-1)
@@ -1050,8 +1052,8 @@ func (table *Table) getEliminatedPlayers() []*Player {
 // Bb+1 pre-flop
 // Sb post-flop
 func (table *Table) reorderPlayers() {
-  if table.State == TABLESTATE_NEWROUND ||
-    table.State == TABLESTATE_PREFLOP {
+  if table.State == TableStateNewRound ||
+    table.State == TableStatePreFlop {
     table.activePlayers.node = table.BigBlind.next
     table.curPlayers.node = table.curPlayers.GetPlayerNode(table.BigBlind.next.Player)
     assert(table.curPlayers.node != nil,
@@ -1155,7 +1157,7 @@ func (table *Table) handleOrphanedSeats() {
 
 // rotates the dealer and blinds
 func (table *Table) rotatePlayers() {
-  if table.State == TABLESTATE_NOTSTARTED || table.activePlayers.len < 2 {
+  if table.State == TableStateNotStarted || table.activePlayers.len < 2 {
     return
   }
 
@@ -1191,7 +1193,7 @@ func (table *Table) rotatePlayers() {
 
 func (table *Table) setNextPlayerTurn() {
   fmt.Printf("Table.setNextPlayerTurn(): curPlayer: %s\n", table.curPlayer.Player.Name)
-  if table.State == TABLESTATE_NOTSTARTED {
+  if table.State == TableStateNotStarted {
     return
   }
 
@@ -1204,12 +1206,12 @@ func (table *Table) setNextPlayerTurn() {
   thisPlayer := table.curPlayer // save in case we need to remove from curPlayers list
 
   defer Panic.ifNoPanic(func() {
-    if table.State == TABLESTATE_DONEBETTING {
+    if table.State == TableStateDoneBetting {
       table.better = nil
       table.closeSidePots()
     }
 
-    if thisPlayer.Player.Action.Action == NETDATA_ALLIN {
+    if thisPlayer.Player.Action.Action == NetDataAllIn {
       nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
       if nextNode != nil {
         fmt.Printf("Table.setNextPlayerTurn(): removing %s, curPlayers head is %s\n",
@@ -1228,15 +1230,15 @@ func (table *Table) setNextPlayerTurn() {
     fmt.Println("Table.setNextPlayerTurn(): table.curPlayers.len == 1")
     if table.allInCount() == 0 { // win by folds
       fmt.Println("Table.setNextPlayerTurn(): allInCount == 0")
-      table.State = TABLESTATE_ROUNDOVER // XXX
+      table.State = TableStateRoundOver // XXX
     } else {
-      table.State = TABLESTATE_DONEBETTING
+      table.State = TableStateDoneBetting
     }
 
     return
   }
 
-  if thisPlayer.Player.Action.Action == NETDATA_FOLD {
+  if thisPlayer.Player.Action.Action == NetDataFold {
     nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
     if nextNode != nil {
       fmt.Printf("Table.setNextPlayerTurn(): removing %s, curPlayers head is %s\n",
@@ -1250,12 +1252,12 @@ func (table *Table) setNextPlayerTurn() {
 
   if table.curPlayers.len == 1 && table.allInCount() == 0 {
     fmt.Println("Table.setNextPlayerTurn(): table.curPlayers.len == 1 with allInCount of 0 after fold")
-    table.State = TABLESTATE_ROUNDOVER // XXX
+    table.State = TableStateRoundOver // XXX
 
     return
   } else if thisPlayer.next == table.curPlayers.node &&
-            table.curPlayers.node.Player.Action.Action != NETDATA_FIRSTACTION &&
-            thisPlayer.Player.Action.Action != NETDATA_BET {
+            table.curPlayers.node.Player.Action.Action != NetDataFirstAction &&
+            thisPlayer.Player.Action.Action != NetDataBet {
     // NOTE: curPlayers head gets shifted with allins / folds so we check for
     //       firstaction
     fmt.Printf("Table.setNextPlayerTurn(): last player (%s) didn't raise\n",
@@ -1263,20 +1265,20 @@ func (table *Table) setNextPlayerTurn() {
     fmt.Printf(" curPlayers == %s curPlayers.next == %s\n",
                table.curPlayers.node.Player.Name, table.curPlayer.next.Player.Name)
 
-    table.State = TABLESTATE_DONEBETTING
+    table.State = TableStateDoneBetting
   } else {;
     //table.curPlayer = table.curPlayer.next
   }
 }
 
 func (table *Table) PlayerAction(player *Player, action Action) error {
-  if table.State == TABLESTATE_NOTSTARTED {
+  if table.State == TableStateNotStarted {
     return errors.New("game has not started yet")
   }
 
-  if table.State != TABLESTATE_ROUNDS &&
-    table.State != TABLESTATE_PLAYERRAISED &&
-    table.State != TABLESTATE_PREFLOP {
+  if table.State != TableStateRounds &&
+    table.State != TableStatePlayerRaised &&
+    table.State != TableStatePreFlop {
     // XXX
     return errors.New("invalid table state: " + table.TableStateToString())
   }
@@ -1285,8 +1287,8 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
   isSmallBlindPreFlop := false
 
-  if table.CommState == TABLESTATE_PREFLOP &&
-     table.State != TABLESTATE_PLAYERRAISED { // XXX mixed states...
+  if table.CommState == TableStatePreFlop &&
+     table.State != TableStatePlayerRaised { // XXX mixed states...
     if table.SmallBlind != nil && player.Name == table.SmallBlind.Player.Name {
       isSmallBlindPreFlop = true
       blindRequiredBet = minUInt(table.SmallBlind.Player.ChipCount, table.Ante / 2)
@@ -1338,7 +1340,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       return
     }
 
-    if player.Action.Action == NETDATA_ALLIN {
+    if player.Action.Action == NetDataAllIn {
       if !table.MainPot.IsClosed {
         if table.MainPot.Bet > player.Action.Amount {
           printer.Printf("Table.PlayerAction(): handleSidePots(): <%s> moving previous " +
@@ -1533,9 +1535,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
       bettingPot := table.sidePots.BettingPot
       switch player.Action.Action {
-      case NETDATA_BET:
+      case NetDataBet:
         lspb := table.sidePots.BettingPot.Bet
-        if table.State == TABLESTATE_PLAYERRAISED &&
+        if table.State == TableStatePlayerRaised &&
           player.Action.Amount > bettingPot.Bet {
           fmt.Printf(" bettingpot: %s re-raised\n", player.Name)
           if bettingPot.Bet == 0 {
@@ -1552,7 +1554,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
           printer.Printf(" bettingpot: %s changed betting pot bet from %d to %d\n", player.Name,
             lspb, player.Action.Amount)
         }
-      case NETDATA_CALL:
+      case NetDataCall:
         fmt.Printf(" bettingpot: %s called\n", player.Name)
         bettingPot.Total += bettingPot.Bet
         bettingPot.AddPlayer(player)
@@ -1561,18 +1563,18 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
   }
 
   if table.curPlayers.len == 1 &&
-     (action.Action == NETDATA_ALLIN || action.Action == NETDATA_BET) {
+     (action.Action == NetDataAllIn || action.Action == NetDataBet) {
     return errors.New(printer.Sprintf("you must call the raise (%d chips) or fold", table.Bet))
   }
 
-  if player.ChipCount == 0 && action.Action != NETDATA_ALLIN {
+  if player.ChipCount == 0 && action.Action != NetDataAllIn {
     fmt.Printf("Table.PlayerAction(): changing %s's all-in bet to an allin action\n", player.Name)
-    action.Action = NETDATA_ALLIN
+    action.Action = NetDataAllIn
   }
 
   switch action.Action {
-  case NETDATA_ALLIN:
-    player.Action.Action = NETDATA_ALLIN
+  case NetDataAllIn:
+    player.Action.Action = NetDataAllIn
 
     // we need to add the blind's chips back, otherwise it would get added to current bet
     //player.Action.Amount -= blindRequiredBet
@@ -1599,7 +1601,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
       if player.Action.Amount > table.Bet {
         table.Bet = player.Action.Amount
-        table.State = TABLESTATE_PLAYERRAISED
+        table.State = TableStatePlayerRaised
         table.better = player
         fmt.Printf("Table.PlayerAction(): setting curPlayers head to %s\n",
                    table.curPlayer.Player.Name)
@@ -1613,7 +1615,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     player.ChipCount -= player.Action.Amount
 
     //table.curPlayers.RemovePlayer(player)
-  case NETDATA_BET:
+  case NetDataBet:
     prevChips := player.Action.Amount
     printer.Printf("Table.PlayerAction(): BET: %s prevChips == %v\n", player.Name, prevChips)
 
@@ -1646,12 +1648,12 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     }
 
     if action.Amount == player.ChipCount {
-      player.Action.Action = NETDATA_ALLIN
+      player.Action.Action = NetDataAllIn
     } else {
-      player.Action.Action = NETDATA_BET
+      player.Action.Action = NetDataBet
     }
 
-    if player.Action.Action == NETDATA_ALLIN || !table.sidePots.IsEmpty() {
+    if player.Action.Action == NetDataAllIn || !table.sidePots.IsEmpty() {
       handleSidePots()
     } else {
       table.MainPot.Total += player.Action.Amount - prevChips
@@ -1664,9 +1666,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     fmt.Printf("setting curPlayers head to %s\n", table.curPlayer.Player.Name)
     table.curPlayers.node = table.curPlayer
     table.better = player
-    table.State = TABLESTATE_PLAYERRAISED
-  case NETDATA_CALL:
-    if table.State != TABLESTATE_PLAYERRAISED && !isSmallBlindPreFlop {
+    table.State = TableStatePlayerRaised
+  case NetDataCall:
+    if table.State != TableStatePlayerRaised && !isSmallBlindPreFlop {
       return errors.New("nothing to call")
     }
 
@@ -1696,14 +1698,14 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     fmt.Printf("Table.PlayerAction(): %s betDiff: %v\n", player.Name, betDiff)
 
     if table.Bet >= player.ChipCount {
-      player.Action.Action = NETDATA_ALLIN
+      player.Action.Action = NetDataAllIn
       player.Action.Amount = player.ChipCount
 
       handleSidePots()
 
       player.ChipCount = 0
     } else {
-      player.Action.Action = NETDATA_CALL
+      player.Action.Action = NetDataCall
       player.Action.Amount = table.Bet - blindRequiredBet
 
       if !table.sidePots.IsEmpty() {
@@ -1713,8 +1715,8 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       }
       player.ChipCount -= player.Action.Amount
     }
-  case NETDATA_CHECK:
-    if table.State == TABLESTATE_PLAYERRAISED {
+  case NetDataCheck:
+    if table.State == TableStatePlayerRaised {
       return errors.New(printer.Sprintf("you must call the raise (%d chips)", table.Bet))
     }
 
@@ -1723,12 +1725,12 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     }
 
     if player.ChipCount == 0 { // big blind had a chipcount <= ante
-      player.Action.Action = NETDATA_ALLIN
+      player.Action.Action = NetDataAllIn
     } else {
-      player.Action.Action = NETDATA_CHECK
+      player.Action.Action = NetDataCheck
     }
-  case NETDATA_FOLD:
-    player.Action.Action = NETDATA_FOLD
+  case NetDataFold:
+    player.Action.Action = NetDataFold
 
     //table.curPlayers.RemovePlayer(player)
   default:
@@ -1748,7 +1750,7 @@ func (table *Table) Deal() {
     player.Hole.FillHoleInfo()
   }
 
-  table.State = TABLESTATE_PREFLOP
+  table.State = TableStatePreFlop
 }
 
 func (table *Table) AddToCommunity(card *Card) {
@@ -1779,36 +1781,36 @@ func (table *Table) SortCommunity() {
 
 func (table *Table) nextCommunityAction() {
   switch table.CommState {
-  case TABLESTATE_PREFLOP:
+  case TableStatePreFlop:
     table.DoFlop()
 
-    table.CommState = TABLESTATE_FLOP
+    table.CommState = TableStateFlop
     if !table.bettingIsImpossible() { // else all players went all in preflop
                                       // and we are in the all-in loop
       table.reorderPlayers()
     }
-  case TABLESTATE_FLOP:
+  case TableStateFlop:
     table.DoTurn()
 
-    table.CommState = TABLESTATE_TURN
-  case TABLESTATE_TURN:
+    table.CommState = TableStateTurn
+  case TableStateTurn:
     table.DoRiver()
 
-    table.CommState = TABLESTATE_RIVER
-  case TABLESTATE_RIVER:
-    table.State = TABLESTATE_ROUNDOVER // XXX shouldn't mix these states
+    table.CommState = TableStateRiver
+  case TableStateRiver:
+    table.State = TableStateRoundOver // XXX shouldn't mix these states
 
     return
   default:
     panic("BUG: Table.nextCommunityAction(): invalid community state")
   }
 
-  table.State = TABLESTATE_ROUNDS
+  table.State = TableStateRounds
 }
 
 func (table *Table) nextTableAction() {
   switch table.State {
-  case TABLESTATE_NOTSTARTED:
+  case TableStateNotStarted:
     if table.Dealer == nil || table.SmallBlind == nil || table.BigBlind == nil {
       table.handleOrphanedSeats()
     }
@@ -1827,10 +1829,10 @@ func (table *Table) nextTableAction() {
 
     table.Deal()
 
-    table.CommState = TABLESTATE_PREFLOP
+    table.CommState = TableStatePreFlop
 
     table.reorderPlayers() // NOTE: need to call this to properly set curPlayer
-  case TABLESTATE_NEWROUND:
+  case TableStateNewRound:
     table.rotatePlayers()
 
     table.Bet = table.Ante
@@ -1846,18 +1848,18 @@ func (table *Table) nextTableAction() {
     table.MainPot.Total = table.SmallBlind.Player.Action.Amount + table.BigBlind.Player.Action.Amount
 
     if table.SmallBlind.Player.ChipCount == 0 {
-      table.SmallBlind.Player.Action.Action = NETDATA_ALLIN
+      table.SmallBlind.Player.Action.Action = NetDataAllIn
     }
     if table.BigBlind.Player.ChipCount == 0 {
-      table.BigBlind.Player.Action.Action = NETDATA_ALLIN
+      table.BigBlind.Player.Action.Action = NetDataAllIn
     }
 
     table.MainPot.Total = table.SmallBlind.Player.Action.Amount + table.BigBlind.Player.Action.Amount
 
     table.Deal()
 
-    table.CommState = TABLESTATE_PREFLOP
-  case TABLESTATE_GAMEOVER:
+    table.CommState = TableStatePreFlop
+  case TableStateGameOver:
     fmt.Printf("Table.nextTableAction(): game over!\n")
 
   default:
@@ -1873,7 +1875,7 @@ func (table *Table) DoFlop() {
   table.PrintCommunity()
   table.SortCommunity()
 
-  table.State = TABLESTATE_ROUNDS
+  table.State = TableStateRounds
 }
 
 func (table *Table) DoTurn() {
@@ -1913,7 +1915,7 @@ func (table *Table) getNonFoldedPlayers() []*Player {
   players := make([]*Player, 0)
 
   for _, player := range table.getActiveSeats() {
-    if player.Action.Action != NETDATA_FOLD {
+    if player.Action.Action != NetDataFold {
       players = append(players, player)
     }
   }
@@ -1932,7 +1934,7 @@ func (table *Table) newRound() {
     player.NewCards()
 
     player.Action.Amount = 0
-    player.Action.Action = NETDATA_FIRSTACTION // NOTE: set twice w/ new player
+    player.Action.Action = NetDataFirstAction // NOTE: set twice w/ new player
   }
 
   table.newCommunity()
@@ -1951,7 +1953,7 @@ func (table *Table) newRound() {
   table.MainPot.Clear()
   table.MainPot.Bet = table.Bet
   table.sidePots.Clear()
-  table.State = TABLESTATE_NEWROUND
+  table.State = TableStateNewRound
 }
 
 func (table *Table) finishRound() {
@@ -1960,12 +1962,12 @@ func (table *Table) finishRound() {
   // special case for when everyone except a folded player
   // leaves the table
   if table.activePlayers.len == 1 &&
-     table.activePlayers.node.Player.Action.Action == NETDATA_FOLD {
+     table.activePlayers.node.Player.Action.Action == NetDataFold {
     fmt.Printf("Table.finishRound(): only one folded player (%s) left at table. " +
                "abandoning all pots\n",
                table.activePlayers.node.Player.Name)
 
-    table.State = TABLESTATE_GAMEOVER
+    table.State = TableStateGameOver
     table.Winners = []*Player{table.activePlayers.node.Player}
 
     return
@@ -1990,13 +1992,13 @@ func (table *Table) finishRound() {
     assert(table.sidePots.IsEmpty(),
       printer.Sprintf("BUG: Table.finishRound(): %s won by folds but there are sidepots", player.Name))
 
-    table.State = TABLESTATE_ROUNDOVER
+    table.State = TableStateRoundOver
     table.Winners = players
 
     return
   }
 
-  table.State = TABLESTATE_SHOWHANDS
+  table.State = TableStateShowHands
 
   bestPlayers := table.BestHand(players, nil)
 
@@ -2012,7 +2014,7 @@ func (table *Table) finishRound() {
       player.ChipCount += splitChips
     }
 
-    table.State = TABLESTATE_SPLITPOT
+    table.State = TableStateSplitPot
   }
 
   table.Winners = bestPlayers
@@ -2021,7 +2023,7 @@ func (table *Table) finishRound() {
     // remove players that folded from sidePots
     // XXX: probably not the best place to do this.
     for _, player := range sidePot.Players {
-      if player.Action.Action == NETDATA_FOLD {
+      if player.Action.Action == NetDataFold {
         fmt.Printf("removing %s from sidePot #%d\n", player.Name, i)
         delete(sidePot.Players, player.Name)
       }
@@ -2063,7 +2065,7 @@ func (table *Table) finishRound() {
           player.ChipCount += splitChips
         }
 
-        //table.State = TABLESTATE_SPLITPOT
+        //table.State = TableStateSplitPot
       }
 
       table.Winners = append(table.Winners, bestPlayers...)
@@ -2155,7 +2157,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     }
   }()
 
-  if table.State == TABLESTATE_PREFLOP ||
+  if table.State == TableStatePreFlop ||
     len(player.Hole.Cards) != 2 ||
     len(table.Community) < 3 {
     return
@@ -2262,7 +2264,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     // search for flush
     for suit, suit_struct := range suits {
       if suit_struct.cnt >= 5 { // NOTE: it's only possible to get one flush
-        player.Hand.Rank = R_FLUSH
+        player.Hand.Rank = RankFlush
 
         if addToCards {
           player.Hand.Cards = append(player.Hand.Cards,
@@ -2283,7 +2285,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       // check ace to 5
       acesuit := (*cards)[len(*cards)-1].Suit
 
-      if (*cards)[0].NumValue != C_TWO {
+      if (*cards)[0].NumValue != CardTwo {
         return false // can't be A to 5
       }
 
@@ -2311,13 +2313,13 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     }
 
     if straightFlush {
-      if (*cards)[high].NumValue == C_ACE {
-        player.Hand.Rank = R_ROYALFLUSH
+      if (*cards)[high].NumValue == CardAce {
+        player.Hand.Rank = RankRoyalFlush
       } else {
-        player.Hand.Rank = R_STRAIGHTFLUSH
+        player.Hand.Rank = RankStraightFlush
       }
     } else {
-      player.Hand.Rank = R_STRAIGHT
+      player.Hand.Rank = RankStraight
     }
 
     if acelow {
@@ -2345,8 +2347,8 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       }
     }
 
-    if player.Hand.Rank == R_ROYALFLUSH ||
-      player.Hand.Rank == R_STRAIGHTFLUSH {
+    if player.Hand.Rank == RankRoyalFlush ||
+      player.Hand.Rank == RankStraightFlush {
       return
     }
 
@@ -2355,16 +2357,16 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     }
 
     // check for A to 5
-    if !isStraight && cards[len(cards)-1].NumValue == C_ACE {
+    if !isStraight && cards[len(cards)-1].NumValue == CardAce {
       gotStraight(&cards, player, 3, true)
     }
 
-    if player.Hand.Rank == R_STRAIGHT {
+    if player.Hand.Rank == RankStraight {
       return
     }
 
     // muck
-    player.Hand.Rank = R_HIGHCARD
+    player.Hand.Rank = RankHighCard
     player.Hand.Cards = append(player.Hand.Cards, cards[bestCard-1],
       cards[bestCard-2], cards[bestCard-3],
       cards[bestCard-4], cards[bestCard-5])
@@ -2388,7 +2390,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
     assert(kicker != nil, "quads: kicker == nil")
 
-    player.Hand.Rank = R_QUADS
+    player.Hand.Rank = RankQuads
     player.Hand.Cards = append(Cards{kicker}, cards[quadsIdx:quadsIdx+4]...)
 
     return
@@ -2400,7 +2402,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   // impossible to have both at the same time and searching for the fullhouse
   // first saves some cycles+space
   if matchHands.trips != nil && matchHands.pairs != nil {
-    player.Hand.Rank = R_FULLHOUSE
+    player.Hand.Rank = RankFullHouse
 
     pairIdx := int(matchHands.pairs[len(matchHands.pairs)-1])
     tripsIdx := int(matchHands.trips[len(matchHands.trips)-1])
@@ -2469,12 +2471,12 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       }
     }
 
-    if player.Hand.Rank == R_ROYALFLUSH ||
-      player.Hand.Rank == R_STRAIGHTFLUSH {
+    if player.Hand.Rank == RankRoyalFlush ||
+      player.Hand.Rank == RankStraightFlush {
       return
     }
 
-    if !isStraight && uniqueCards[uniqueBestCard-1].NumValue == C_ACE &&
+    if !isStraight && uniqueCards[uniqueBestCard-1].NumValue == CardAce &&
       gotStraight(&uniqueCards, player, 4, true) {
       assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
     }
@@ -2483,12 +2485,12 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   if haveFlush {
     gotFlush(cards, player, true)
 
-    assert(player.Hand.Rank == R_FLUSH, "player should have a flush")
+    assert(player.Hand.Rank == RankFlush, "player should have a flush")
 
     return
   }
 
-  if player.Hand.Rank == R_STRAIGHT {
+  if player.Hand.Rank == RankStraight {
     return
   }
 
@@ -2503,7 +2505,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     // order => [kickers][trips]
     kickers = append(kickers, tripslice...)
 
-    player.Hand.Rank = R_TRIPS
+    player.Hand.Rank = RankTrips
     player.Hand.Cards = kickers
 
     return
@@ -2512,7 +2514,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   // two pair & pair search
   if matchHands.pairs != nil {
     if len(matchHands.pairs) > 1 {
-      player.Hand.Rank = R_2PAIR
+      player.Hand.Rank = RankTwoPair
       highPairIdx := int(matchHands.pairs[len(matchHands.pairs)-1])
       lowPairIdx := int(matchHands.pairs[len(matchHands.pairs)-2])
 
@@ -2523,7 +2525,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
         cards[lowPairIdx].NumValue})
       player.Hand.Cards = append(kicker, player.Hand.Cards...)
     } else {
-      player.Hand.Rank = R_PAIR
+      player.Hand.Rank = RankPair
       pairidx := matchHands.pairs[0]
       kickers := top_cards(cards, 3, []int{cards[pairidx].NumValue})
       player.Hand.Cards = append(kickers, cards[pairidx:pairidx+2]...)
@@ -2533,7 +2535,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   }
 
   // muck
-  player.Hand.Rank = R_HIGHCARD
+  player.Hand.Rank = RankHighCard
   player.Hand.Cards = append(player.Hand.Cards, cards[bestCard-1],
     cards[bestCard-2], cards[bestCard-3],
     cards[bestCard-4], cards[bestCard-5])
@@ -2551,19 +2553,19 @@ func cardsSort(cards *Cards) error {
 
 func cardNumToString(card *Card) error {
   cardNumStringMap := map[int]string{
-    C_TWO:   "2",
-    C_THREE: "3",
-    C_FOUR:  "4",
-    C_FIVE:  "5",
-    C_SIX:   "6",
-    C_SEVEN: "7",
-    C_EIGHT: "8",
-    C_NINE:  "9",
-    C_TEN:   "10",
-    C_JACK:  "J",
-    C_QUEEN: "Q",
-    C_KING:  "K",
-    C_ACE:   "A",
+    CardTwo:   "2",
+    CardThree: "3",
+    CardFour:  "4",
+    CardFive:  "5",
+    CardSix:   "6",
+    CardSeven: "7",
+    CardEight: "8",
+    CardNine:  "9",
+    CardTen:   "10",
+    CardJack:  "J",
+    CardQueen: "Q",
+    CardKing:  "K",
+    CardAce:   "A",
   }
 
   name := cardNumStringMap[card.NumValue]
@@ -2574,10 +2576,10 @@ func cardNumToString(card *Card) error {
   }
 
   cardSuitStringMap := map[int][]string{
-    S_CLUB:    {"♣", "clubs"},
-    S_DIAMOND: {"♦", "diamonds"},
-    S_HEART:   {"♥", "hearts"},
-    S_SPADE:   {"♠", "spades"},
+    SuitClub:    {"♣", "clubs"},
+    SuitDiamond: {"♦", "diamonds"},
+    SuitHeart:   {"♥", "hearts"},
+    SuitSpade:   {"♠", "spades"},
   }
 
   suitName := cardSuitStringMap[card.Suit]

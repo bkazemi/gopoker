@@ -121,14 +121,14 @@ func (cli *CLI) handleButton(btn string) {
   }
 
   buttonLabelRequestMap := map[string]int{
-    "all-in":     NETDATA_ALLIN,
-    "call":       NETDATA_CALL,
-    "check":      NETDATA_CHECK,
-    "fold":       NETDATA_FOLD,
-    "raise":      NETDATA_BET,
-    "msg":        NETDATA_CHATMSG,
-    "start game": NETDATA_STARTGAME,
-    "settings":   NETDATA_CLIENTSETTINGS,
+    "all-in":     NetDataAllIn,
+    "call":       NetDataCall,
+    "check":      NetDataCheck,
+    "fold":       NetDataFold,
+    "raise":      NetDataBet,
+    "msg":        NetDataChatMsg,
+    "start game": NetDataStartGame,
+    "settings":   NetDataClientSettings,
   }
 
   if req, ok := buttonLabelRequestMap[btn]; ok {
@@ -141,7 +141,7 @@ func (cli *CLI) handleButton(btn string) {
       ClientSettings: cli.settings,
     }
   } else {
-    cli.outputChan <- &NetData{ Request: NETDATA_BADREQUEST }
+    cli.outputChan <- &NetData{ Request: NetDataBadRequest }
   }
 }
 
@@ -240,7 +240,7 @@ func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
       textViewSetLine(textView, 4, cli.cards2String(player.Hole.Cards))
     }
 
-    /*if player.Action.Action == NETDATA_BET {
+    /*if player.Action.Action == NetDataBet {
       textView.SetBorderColor(tcell.ColorOrange)
     } else {
       textView.SetBorderColor(tcell.ColorWhite)
@@ -761,13 +761,13 @@ func cliInputLoop(cli *CLI) {
     select {
     case netData := <-cli.inputChan:
       switch netData.Response {
-      case NETDATA_NEWCONN, NETDATA_CLIENTEXITED, NETDATA_UPDATETABLE:
+      case NetDataNewConn, NetDataClientExited, NetDataUpdateTable:
         assert(netData.Table != nil,
           fmt.Sprintf("%s: netData.Table == nil", netDataReqToString(netData)))
-      case NETDATA_YOURPLAYER, NETDATA_NEWPLAYER, NETDATA_CURPLAYERS,
-           NETDATA_PLAYERLEFT, NETDATA_PLAYERACTION, NETDATA_PLAYERTURN,
-           NETDATA_UPDATEPLAYER, NETDATA_CURHAND, NETDATA_SHOWHAND,
-           NETDATA_ELIMINATED:
+      case NetDataYourPlayer, NetDataNewPlayer, NetDataCurPlayers,
+           NetDataPlayerLeft, NetDataPlayerAction, NetDataPlayerTurn,
+           NetDataUpdatePlayer, NetDataCurHand, NetDataShowHand,
+           NetDataEliminated:
         assert(netData.PlayerData != nil,
           fmt.Sprintf("%s: PlayerData == nil", netDataReqToString(netData)))
         assert(netData.ID != "",
@@ -775,11 +775,11 @@ func cliInputLoop(cli *CLI) {
       }
 
       switch netData.Response {
-      case NETDATA_NEWCONN, NETDATA_CLIENTEXITED:
+      case NetDataNewConn, NetDataClientExited:
         cli.updateInfoList("# connected", netData.Table)
-      case NETDATA_CHATMSG:
+      case NetDataChatMsg:
         cli.updateChat(netData.ID, netData.Msg)
-      case NETDATA_YOURPLAYER: // TODO: i shouldn't use this for client settings.
+      case NetDataYourPlayer: // TODO: i shouldn't use this for client settings.
         if netData.Table != nil {
           cli.updateInfoList("# players", netData.Table)
         }
@@ -795,21 +795,21 @@ func cliInputLoop(cli *CLI) {
         cli.playersTextViewMap[cli.yourID] = cli.yourInfoView
 
         cli.updatePlayer(cli.yourID, netData.PlayerData, nil)
-      case NETDATA_NEWPLAYER, NETDATA_CURPLAYERS:
+      case NetDataNewPlayer, NetDataCurPlayers:
         cli.updateInfoList("# players", netData.Table)
 
         cli.addNewPlayer(netData.ID, netData.PlayerData)
-      case NETDATA_PLAYERLEFT:
+      case NetDataPlayerLeft:
         cli.removePlayer(netData.ID, netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)
         cli.updateChat(netData.ID, fmt.Sprintf("<server-msg>: %s left the table",
                                                netData.PlayerData.Name))
-      case NETDATA_MAKEADMIN:
+      case NetDataMakeAdmin:
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start game")
         })
         cli.isTableAdmin = true
-      case NETDATA_DEAL:
+      case NetDataDeal:
         cli.commView.Clear()
         cli.clearPlayerScreens()
 
@@ -820,10 +820,10 @@ func cliInputLoop(cli *CLI) {
 
           cli.holeView.SetText(txt)
         }
-      case NETDATA_PLAYERACTION:
+      case NetDataPlayerAction:
         cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
         cli.updateInfoList("status", netData.Table)
-      case NETDATA_PLAYERHEAD:
+      case NetDataPlayerHead:
         if cli.playerHeadTextView != nil {
           if cli.playerHeadTextView == cli.curPlayerTextView {
             cli.playerHeadTextView.SetBorderColor(tcell.ColorRed)
@@ -839,7 +839,7 @@ func cliInputLoop(cli *CLI) {
           playerHeadTextView.SetBorderColor(tcell.ColorOrange)
           cli.playerHeadTextView = playerHeadTextView
         }
-      case NETDATA_PLAYERTURN:
+      case NetDataPlayerTurn:
         curPlayerTextView := cli.playersTextViewMap[netData.ID]
 
         if curPlayerTextView == nil {
@@ -864,15 +864,15 @@ func cliInputLoop(cli *CLI) {
             cli.app.SetFocus(cli.actionsForm)
           }
         }
-      case NETDATA_UPDATEPLAYER:
+      case NetDataUpdatePlayer:
         cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
-      case NETDATA_UPDATETABLE:
+      case NetDataUpdateTable:
         cli.updateInfoList("status", netData.Table)
-      case NETDATA_CURHAND:
+      case NetDataCurHand:
         cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
-      case NETDATA_SHOWHAND:
+      case NetDataShowHand:
         cli.updatePlayer(netData.ID, netData.PlayerData, nil)
-      case NETDATA_ROUNDOVER:
+      case NetDataRoundOver:
         //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
         cli.errorModal.SetText(netData.Msg)
@@ -881,7 +881,7 @@ func cliInputLoop(cli *CLI) {
         for _, player := range netData.Table.Winners {
           cli.updatePlayer("", player, nil)
         }
-      case NETDATA_RESET:
+      case NetDataReset:
         if netData.PlayerData != nil {
           for name, textView := range cli.playersTextViewMap {
             if name != netData.PlayerData.Name {
@@ -895,7 +895,7 @@ func cliInputLoop(cli *CLI) {
         }
         cli.holeView.Clear()
         cli.updateInfoList("all", netData.Table)
-      case NETDATA_ELIMINATED:
+      case NetDataEliminated:
         if netData.ID == cli.yourID {
           if cli.isTableAdmin {
             if startGameBtnIdx := cli.actionsForm.GetButtonIndex("start game");
@@ -914,14 +914,14 @@ func cliInputLoop(cli *CLI) {
         cli.updateChat(netData.ID, netData.Msg)
 
         //cli.removePlayer(netData.PlayerData)
-      case NETDATA_FLOP, NETDATA_TURN, NETDATA_RIVER:
+      case NetDataFlop, NetDataTurn, NetDataRiver:
         txt := cli.cards2String(netData.Table.Community)
 
         cli.commView.SetText(txt)
         cli.updateInfoList("status", netData.Table)
-      case NETDATA_BADREQUEST, NETDATA_SERVERMSG:
+      case NetDataBadRequest, NetDataServerMsg:
         if netData.Msg == "" {
-          if netData.Response == NETDATA_BADREQUEST {
+          if netData.Response == NetDataBadRequest {
             netData.Msg = "unspecified server error"
           } else {
             netData.Msg = "BUG: empty server message"
@@ -930,7 +930,7 @@ func cliInputLoop(cli *CLI) {
 
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
-      case NETDATA_SERVERCLOSED:
+      case NetDataServerClosed:
         cli.finish <- errors.New("server closed")
       default:
         cli.finish <- errors.New("bad response")

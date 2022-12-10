@@ -100,7 +100,7 @@ func (server *Server) removeClient(conn *websocket.Conn) {
   server.table.NumConnected--
 
   netData := &NetData{
-    Response: NETDATA_CLIENTEXITED,
+    Response: NetDataClientExited,
     Table:    server.table,
   }
 
@@ -113,32 +113,32 @@ func (server *Server) removePlayerByConn(conn *websocket.Conn) {
 
   server.table.mtx.Lock()
   defer func() {
-    if server.table.State == TABLESTATE_NOTSTARTED {
+    if server.table.State == TableStateNotStarted {
       return
     }
     if reset {
       if noPlayersLeft {
         server.table.reset(nil)
         server.sendResponseToAll(&NetData{
-          Response: NETDATA_RESET,
+          Response: NetDataReset,
           Table: server.table,
         }, nil)
       } else {
-        if server.table.State != TABLESTATE_ROUNDOVER &&
-           server.table.State != TABLESTATE_GAMEOVER {
+        if server.table.State != TableStateRoundOver &&
+           server.table.State != TableStateGameOver {
           fmt.Println("Server.removePlayerByConn(): state != (rndovr || gameovr)")
           server.table.finishRound()
-          server.table.State = TABLESTATE_GAMEOVER
+          server.table.State = TableStateGameOver
           server.gameOver()
         } else {
           fmt.Println("Server.removePlayerByConn(): state == rndovr || gameovr")
           //server.table.finishRound()
-          //server.table.State = TABLESTATE_GAMEOVER
+          //server.table.State = TableStateGameOver
           //server.gameOver()
         }
       }
-    } else if server.table.State == TABLESTATE_DONEBETTING ||
-              server.table.State == TABLESTATE_ROUNDOVER {
+    } else if server.table.State == TableStateDoneBetting ||
+              server.table.State == TableStateRoundOver {
       fmt.Println("Server.removePlayerByConn(): defer postPlayerAction")
       server.postPlayerAction(nil, &NetData{}, nil)
     }
@@ -158,7 +158,7 @@ func (server *Server) removePlayerByConn(conn *websocket.Conn) {
 
     netData := &NetData{
       ID:         server.clientIDMap[conn],
-      Response:   NETDATA_PLAYERLEFT,
+      Response:   NetDataPlayerLeft,
       Table:      server.table,
       PlayerData: player,
     }
@@ -180,7 +180,7 @@ func (server *Server) removePlayerByConn(conn *websocket.Conn) {
       server.tableAdmin = server.getPlayerConn(server.table.activePlayers.node.Player)
       assert(server.tableAdmin != nil,
              "Server.getPlayerConn(): couldn't find activePlayers head websocket")
-      sendData(&NetData{Response: NETDATA_MAKEADMIN}, server.tableAdmin)
+      sendData(&NetData{Response: NetDataMakeAdmin}, server.tableAdmin)
     }
 
     if server.table.Dealer != nil &&
@@ -223,11 +223,11 @@ func (server *Server) sendPlayerTurn(conn *websocket.Conn) {
 
   netData := &NetData{
     ID:         id,
-    Response:   NETDATA_PLAYERTURN,
+    Response:   NetDataPlayerTurn,
     PlayerData: server.table.PublicPlayerInfo(*curPlayer),
   }
 
-  netData.PlayerData.Action.Action = NETDATA_PLAYERTURN
+  netData.PlayerData.Action.Action = NetDataPlayerTurn
 
   sendData(netData, conn)
 
@@ -253,11 +253,11 @@ func (server *Server) sendPlayerTurnToAll() {
 
   netData := &NetData{
     ID:         id,
-    Response:   NETDATA_PLAYERTURN,
+    Response:   NetDataPlayerTurn,
     PlayerData: server.table.PublicPlayerInfo(*curPlayer),
   }
 
-  netData.PlayerData.Action.Action = NETDATA_PLAYERTURN
+  netData.PlayerData.Action.Action = NetDataPlayerTurn
 
   server.sendResponseToAll(netData, nil)
 
@@ -274,7 +274,7 @@ func (server *Server) sendPlayerHead(conn *websocket.Conn, clear bool) {
     fmt.Println("Server.sendPlayerHead(): sending clear player head")
     server.sendResponseToAll(
       &NetData{
-        Response: NETDATA_PLAYERHEAD,
+        Response: NetDataPlayerHead,
       }, nil)
 
     return
@@ -293,7 +293,7 @@ func (server *Server) sendPlayerHead(conn *websocket.Conn, clear bool) {
 
     netData := &NetData {
       ID: id,
-      Response: NETDATA_PLAYERHEAD,
+      Response: NetDataPlayerHead,
       PlayerData: server.table.PublicPlayerInfo(*playerHead),
     }
     if conn == nil {
@@ -317,7 +317,7 @@ func (server *Server) sendPlayerActionToAll(player *Player, conn *websocket.Conn
 
   netData := &NetData{
     ID:         server.clientIDMap[c],
-    Response:   NETDATA_PLAYERACTION,
+    Response:   NetDataPlayerAction,
     Table:      server.table,
     PlayerData: server.table.PublicPlayerInfo(*player),
   }
@@ -331,7 +331,7 @@ func (server *Server) sendPlayerActionToAll(player *Player, conn *websocket.Conn
 }
 
 func (server *Server) sendDeals() {
-  netData := &NetData{Response: NETDATA_DEAL}
+  netData := &NetData{Response: NetDataDeal}
 
   for conn, player := range server.playerMap {
     netData.ID = server.clientIDMap[conn]
@@ -343,7 +343,7 @@ func (server *Server) sendDeals() {
 }
 
 func (server *Server) sendHands() {
-  netData := &NetData{Response: NETDATA_SHOWHAND, Table: server.table}
+  netData := &NetData{Response: NetDataShowHand, Table: server.table}
 
   for _, player := range server.table.curPlayers.ToPlayerArray() {
     conn := server.getPlayerConn(player)
@@ -357,7 +357,7 @@ func (server *Server) sendHands() {
 
 // NOTE: hand is currently computed on client side
 func (server *Server) sendCurHands() {
-  netData := &NetData{Response: NETDATA_CURHAND, Table: server.table}
+  netData := &NetData{Response: NetDataCurHand, Table: server.table}
 
   for conn, player := range server.playerMap {
     netData.ID = server.clientIDMap[conn]
@@ -367,7 +367,7 @@ func (server *Server) sendCurHands() {
 }
 
 func (server *Server) sendAllPlayerInfo(conn *websocket.Conn, curPlayers bool) {
-  netData := &NetData{Response: NETDATA_UPDATEPLAYER}
+  netData := &NetData{Response: NetDataUpdatePlayer}
 
   var players playerList
   if curPlayers {
@@ -395,7 +395,7 @@ func (server *Server) sendAllPlayerInfo(conn *websocket.Conn, curPlayers bool) {
 
 func (server *Server) sendTable() {
   netData := &NetData{
-    Response: NETDATA_UPDATETABLE,
+    Response: NetDataUpdateTable,
     Table:    server.table,
   }
 
@@ -403,12 +403,12 @@ func (server *Server) sendTable() {
 }
 
 func (server *Server) removeEliminatedPlayers() {
-  netData := &NetData{Response: NETDATA_ELIMINATED}
+  netData := &NetData{Response: NetDataEliminated}
 
   for _, player := range server.table.getEliminatedPlayers() {
     conn := server.getPlayerConn(player)
     netData.ID = server.clientIDMap[conn]
-    netData.Response = NETDATA_ELIMINATED
+    netData.Response = NetDataEliminated
     netData.PlayerData = player
     netData.Msg = fmt.Sprintf("<%s id: %s> was eliminated", player.Name,
                               netData.ID[:7])
@@ -423,7 +423,7 @@ func (server *Server) roundOver() {
   server.sendHands()
 
   netData := &NetData{
-    Response: NETDATA_ROUNDOVER,
+    Response: NetDataRoundOver,
     Table:    server.table,
     Msg:      server.table.WinInfo,
   }
@@ -437,7 +437,7 @@ func (server *Server) roundOver() {
 
   server.removeEliminatedPlayers()
 
-  if server.table.State == TABLESTATE_GAMEOVER {
+  if server.table.State == TableStateGameOver {
     server.gameOver()
 
     return
@@ -456,7 +456,7 @@ func (server *Server) gameOver() {
   winner := server.table.Winners[0]
 
   netData := &NetData{
-    Response: NETDATA_SERVERMSG,
+    Response: NetDataServerMsg,
     Msg:      "game over, " + winner.Name + " wins",
   }
 
@@ -470,11 +470,11 @@ func (server *Server) gameOver() {
       return
     }
     server.tableAdmin = winnerConn
-    sendData(&NetData{Response: NETDATA_MAKEADMIN}, winnerConn)
+    sendData(&NetData{Response: NetDataMakeAdmin}, winnerConn)
     server.sendPlayerTurnToAll()
 
     server.sendResponseToAll(&NetData{
-      Response: NETDATA_RESET,
+      Response: NetDataReset,
       PlayerData: winner,
       Table: server.table,
     }, nil)
@@ -482,7 +482,7 @@ func (server *Server) gameOver() {
 }
 
 func (server *Server) checkBlindsAutoAllIn() {
-  if server.table.SmallBlind.Player.Action.Action == NETDATA_ALLIN {
+  if server.table.SmallBlind.Player.Action.Action == NetDataAllIn {
     fmt.Printf("Server.checkBlindsAutoAllIn(): smallblind (%s) forced to go all in\n",
                server.table.SmallBlind.Player.Name)
 
@@ -496,7 +496,7 @@ func (server *Server) checkBlindsAutoAllIn() {
 
     server.sendPlayerActionToAll(server.table.SmallBlind.Player, nil)
   }
-  if server.table.BigBlind.Player.Action.Action == NETDATA_ALLIN {
+  if server.table.BigBlind.Player.Action.Action == NetDataAllIn {
     fmt.Printf("Server.checkBlindsAutoAllIn(): bigblind (%s) forced to go all in\n",
                server.table.BigBlind.Player.Name)
 
@@ -523,17 +523,17 @@ func (server *Server) postBetting(player *Player, netData *NetData, conn *websoc
   if server.table.bettingIsImpossible() {
     fmt.Println("Server.postBetting(): no more betting possible this round")
 
-    for server.table.State != TABLESTATE_ROUNDOVER {
+    for server.table.State != TableStateRoundOver {
       server.table.nextCommunityAction()
     }
   } else {
     server.table.nextCommunityAction()
   }
 
-  if server.table.State == TABLESTATE_ROUNDOVER {
+  if server.table.State == TableStateRoundOver {
     server.roundOver()
 
-    if server.table.State == TABLESTATE_GAMEOVER {
+    if server.table.State == TableStateGameOver {
       return // XXX
     }
   } else { // new community card(s)
@@ -546,7 +546,7 @@ func (server *Server) postBetting(player *Player, netData *NetData, conn *websoc
     server.table.Bet, server.table.better = 0, nil
     for _, player := range server.table.curPlayers.ToPlayerArray() {
       fmt.Printf("Server.postBetting(): clearing %v's action\n", player.Name)
-      player.Action.Action = NETDATA_FIRSTACTION
+      player.Action.Action = NetDataFirstAction
       player.Action.Amount = 0
     }
 
@@ -561,16 +561,16 @@ func (server *Server) postBetting(player *Player, netData *NetData, conn *websoc
 }
 
 func (server *Server) postPlayerAction(player *Player, netData *NetData, conn *websocket.Conn) {
-  if server.table.State == TABLESTATE_DONEBETTING {
+  if server.table.State == TableStateDoneBetting {
     server.postBetting(player, netData, conn)
-  } else if server.table.State == TABLESTATE_ROUNDOVER {
+  } else if server.table.State == TableStateRoundOver {
       // all other players folded before all comm cards were dealt
       // TODO: check for this state in a better fashion
       server.table.finishRound()
       fmt.Printf("winner # %d\n", len(server.table.Winners))
       fmt.Println(server.table.Winners[0].Name + " wins by folds")
 
-      netData.Response = NETDATA_ROUNDOVER
+      netData.Response = NetDataRoundOver
       netData.Table = server.table
       netData.Msg = server.table.Winners[0].Name + " wins by folds"
       netData.PlayerData = nil
@@ -579,7 +579,7 @@ func (server *Server) postPlayerAction(player *Player, netData *NetData, conn *w
 
       server.removeEliminatedPlayers()
 
-      if server.table.State == TABLESTATE_GAMEOVER {
+      if server.table.State == TableStateGameOver {
         server.gameOver()
 
         return
@@ -704,7 +704,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         }
         if server.table.activePlayers.len > 1 &&
            server.table.curPlayer.Player.Name == player.Name {
-          server.table.curPlayer.Player.Action.Action = NETDATA_FOLD
+          server.table.curPlayer.Player.Action.Action = NetDataFold
           server.table.setNextPlayerTurn()
           server.sendPlayerTurnToAll()
         }
@@ -742,7 +742,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
   netData := NetData{
     ID:       server.clientIDMap[conn],
-    Response: NETDATA_NEWCONN,
+    Response: NetDataNewConn,
     Table:    server.table,
   }
 
@@ -758,7 +758,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
     // we need to set Table member to nil otherwise gob will
     // modify our server.table structure if a user server.sends that member
-    netData = NetData{Response: NETDATA_NEWCONN, Table: nil}
+    netData = NetData{Response: NetDataNewConn, Table: nil}
 
     gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&netData)
 
@@ -767,7 +767,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
     fmt.Printf("Server.WSCLIClient(): recv %s (%d bytes) from %p\n",
                netDataReqToString(&netData), len(rawData), conn)
 
-    if netData.Request == NETDATA_NEWCONN {
+    if netData.Request == NetDataNewConn {
       server.clients = append(server.clients, conn)
 
       server.table.mtx.Lock()
@@ -778,7 +778,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
       // server.send current player info to this client
       if server.table.NumConnected > 1 {
-        netData.Response = NETDATA_CURPLAYERS
+        netData.Response = NetDataCurPlayers
         netData.Table = server.table
 
         for _, player := range server.table.activePlayers.ToPlayerArray() {
@@ -789,7 +789,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
       }
 
       if err := server.handleClientSettings(conn, netData.ClientSettings); err != nil {
-        sendData(&NetData{Response: NETDATA_BADREQUEST, Msg: err.Error()}, conn)
+        sendData(&NetData{Response: NetDataBadRequest, Msg: err.Error()}, conn)
       }
 
       if player := server.table.getOpenSeat(); player != nil {
@@ -798,11 +798,11 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         server.applyClientSettings(conn, netData.ClientSettings)
         fmt.Printf("Server.WSCLIClient(): adding %p as player '%s'\n", &conn, player.Name)
 
-        if server.table.State == TABLESTATE_NOTSTARTED {
-          player.Action.Action = NETDATA_FIRSTACTION
+        if server.table.State == TableStateNotStarted {
+          player.Action.Action = NetDataFirstAction
           server.table.curPlayers.AddPlayer(player)
         } else {
-          player.Action.Action = NETDATA_MIDROUNDADDITION
+          player.Action.Action = NetDataMidroundAddition
         }
         server.table.activePlayers.AddPlayer(player)
 
@@ -819,17 +819,17 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         }
 
         netData.ID = server.clientIDMap[conn]
-        netData.Response = NETDATA_NEWPLAYER
+        netData.Response = NetDataNewPlayer
         netData.Table = server.table
         netData.PlayerData = server.table.PublicPlayerInfo(*player)
 
         server.sendResponseToAll(&netData, conn)
 
-        netData.Response = NETDATA_YOURPLAYER
+        netData.Response = NetDataYourPlayer
         netData.PlayerData = player
         sendData(&netData, conn)
       } else {
-        netData.Response = NETDATA_SERVERMSG
+        netData.Response = NetDataServerMsg
         netData.Msg = "No open seats available. You have been added as a spectator"
 
         sendData(&netData, conn)
@@ -843,51 +843,51 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         server.tableAdmin = conn
         server.table.mtx.Unlock()
 
-        sendData(&NetData{Response: NETDATA_MAKEADMIN}, conn)
+        sendData(&NetData{Response: NetDataMakeAdmin}, conn)
       }
     } else {
       switch netData.Request {
-      case NETDATA_CLIENTEXITED:
+      case NetDataClientExited:
         cleanExit = true
 
         return
-      case NETDATA_CLIENTSETTINGS:
+      case NetDataClientSettings:
         if err := server.handleClientSettings(conn, netData.ClientSettings); err == nil {
           server.applyClientSettings(conn, netData.ClientSettings)
 
           if player := server.playerMap[conn]; player != nil {
-            netData.Response = NETDATA_UPDATEPLAYER
+            netData.Response = NetDataUpdatePlayer
             netData.ID = server.clientIDMap[conn]
             netData.PlayerData = server.table.PublicPlayerInfo(*player)
             netData.Table, netData.Msg = nil, ""
 
             server.sendResponseToAll(&netData, conn)
 
-            netData.Response = NETDATA_YOURPLAYER
+            netData.Response = NetDataYourPlayer
             sendData(&netData, conn)
 
-            netData.Response = NETDATA_SERVERMSG
+            netData.Response = NetDataServerMsg
             netData.Msg = "server updated your settings"
             sendData(&netData, conn)
           }
         } else {
-          sendData(&NetData{Response: NETDATA_SERVERMSG, Msg: err.Error()}, conn)
+          sendData(&NetData{Response: NetDataServerMsg, Msg: err.Error()}, conn)
         }
-      case NETDATA_STARTGAME:
+      case NetDataStartGame:
         if conn != server.tableAdmin {
-          netData.Response = NETDATA_BADREQUEST
+          netData.Response = NetDataBadRequest
           netData.Msg = "only the table admin can do that"
           netData.Table = nil
 
           sendData(&netData, conn)
         } else if server.table.NumPlayers < 2 {
-          netData.Response = NETDATA_BADREQUEST
+          netData.Response = NetDataBadRequest
           netData.Msg = "not enough players to start"
           netData.Table = nil
 
           sendData(&netData, conn)
-        } else if server.table.State != TABLESTATE_NOTSTARTED {
-          netData.Response = NETDATA_BADREQUEST
+        } else if server.table.State != TableStateNotStarted {
+          netData.Response = NetDataBadRequest
           netData.Msg = "this game has already started"
           netData.Table = nil
 
@@ -900,9 +900,9 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           server.sendPlayerTurnToAll()
           server.sendTable()
         }
-      case NETDATA_CHATMSG:
+      case NetDataChatMsg:
         netData.ID = server.clientIDMap[conn]
-        netData.Response = NETDATA_CHATMSG
+        netData.Response = NetDataChatMsg
 
         if len(netData.Msg) > 256 {
           netData.Msg = netData.Msg[:256] + "(snipped)"
@@ -917,11 +917,11 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         }
 
         server.sendResponseToAll(&netData, nil)
-      case NETDATA_ALLIN, NETDATA_BET, NETDATA_CALL, NETDATA_CHECK, NETDATA_FOLD:
+      case NetDataAllIn, NetDataBet, NetDataCall, NetDataCheck, NetDataFold:
         player := server.playerMap[conn]
 
         if player == nil {
-          netData.Response = NETDATA_BADREQUEST
+          netData.Response = NetDataBadRequest
           netData.Msg = "you are not a player"
           netData.Table = nil
 
@@ -929,8 +929,8 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           continue
         }
 
-        if server.table.State == TABLESTATE_NOTSTARTED {
-          netData.Response = NETDATA_BADREQUEST
+        if server.table.State == TableStateNotStarted {
+          netData.Response = NetDataBadRequest
           netData.Msg = "a game has not been started yet"
           netData.Table = nil
 
@@ -939,7 +939,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         }
 
         if player.Name != server.table.curPlayer.Player.Name {
-          netData.Response = NETDATA_BADREQUEST
+          netData.Response = NetDataBadRequest
           netData.Msg = "it's not your turn"
           netData.Table = nil
 
@@ -948,7 +948,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         }
 
         if err := server.table.PlayerAction(player, netData.PlayerData.Action); err != nil {
-          netData.Response = NETDATA_BADREQUEST
+          netData.Response = NetDataBadRequest
           netData.Table = nil
           netData.Msg = err.Error()
 
@@ -957,7 +957,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           server.postPlayerAction(player, &netData, conn)
         }
       default:
-        netData.Response = NETDATA_BADREQUEST
+        netData.Response = NetDataBadRequest
         netData.Msg = fmt.Sprintf("bad request %v", netData.Request)
         netData.Table, netData.PlayerData = nil, nil
 
@@ -985,7 +985,7 @@ func (server *Server) run() error {
     fmt.Fprintf(os.Stderr, "received signal: %s\n", sig.String())
 
     // TODO: ignore irrelevant signals
-    server.sendResponseToAll(&NetData{Response: NETDATA_SERVERCLOSED}, nil)
+    server.sendResponseToAll(&NetData{Response: NetDataServerClosed}, nil)
 
     if err := server.http.Shutdown(ctx); err != nil {
       fmt.Fprintf(os.Stderr, "server.http.Shutdown(): %s\n", err.Error())

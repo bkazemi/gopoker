@@ -9,53 +9,53 @@ import (
 
 // requests/responses sent between client and server
 const (
-  NETDATA_CLOSE = iota
-  NETDATA_NEWCONN
+  NetDataClose = iota
+  NetDataNewConn
 
-  NETDATA_YOURPLAYER
-  NETDATA_NEWPLAYER
-  NETDATA_CURPLAYERS
-  NETDATA_UPDATEPLAYER
-  NETDATA_UPDATETABLE
-  NETDATA_PLAYERLEFT
-  NETDATA_CLIENTEXITED
-  NETDATA_CLIENTSETTINGS
-  NETDATA_RESET
+  NetDataYourPlayer
+  NetDataNewPlayer
+  NetDataCurPlayers
+  NetDataUpdatePlayer
+  NetDataUpdateTable
+  NetDataPlayerLeft
+  NetDataClientExited
+  NetDataClientSettings
+  NetDataReset
 
-  NETDATA_SERVERCLOSED
+  NetDataServerClosed
 
-  NETDATA_MAKEADMIN
-  NETDATA_STARTGAME
+  NetDataMakeAdmin
+  NetDataStartGame
 
-  NETDATA_CHATMSG
+  NetDataChatMsg
 
-  NETDATA_PLAYERACTION
-  NETDATA_PLAYERTURN
-  NETDATA_PLAYERHEAD
-  NETDATA_ALLIN
-  NETDATA_BET
-  NETDATA_CALL
-  NETDATA_CHECK
-  NETDATA_RAISE
-  NETDATA_FOLD
+  NetDataPlayerAction
+  NetDataPlayerTurn
+  NetDataPlayerHead
+  NetDataAllIn
+  NetDataBet
+  NetDataCall
+  NetDataCheck
+  NetDataRaise
+  NetDataFold
 
-  NETDATA_CURHAND
-  NETDATA_SHOWHAND
+  NetDataCurHand
+  NetDataShowHand
 
-  NETDATA_FIRSTACTION
-  NETDATA_MIDROUNDADDITION
-  NETDATA_ELIMINATED
-  NETDATA_VACANTSEAT
+  NetDataFirstAction
+  NetDataMidroundAddition
+  NetDataEliminated
+  NetDataVacantSeat
 
-  NETDATA_DEAL
-  NETDATA_FLOP
-  NETDATA_TURN
-  NETDATA_RIVER
-  NETDATA_BESTHAND
-  NETDATA_ROUNDOVER
+  NetDataDeal
+  NetDataFlop
+  NetDataTurn
+  NetDataRiver
+  NetDataBestHand
+  NetDataRoundOver
 
-  NETDATA_SERVERMSG
-  NETDATA_BADREQUEST
+  NetDataServerMsg
+  NetDataBadRequest
 )
 
 type NetData struct {
@@ -80,54 +80,54 @@ func netDataReqToString(netData *NetData) string {
   }
 
   netDataReqStringMap := map[int]string{
-    NETDATA_CLOSE:          "NETDATA_CLOSE",
-    NETDATA_NEWCONN:        "NETDATA_NEWCONN",
-    NETDATA_YOURPLAYER:     "NETDATA_YOURPLAYER",
-    NETDATA_NEWPLAYER:      "NETDATA_NEWPLAYER",
-    NETDATA_CURPLAYERS:     "NETDATA_CURPLAYERS",
-    NETDATA_UPDATEPLAYER:   "NETDATA_UPDATEPLAYER",
-    NETDATA_UPDATETABLE:    "NETDATA_UPDATETABLE",
-    NETDATA_PLAYERLEFT:     "NETDATA_PLAYERLEFT",
-    NETDATA_CLIENTEXITED:   "NETDATA_CLIENTEXITED",
-    NETDATA_CLIENTSETTINGS: "NETDATA_CLIENTSETTINGS",
-    NETDATA_RESET:          "NETDATA_RESET",
+    NetDataClose:          "NetDataClose",
+    NetDataNewConn:        "NetDataNewConn",
+    NetDataYourPlayer:     "NetDataYourPlayer",
+    NetDataNewPlayer:      "NetDataNewPlayer",
+    NetDataCurPlayers:     "NetDataCurPlayers",
+    NetDataUpdatePlayer:   "NetDataUpdatePlayer",
+    NetDataUpdateTable:    "NetDataUpdateTable",
+    NetDataPlayerLeft:     "NetDataPlayerLeft",
+    NetDataClientExited:   "NetDataClientExited",
+    NetDataClientSettings: "NetDataClientSettings",
+    NetDataReset:          "NetDataReset",
 
-    NETDATA_MAKEADMIN: "NETDATA_MAKEADMIN",
-    NETDATA_STARTGAME: "NETDATA_STARTGAME",
+    NetDataMakeAdmin: "NetDataMakeAdmin",
+    NetDataStartGame: "NetDataStartGame",
 
-    NETDATA_CHATMSG: "NETDATA_CHATMSG",
+    NetDataChatMsg: "NetDataChatMsg",
 
-    NETDATA_PLAYERACTION: "NETDATA_PLAYERACTION",
-    NETDATA_PLAYERTURN:   "NETDATA_PLAYERTURN",
-    NETDATA_PLAYERHEAD:   "NETDATA_PLAYERHEAD",
-    NETDATA_ALLIN:        "NETDATA_ALLIN",
-    NETDATA_BET:          "NETDATA_BET",
-    NETDATA_CALL:         "NETDATA_CALL",
-    NETDATA_CHECK:        "NETDATA_CHECK",
-    NETDATA_RAISE:        "NETDATA_RAISE",
-    NETDATA_FOLD:         "NETDATA_FOLD",
-    NETDATA_CURHAND:      "NETDATA_CURHAND",
-    NETDATA_SHOWHAND:     "NETDATA_SHOWHAND",
+    NetDataPlayerAction: "NetDataPlayerAction",
+    NetDataPlayerTurn:   "NetDataPlayerTurn",
+    NetDataPlayerHead:   "NetDataPlayerHead",
+    NetDataAllIn:        "NetDataAllIn",
+    NetDataBet:          "NetDataBet",
+    NetDataCall:         "NetDataCall",
+    NetDataCheck:        "NetDataCheck",
+    NetDataRaise:        "NetDataRaise",
+    NetDataFold:         "NetDataFold",
+    NetDataCurHand:      "NetDataCurHand",
+    NetDataShowHand:     "NetDataShowHand",
 
-    NETDATA_FIRSTACTION:      "NETDATA_FIRSTACTION",
-    NETDATA_MIDROUNDADDITION: "NETDATA_MIDROUNDADDITION",
-    NETDATA_ELIMINATED:       "NETDATA_ELIMINATED",
-    NETDATA_VACANTSEAT:       "NETDATA_VACANTSEAT",
+    NetDataFirstAction:      "NetDataFirstAction",
+    NetDataMidroundAddition: "NetDataMidroundAddition",
+    NetDataEliminated:       "NetDataEliminated",
+    NetDataVacantSeat:       "NetDataVacantSeat",
 
-    NETDATA_DEAL:      "NETDATA_DEAL",
-    NETDATA_FLOP:      "NETDATA_FLOP",
-    NETDATA_TURN:      "NETDATA_TURN",
-    NETDATA_RIVER:     "NETDATA_RIVER",
-    NETDATA_BESTHAND:  "NETDATA_BESTHAND",
-    NETDATA_ROUNDOVER: "NETDATA_ROUNDOVER",
+    NetDataDeal:      "NetDataDeal",
+    NetDataFlop:      "NetDataFlop",
+    NetDataTurn:      "NetDataTurn",
+    NetDataRiver:     "NetDataRiver",
+    NetDataBestHand:  "NetDataBestHand",
+    NetDataRoundOver: "NetDataRoundOver",
 
-    NETDATA_SERVERMSG:  "NETDATA_SERVERMSG",
-    NETDATA_BADREQUEST: "NETDATA_BADREQUEST",
+    NetDataServerMsg:  "NetDataServerMsg",
+    NetDataBadRequest: "NetDataBadRequest",
   }
 
   // XXX remove me
-  reqOrRes := NETDATA_CLOSE
-  if netData.Request == NETDATA_CLOSE {
+  reqOrRes := NetDataClose
+  if netData.Request == NetDataClose {
     reqOrRes = netData.Response
   } else {
     reqOrRes = netData.Request

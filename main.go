@@ -71,7 +71,7 @@ func runClient(addr string, name string, isGUI bool) (err error) {
   defer func() {
     fmt.Fprintf(os.Stderr, "closing connection\n")
 
-    sendData(&NetData{Request: NETDATA_CLIENTEXITED}, conn)
+    sendData(&NetData{Request: NetDataClientExited}, conn)
 
     err := conn.WriteMessage(websocket.CloseMessage,
       websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
@@ -112,7 +112,7 @@ func runClient(addr string, name string, isGUI bool) (err error) {
   go func() {
     defer recoverFunc()
 
-    sendData(&NetData{Request: NETDATA_NEWCONN,
+    sendData(&NetData{Request: NetDataNewConn,
                       ClientSettings: &ClientSettings{Name: name}}, conn)
 
     for {
