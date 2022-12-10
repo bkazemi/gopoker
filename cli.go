@@ -43,6 +43,7 @@ type CLI struct {
 
   playersTextViewMap  map[string]*tview.TextView
   curPlayerTextView  *tview.TextView
+  playerHeadTextView *tview.TextView
 
   settingsForm       *tview.Form
   settingsFlex       *tview.Flex
@@ -233,9 +234,10 @@ func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
 
     textView.SetTitle(player.Name)
     textViewSetLine(textView, 1, "current action: " + player.ActionToString())
-    textViewSetLine(textView, 2, "chip count: "     + player.ChipCountToString() + "\n")
+    textViewSetLine(textView, 2, "chip count: "     + player.ChipCountToString())
     if player.Hole != nil {
-      textViewSetLine(textView, 3, cli.cards2String(player.Hole.Cards))
+      textViewSetLine(textView, 3, "hand: " + player.Hand.RankName() + "\n")
+      textViewSetLine(textView, 4, cli.cards2String(player.Hole.Cards))
     }
 
     /*if player.Action.Action == NETDATA_BET {
@@ -821,6 +823,22 @@ func cliInputLoop(cli *CLI) {
       case NETDATA_PLAYERACTION:
         cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
         cli.updateInfoList("status", netData.Table)
+      case NETDATA_PLAYERHEAD:
+        if cli.playerHeadTextView != nil {
+          if cli.playerHeadTextView == cli.curPlayerTextView {
+            cli.playerHeadTextView.SetBorderColor(tcell.ColorRed)
+          } else {
+            cli.playerHeadTextView.SetBorderColor(tcell.ColorWhite)
+          }
+        }
+        if netData.ID == "" {
+          cli.app.Draw()
+          continue
+        }
+        if playerHeadTextView, ok := cli.playersTextViewMap[netData.ID]; ok {
+          playerHeadTextView.SetBorderColor(tcell.ColorOrange)
+          cli.playerHeadTextView = playerHeadTextView
+        }
       case NETDATA_PLAYERTURN:
         curPlayerTextView := cli.playersTextViewMap[netData.ID]
 
@@ -829,7 +847,11 @@ func cliInputLoop(cli *CLI) {
         }
 
         if cli.curPlayerTextView != nil {
-          cli.curPlayerTextView.SetBorderColor(tcell.ColorWhite)
+          if cli.curPlayerTextView == cli.playerHeadTextView {
+            cli.curPlayerTextView.SetBorderColor(tcell.ColorOrange)
+          } else {
+            cli.curPlayerTextView.SetBorderColor(tcell.ColorWhite)
+          }
         }
 
         cli.curPlayerTextView = curPlayerTextView
@@ -913,8 +935,8 @@ func cliInputLoop(cli *CLI) {
       default:
         cli.finish <- errors.New("bad response")
       }
-      cli.app.Draw()
 
+      cli.app.Draw()
     case err := <-cli.finish: // XXX
       if err != nil {
         cli.done = make(chan bool, 1)

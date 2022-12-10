@@ -283,8 +283,8 @@ func (list *playerList) RemovePlayer(player *Player) *PlayerNode {
 func (list *playerList) GetPlayerNode(player *Player) *PlayerNode {
   node := list.node
 
-  fmt.Printf("playerList.GetPlayerNode(): called for %s\n", player.Name)
-  list.ToNodeArray()
+  //fmt.Printf("playerList.GetPlayerNode(): called for %s\n", player.Name)
+  //list.ToNodeArray()
 
   for i := 0; i < list.len; i++ {
     if node.Player.Name == player.Name {
@@ -304,7 +304,7 @@ func (list *playerList) ToNodeArray() []*PlayerNode {
     node = node.next
   }
 
-  fmt.Printf("playerList.ToNodeArray(): ") ; list.Print()
+  //fmt.Printf("playerList.ToNodeArray(): ") ; list.Print()
 
   return nodes
 }
@@ -321,7 +321,7 @@ func (list *playerList) ToPlayerArray() []*Player {
     node = node.next
   }
 
-  fmt.Printf("playerList.ToPlayerArray(): ") ; list.Print()
+  //fmt.Printf("playerList.ToPlayerArray(): ") ; list.Print()
 
   return players
 }
@@ -776,6 +776,20 @@ func (table *Table) CommunityToString() string {
   }
 
   return comm
+}
+
+func (table *Table) InBettingState() bool {
+  if table.State == TABLESTATE_NOTSTARTED ||
+     table.State == TABLESTATE_DONEBETTING ||
+     table.State == TABLESTATE_ROUNDOVER ||
+     table.State == TABLESTATE_SHOWHANDS ||
+     table.State == TABLESTATE_SPLITPOT ||
+     table.State == TABLESTATE_NEWROUND ||
+     table.State == TABLESTATE_GAMEOVER {
+    return false
+  }
+
+  return true
 }
 
 func (table *Table) TableStateToString() string {
@@ -1587,8 +1601,10 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
         table.Bet = player.Action.Amount
         table.State = TABLESTATE_PLAYERRAISED
         table.better = player
-        fmt.Printf("setting curPlayers head to %s\n", table.curPlayer.Player.Name)
-        table.curPlayers.node = table.curPlayer // NOTE: the new better always becomes the head of the table
+        fmt.Printf("Table.PlayerAction(): setting curPlayers head to %s\n",
+                   table.curPlayer.Player.Name)
+        table.curPlayers.node = table.curPlayer // NOTE: the new better always
+                                                // becomes the head of the table
       }
     }
 

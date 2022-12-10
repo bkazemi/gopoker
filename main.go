@@ -238,7 +238,6 @@ type options struct {
         cli.go:
         - figure out why refocusing on a primitive increments the highlighted
           sub element
-        - add orange border to new betters
 */
 func main() {
   processName, err := os.Executable()
