@@ -157,7 +157,7 @@ type PlayerNode struct {
 type playerList struct {
   len int
   name string
-  node *PlayerNode // XXX don't think i need this to be a pointer. check back
+  head *PlayerNode // XXX don't think i need this to be a pointer. check back
 }
 
 func (list *playerList) Init(name string, players []*Player) error {
@@ -167,14 +167,14 @@ func (list *playerList) Init(name string, players []*Player) error {
 
   list.name = name
 
-  list.node = &PlayerNode{Player: players[0]}
-  head := list.node
+  list.head = &PlayerNode{Player: players[0]}
+  head := list.head
   for _, p := range players[1:] {
-    list.node.next = &PlayerNode{Player: p}
-    list.node = list.node.next
+    list.head.next = &PlayerNode{Player: p}
+    list.head = list.head.next
   }
-  list.node.next = head
-  list.node = head
+  list.head.next = head
+  list.head = head
   list.len = len(players)
 
   return nil
@@ -182,7 +182,7 @@ func (list *playerList) Init(name string, players []*Player) error {
 
 func (list *playerList) Print() {
   fmt.Printf("<%s> len==%v [ ", list.name, list.len)
-  for i, n := 0, list.node; i < list.len; i++ {
+  for i, n := 0, list.head; i < list.len; i++ {
     fmt.Printf("%s n=> %s ", n.Player.Name, n.next.Player.Name)
     n=n.next
     if i == list.len-1 {
@@ -199,8 +199,8 @@ func (list *playerList) Clone(newName string) playerList {
 
   if list.len == 1 {
     clonedList := playerList{name: newName,
-                             node: &PlayerNode{Player: list.node.Player}, len: 1}
-    clonedList.node.next = clonedList.node
+                             head: &PlayerNode{Player: list.head.Player}, len: 1}
+    clonedList.head.next = clonedList.head
 
     return clonedList
   }
@@ -213,12 +213,12 @@ func (list *playerList) Clone(newName string) playerList {
 
 func (list *playerList) AddPlayer(player *Player) {
   if list.len == 0 {
-    list.node = &PlayerNode{Player: player}
-    list.node.next = list.node
+    list.head = &PlayerNode{Player: player}
+    list.head.next = list.head
   } else {
-    newNode := &PlayerNode{Player: player, next: list.node}
+    newNode := &PlayerNode{Player: player, next: list.head}
 
-    node := list.node
+    node := list.head
     for i := 0; i < list.len - 1; i++ {
       node = node.next
     }
@@ -245,24 +245,24 @@ func (list *playerList) RemovePlayer(player *Player) *PlayerNode {
     fmt.Printf(" now ") ; list.Print()
   }()
 
-  node, prevNode := list.node, list.node
+  node, prevNode := list.head, list.head
   for i := 0; i < list.len; i++ {
     if node.Player.Name == player.Name {
       if i == 0 {
         if list.len == 1 {
-          list.node = nil
+          list.head = nil
           return nil
         }
 
-        list.node = list.node.next
+        list.head = list.head.next
 
-        tailNode := list.node
+        tailNode := list.head
         for j := 0; j < list.len-2; j++ {
           tailNode = tailNode.next
         }
-        tailNode.next = list.node
+        tailNode.next = list.head
 
-        return list.node
+        return list.head
       } else {
         prevNode.next = node.next
 
@@ -281,7 +281,7 @@ func (list *playerList) RemovePlayer(player *Player) *PlayerNode {
 }
 
 func (list *playerList) GetPlayerNode(player *Player) *PlayerNode {
-  node := list.node
+  node := list.head
 
   //fmt.Printf("playerList.GetPlayerNode(): called for %s\n", player.Name)
   //list.ToNodeArray()
@@ -296,10 +296,23 @@ func (list *playerList) GetPlayerNode(player *Player) *PlayerNode {
   return nil
 }
 
+func (list *playerList) SetHead(node *PlayerNode) {
+  if node == nil {
+    fmt.Printf("%s.SetHead(): setting parameter is nil")
+    if list.len != 0 {
+      fmt.Printf(" with a nonempty list\n")
+    } else {
+      fmt.Println()
+    }
+  }
+
+  list.head = node
+}
+
 func (list *playerList) ToNodeArray() []*PlayerNode {
   nodes := make([]*PlayerNode, 0)
 
-  for i, node := 0, list.node; i < list.len; i++ {
+  for i, node := 0, list.head; i < list.len; i++ {
     nodes = append(nodes, node)
     node = node.next
   }
@@ -316,7 +329,7 @@ func (list *playerList) ToPlayerArray() []*Player {
 
   players := make([]*Player, 0)
 
-  for i, node := 0, list.node; i < list.len; i++ {
+  for i, node := 0, list.head; i < list.len; i++ {
     players = append(players, node.Player)
     node = node.next
   }
@@ -636,6 +649,25 @@ func (sidePots *SidePots) Print() {
   }
 }
 
+const (
+  TableLockNone = iota
+  TableLockPlayers
+  TableLockSpectators
+  TableLockAll
+)
+type TableLock int
+
+var TableLockNameMap = map[TableLock]string{
+  TableLockNone:       "no lock",
+  TableLockPlayers:    "player lock",
+  TableLockSpectators: "spectator lock",
+  TableLockAll:        "player & spectator lock",
+}
+
+func TableLockToString(lock TableLock) string {
+  return TableLockNameMap[lock]
+}
+
 type Table struct {
   deck       *Deck // deck of cards
   Community  Cards // community cards
@@ -665,6 +697,7 @@ type Table struct {
   State        TableState // current status of table
   CommState    TableState // current status of community
   NumConnected uint       // number of people (players+spectators) currently at table (online mode)
+  Lock         TableLock  // table admin option that restricts new connections
 
   mtx sync.Mutex
 }
@@ -724,7 +757,7 @@ func (table *Table) reset(player *Player) {
       table.curPlayers.RemovePlayer(node.Player)
     } else {
       fmt.Printf("Table.reset(): skipped %s\n", node.Player.Name)
-      table.curPlayers.node = node
+      table.curPlayers.SetHead(node)
 
       player.NewCards()
       player.Action.Action, player.Action.Amount = NetDataFirstAction, 0
@@ -737,7 +770,7 @@ func (table *Table) reset(player *Player) {
     fmt.Printf("Table.reset(): curPlayers was empty, adding winner %s\n", player.Name)
     table.curPlayers.AddPlayer(player)
   } else {
-    table.curPlayer = table.curPlayers.node
+    table.curPlayer = table.curPlayers.head
   }
 
   // XXX
@@ -758,8 +791,9 @@ func (table *Table) reset(player *Player) {
   table.WinInfo = ""
 
   table.State = TableStateNotStarted
+  table.Lock = TableLockNone
 
-  table.Dealer = table.activePlayers.node
+  table.Dealer = table.activePlayers.head
 
   table.SmallBlind = nil
   table.BigBlind = nil
@@ -862,6 +896,10 @@ func (table *Table) SmallBlindToString() string {
   }
 
   return "none"
+}
+
+func (table *Table) TableLockToString() string {
+  return TableLockToString(table.Lock)
 }
 
 func (table *Table) PublicPlayerInfo(player Player) *Player {
@@ -1054,19 +1092,19 @@ func (table *Table) getEliminatedPlayers() []*Player {
 func (table *Table) reorderPlayers() {
   if table.State == TableStateNewRound ||
     table.State == TableStatePreFlop {
-    table.activePlayers.node = table.BigBlind.next
-    table.curPlayers.node = table.curPlayers.GetPlayerNode(table.BigBlind.next.Player)
-    assert(table.curPlayers.node != nil,
+    table.activePlayers.SetHead(table.BigBlind.next)
+    table.curPlayers.SetHead(table.curPlayers.GetPlayerNode(table.BigBlind.next.Player))
+    assert(table.curPlayers.head != nil,
            "Table.reorderPlayers(): couldn't find Bb+1 player node")
     fmt.Printf("Table.reorderPlayers(): curPlayers head now: %s\n",
-               table.curPlayers.node.Player.Name)
+               table.curPlayers.head.Player.Name)
   } else { // post-flop
     smallBlindNode := table.SmallBlind
     if smallBlindNode == nil { // smallblind left mid game
       if table.Dealer != nil {
         smallBlindNode = table.Dealer.next
       } else if table.BigBlind != nil {
-        smallBlindNode = table.activePlayers.node
+        smallBlindNode = table.activePlayers.head
         // definitely considering doubly linked lists now *sigh*
         for smallBlindNode.next.Player.Name != table.BigBlind.Player.Name {
           smallBlindNode = smallBlindNode.next
@@ -1094,11 +1132,11 @@ func (table *Table) reorderPlayers() {
       fmt.Printf("smallBlind (%s) not active, setting curPlayer to %s\n", table.SmallBlind.Player.Name,
                  smallBlindNode.Player.Name)
     }
-    table.curPlayers.node = smallBlindNode // small blind (or next active player)
-                                           // is always first better after pre-flop
+    table.curPlayers.SetHead(smallBlindNode) // small blind (or next active player)
+                                             // is always first better after pre-flop
   }
 
-  table.curPlayer = table.curPlayers.node
+  table.curPlayer = table.curPlayers.head
 }
 
 
@@ -1109,13 +1147,13 @@ func (table *Table) handleOrphanedSeats() {
   //       considering making lists doubly linked.
   if table.Dealer == nil && table.SmallBlind == nil && table.BigBlind == nil {
     fmt.Println("Table.handleOrphanedSeats(): D, Sb & Bb all nil, resetting to activePlayers head")
-    table.Dealer = table.activePlayers.node
+    table.Dealer = table.activePlayers.head
     table.SmallBlind = table.Dealer.next
     table.BigBlind = table.SmallBlind.next
   }
   if table.Dealer == nil && table.SmallBlind == nil && table.BigBlind != nil {
     var newDealerNode *PlayerNode
-    for i, n := 0, table.activePlayers.node; i < table.activePlayers.len; i++ {
+    for i, n := 0, table.activePlayers.head; i < table.activePlayers.len; i++ {
       if n.next.next.Player.Name == table.BigBlind.Player.Name {
         newDealerNode = n
         break
@@ -1133,7 +1171,7 @@ func (table *Table) handleOrphanedSeats() {
   }
   if table.Dealer == nil {
     var newDealerNode *PlayerNode
-    for i, n := 0, table.activePlayers.node; i < table.activePlayers.len; i++ {
+    for i, n := 0, table.activePlayers.head; i < table.activePlayers.len; i++ {
       if n.next.Player.Name == table.SmallBlind.Player.Name {
         newDealerNode = n
         break
@@ -1215,9 +1253,9 @@ func (table *Table) setNextPlayerTurn() {
       nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
       if nextNode != nil {
         fmt.Printf("Table.setNextPlayerTurn(): removing %s, curPlayers head is %s\n",
-                   thisPlayer.Player.Name, table.curPlayers.node.Player.Name)
+                   thisPlayer.Player.Name, table.curPlayers.head.Player.Name)
         table.curPlayer = nextNode
-        fmt.Printf("  now %s\n", table.curPlayers.node.Player.Name)
+        fmt.Printf("  now %s\n", table.curPlayers.head.Player.Name)
       }
     }
 
@@ -1242,9 +1280,9 @@ func (table *Table) setNextPlayerTurn() {
     nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
     if nextNode != nil {
       fmt.Printf("Table.setNextPlayerTurn(): removing %s, curPlayers head is %s\n",
-                 thisPlayer.Player.Name, table.curPlayers.node.Player.Name)
+                 thisPlayer.Player.Name, table.curPlayers.head.Player.Name)
       table.curPlayer = nextNode
-      fmt.Printf("  now %s\n", table.curPlayers.node.Player.Name)
+      fmt.Printf("  now %s\n", table.curPlayers.head.Player.Name)
     }
   } else {
     table.curPlayer = thisPlayer.next
@@ -1255,15 +1293,15 @@ func (table *Table) setNextPlayerTurn() {
     table.State = TableStateRoundOver // XXX
 
     return
-  } else if thisPlayer.next == table.curPlayers.node &&
-            table.curPlayers.node.Player.Action.Action != NetDataFirstAction &&
+  } else if thisPlayer.next == table.curPlayers.head &&
+            table.curPlayers.head.Player.Action.Action != NetDataFirstAction &&
             thisPlayer.Player.Action.Action != NetDataBet {
     // NOTE: curPlayers head gets shifted with allins / folds so we check for
     //       firstaction
     fmt.Printf("Table.setNextPlayerTurn(): last player (%s) didn't raise\n",
                thisPlayer.Player.Name)
     fmt.Printf(" curPlayers == %s curPlayers.next == %s\n",
-               table.curPlayers.node.Player.Name, table.curPlayer.next.Player.Name)
+               table.curPlayers.head.Player.Name, table.curPlayer.next.Player.Name)
 
     table.State = TableStateDoneBetting
   } else {;
@@ -1314,7 +1352,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
         // get players who already called the last bet,
         // sub the delta of the last bet and this players
         // chipcount in mainpot, then add them to the mainpot & sidepot.
-        for playerNode := table.curPlayers.node;
+        for playerNode := table.curPlayers.head;
             playerNode.Player.Name != player.Name;
             playerNode = playerNode.next {
           p := playerNode.Player
@@ -1352,7 +1390,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
             },
           }
           betDiff := table.MainPot.Bet - player.Action.Amount
-          printer.Printf("Table.PlayerAction(): handleSidePots(): <%s> changed mainpot " + 
+          printer.Printf("Table.PlayerAction(): handleSidePots(): <%s> changed mainpot " +
                          "bet from %v to %v betDiff %v\n",
                          player.Name, table.MainPot.Bet, player.Action.Amount, betDiff)
 
@@ -1494,7 +1532,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
           table.sidePots.BettingPot.Bet -= betDiff
           table.sidePots.BettingPot.Total -= betDiff * uint(len(table.sidePots.BettingPot.Players))
         default:
-          printer.Printf("Table.PlayerAction(): handleSidePots(): mpclosed: <%s> inserting " + 
+          printer.Printf("Table.PlayerAction(): handleSidePots(): mpclosed: <%s> inserting " +
                          "%v allin at idx %v\n",
                          player.Name, player.ChipCountToString(), idx)
           sidePot := &SidePot{
@@ -1605,8 +1643,8 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
         table.better = player
         fmt.Printf("Table.PlayerAction(): setting curPlayers head to %s\n",
                    table.curPlayer.Player.Name)
-        table.curPlayers.node = table.curPlayer // NOTE: the new better always
-                                                // becomes the head of the table
+        table.curPlayers.SetHead(table.curPlayer) // NOTE: the new better always
+                                                  // becomes the head of the table
       }
     }
 
@@ -1664,7 +1702,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     table.Bet = player.Action.Amount
 
     fmt.Printf("setting curPlayers head to %s\n", table.curPlayer.Player.Name)
-    table.curPlayers.node = table.curPlayer
+    table.curPlayers.SetHead(table.curPlayer)
     table.better = player
     table.State = TableStatePlayerRaised
   case NetDataCall:
@@ -1962,13 +2000,13 @@ func (table *Table) finishRound() {
   // special case for when everyone except a folded player
   // leaves the table
   if table.activePlayers.len == 1 &&
-     table.activePlayers.node.Player.Action.Action == NetDataFold {
+     table.activePlayers.head.Player.Action.Action == NetDataFold {
     fmt.Printf("Table.finishRound(): only one folded player (%s) left at table. " +
                "abandoning all pots\n",
-               table.activePlayers.node.Player.Name)
+               table.activePlayers.head.Player.Name)
 
     table.State = TableStateGameOver
-    table.Winners = []*Player{table.activePlayers.node.Player}
+    table.Winners = []*Player{table.activePlayers.head.Player}
 
     return
   }

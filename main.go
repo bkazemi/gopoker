@@ -234,10 +234,12 @@ type options struct {
   TODO: - check if bets always have to be a multiple of blind(s)?
         - wrap errors
         - NetData related stuff is inefficient
+        - add table password option
 
         cli.go:
         - figure out why refocusing on a primitive increments the highlighted
           sub element
+        - allow for 'k' (x1000) rune in bet field
 */
 func main() {
   processName, err := os.Executable()

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -239,18 +240,33 @@ func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
       textViewSetLine(textView, 3, "hand: " + player.Hand.RankName() + "\n")
       textViewSetLine(textView, 4, cli.cards2String(player.Hole.Cards))
     }
-
-    /*if player.Action.Action == NetDataBet {
-      textView.SetBorderColor(tcell.ColorOrange)
-    } else {
-      textView.SetBorderColor(tcell.ColorWhite)
-    }*/
   }
 }
 
 func (cli *CLI) clearPlayerScreens() {
   for _, textView := range cli.playersTextViewMap {
     textView.Clear()
+  }
+}
+
+func (cli *CLI) unmakeAdmin() {
+  if cli.isTableAdmin {
+    if startGameBtnIdx := cli.actionsForm.GetButtonIndex("start game");
+       startGameBtnIdx != -1 {
+      cli.actionsForm.RemoveButton(startGameBtnIdx)
+    }
+
+    if adminHeaderIdx := cli.settingsForm.GetFormItemIndex("admin options");
+       adminHeaderIdx != -1 {
+      cli.settingsForm.RemoveFormItem(adminHeaderIdx)
+    }
+
+    if tableLockDropDownIdx := cli.settingsForm.GetFormItemIndex("table lock");
+       tableLockDropDownIdx != -1 {
+      cli.settingsForm.RemoveFormItem(tableLockDropDownIdx)
+    }
+
+    cli.isTableAdmin = false // XXX
   }
 }
 
@@ -261,7 +277,7 @@ func (cli *CLI) updateChat(clientID string, msg string) {
 
   cli.chatTextView.SetText(cli.chatTextView.GetText(false) + msg)
 
-  if clientID != cli.yourID {
+  if clientID == "" || clientID != cli.yourID {
     cli.chatFlex.SetBorderColor(tcell.ColorGreen)
   }
 }
@@ -519,7 +535,7 @@ func (cli *CLI) Init() error {
       cli.switchToPage("game")
     })
   cli.settingsForm.SetFocus(0).SetBorder(true).SetTitle("Settings").
-    SetBlurFunc(func(){
+    SetBlurFunc(func() {
       cli.settingsForm.SetFocus(0)
     })
 
@@ -786,6 +802,9 @@ func cliInputLoop(cli *CLI) {
 
         cli.yourName = netData.PlayerData.Name
 
+        nameInputField := cli.settingsForm.GetFormItem(0).(*tview.InputField)
+        nameInputField.SetText(cli.yourName)
+
         if netData.ID != "" && netData.ID != cli.yourID {
           //postOut += fmt.Sprintf("YOURPLAYER: ID change '%s' =>", cli.yourID)
           cli.yourID = netData.ID
@@ -802,12 +821,37 @@ func cliInputLoop(cli *CLI) {
       case NetDataPlayerLeft:
         cli.removePlayer(netData.ID, netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)
-        cli.updateChat(netData.ID, fmt.Sprintf("<server-msg>: %s left the table",
+        cli.updateChat("", fmt.Sprintf("<server-msg>: %s left the table",
                                                netData.PlayerData.Name))
       case NetDataMakeAdmin:
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start game")
         })
+
+        tableLockKeys := make([]int, 0)
+        for k := range TableLockNameMap {
+          tableLockKeys = append(tableLockKeys, int(k))
+        }
+        sort.Ints(tableLockKeys)
+        tableLockOpts := make([]string, 0)
+        for _, lock := range tableLockKeys {
+          tableLockOpts = append(tableLockOpts, TableLockNameMap[TableLock(lock)])
+        }
+
+        cli.settingsForm.AddTextView("admin options", "", 0, 1, false, false).
+        AddDropDown("table lock", tableLockOpts, int(netData.Table.Lock),
+          func(opt string, optIdx int) {
+            lock := TableLock(optIdx)
+            if _, ok := TableLockNameMap[lock]; ok {
+              cli.settings.Admin.Lock = lock
+            }
+        })
+        cli.settingsForm.GetFormItemByLabel("admin options").
+           SetFormAttributes(0, tcell.ColorRed, tcell.ColorWhite,
+                             tcell.ColorWhite, tcell.ColorWhite)
+
+        cli.updateChat("", fmt.Sprintf("<server-msg>: you are now the table admin"))
+
         cli.isTableAdmin = true
       case NetDataDeal:
         cli.commView.Clear()
@@ -897,13 +941,7 @@ func cliInputLoop(cli *CLI) {
         cli.updateInfoList("all", netData.Table)
       case NetDataEliminated:
         if netData.ID == cli.yourID {
-          if cli.isTableAdmin {
-            if startGameBtnIdx := cli.actionsForm.GetButtonIndex("start game");
-               startGameBtnIdx != -1 {
-              cli.actionsForm.RemoveButton(startGameBtnIdx)
-            }
-            cli.isTableAdmin = false // XXX
-          }
+          cli.unmakeAdmin()
           cli.errorModal.SetText("you were eliminated")
           cli.playersTextViewMap[cli.yourID].SetTextAlign(tview.AlignCenter)
           cli.playersTextViewMap[cli.yourID].SetText("eliminated")
@@ -930,6 +968,8 @@ func cliInputLoop(cli *CLI) {
 
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
+      case NetDataTableLocked:
+        cli.finish <- errors.New(netData.Msg)
       case NetDataServerClosed:
         cli.finish <- errors.New("server closed")
       default:

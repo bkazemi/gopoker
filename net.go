@@ -24,6 +24,7 @@ const (
 
   NetDataServerClosed
 
+  NetDataTableLocked
   NetDataMakeAdmin
   NetDataStartGame
 
@@ -82,6 +83,7 @@ func netDataReqToString(netData *NetData) string {
   netDataReqStringMap := map[int]string{
     NetDataClose:          "NetDataClose",
     NetDataNewConn:        "NetDataNewConn",
+
     NetDataYourPlayer:     "NetDataYourPlayer",
     NetDataNewPlayer:      "NetDataNewPlayer",
     NetDataCurPlayers:     "NetDataCurPlayers",
@@ -92,8 +94,9 @@ func netDataReqToString(netData *NetData) string {
     NetDataClientSettings: "NetDataClientSettings",
     NetDataReset:          "NetDataReset",
 
-    NetDataMakeAdmin: "NetDataMakeAdmin",
-    NetDataStartGame: "NetDataStartGame",
+    NetDataTableLocked: "NetDataTableLocked",
+    NetDataMakeAdmin:   "NetDataMakeAdmin",
+    NetDataStartGame:   "NetDataStartGame",
 
     NetDataChatMsg: "NetDataChatMsg",
 
@@ -106,6 +109,7 @@ func netDataReqToString(netData *NetData) string {
     NetDataCheck:        "NetDataCheck",
     NetDataRaise:        "NetDataRaise",
     NetDataFold:         "NetDataFold",
+
     NetDataCurHand:      "NetDataCurHand",
     NetDataShowHand:     "NetDataShowHand",
 
@@ -157,12 +161,12 @@ func sendData(data *NetData, conn *websocket.Conn) {
     data.Table.BigBlind   = data.Table.PublicPlayerInfo(*data.Table.BigBlind)
   }*/
 
-  //fmt.Printf("sending %p to %p...\n", data, conn)
-
   var gobBuf bytes.Buffer
   enc := gob.NewEncoder(&gobBuf)
 
   enc.Encode(data)
+
+  //fmt.Fprintf(os.Stderr, "sendData(): send %s (%v bytes) to %p\n", netDataReqToString(data), len(gobBuf.Bytes()), conn)
 
   conn.WriteMessage(websocket.BinaryMessage, gobBuf.Bytes())
 }
