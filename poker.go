@@ -298,7 +298,7 @@ func (list *playerList) GetPlayerNode(player *Player) *PlayerNode {
 
 func (list *playerList) SetHead(node *PlayerNode) {
   if node == nil {
-    fmt.Printf("%s.SetHead(): setting parameter is nil")
+    fmt.Printf("%s.SetHead(): setting parameter is nil\n", list.name)
     if list.len != 0 {
       fmt.Printf(" with a nonempty list\n")
     } else {
@@ -697,7 +697,9 @@ type Table struct {
   State        TableState // current status of table
   CommState    TableState // current status of community
   NumConnected uint       // number of people (players+spectators) currently at table (online mode)
+
   Lock         TableLock  // table admin option that restricts new connections
+  Password     string     // table password (optional)
 
   mtx sync.Mutex
 }
@@ -792,6 +794,7 @@ func (table *Table) reset(player *Player) {
 
   table.State = TableStateNotStarted
   table.Lock = TableLockNone
+  table.Password = ""
 
   table.Dealer = table.activePlayers.head
 

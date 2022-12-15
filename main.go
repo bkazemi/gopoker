@@ -24,19 +24,19 @@ type FrontEnd interface {
   Error() chan error
 }
 
-func runClient(addr string, name string, isGUI bool) (err error) {
-  if !strings.HasPrefix(addr, "ws://") {
-    if strings.HasPrefix(addr, "http://") {
-      addr = addr[7:]
-    } else if strings.HasPrefix(addr, "https://") {
-      addr = addr[8:]
+func runClient(opts options) (err error) {
+  if !strings.HasPrefix(opts.addr, "ws://") {
+    if strings.HasPrefix(opts.addr, "http://") {
+      opts.addr = opts.addr[7:]
+    } else if strings.HasPrefix(opts.addr, "https://") {
+     opts.addr = opts.addr[8:]
     }
 
-    addr = "ws://" + addr
+    opts.addr = "ws://" + opts.addr
   }
 
-  fmt.Fprintf(os.Stderr, "connecting to %s ...\n", addr)
-  conn, _, err := websocket.DefaultDialer.Dial(addr, nil)
+  fmt.Fprintf(os.Stderr, "connecting to %s ...\n", opts.addr)
+  conn, _, err := websocket.DefaultDialer.Dial(opts.addr, nil)
   if err != nil {
     return err
   }
@@ -46,7 +46,7 @@ func runClient(addr string, name string, isGUI bool) (err error) {
 
     client := &http.Client{}
 
-    req, err := http.NewRequest("GET", "http://"+addr[5:], nil)
+    req, err := http.NewRequest("GET", "http://"+opts.addr[5:], nil)
     if err != nil {
       fmt.Fprintf(os.Stderr, "problem setting up keepalive request %s\n",
                   err.Error())
@@ -88,7 +88,7 @@ func runClient(addr string, name string, isGUI bool) (err error) {
   }()
 
   var frontEnd FrontEnd
-  if isGUI {
+  if opts.GUI {
     //frontEnd := runGUI()
   } else { // CLI mode
     frontEnd = &CLI{}
@@ -107,13 +107,15 @@ func runClient(addr string, name string, isGUI bool) (err error) {
     }
   }
 
-  fmt.Fprintf(os.Stderr, "connected to %s\n", addr)
+  fmt.Fprintf(os.Stderr, "connected to %s\n", opts.addr)
 
   go func() {
     defer recoverFunc()
 
-    sendData(&NetData{Request: NetDataNewConn,
-                      ClientSettings: &ClientSettings{Name: name}}, conn)
+    sendData(&NetData{
+      Request:        NetDataNewConn,
+      ClientSettings: &ClientSettings{Name: opts.name, Password: opts.pass},
+    }, conn)
 
     for {
       _, data, err := conn.ReadMessage()
@@ -165,8 +167,8 @@ func runClient(addr string, name string, isGUI bool) (err error) {
   return nil
 }
 
-func runGame(opts *options) (err error) {
-  if opts.serverMode != "" {
+func runGame(opts options) (err error) {
+  if opts.serverPort != "" {
     deck := &Deck{}
     if err := deck.Init(); err != nil {
       return err
@@ -181,7 +183,7 @@ func runGame(opts *options) (err error) {
     deck.Shuffle()
 
     server := &Server{}
-    if err := server.Init(table, "0.0.0.0:"+opts.serverMode); err != nil {
+    if err := server.Init(table, "0.0.0.0:" + opts.serverPort); err != nil {
       return err
     }
 
@@ -198,8 +200,8 @@ func runGame(opts *options) (err error) {
       table.PrintSortedCommunity()
       //table.BestHand()
     }
-  } else if opts.connect != "" { // client mode
-    if err := runClient(opts.connect, opts.name, opts.gui); err != nil {
+  } else if opts.addr != "" { // client mode
+    if err := runClient(opts); err != nil {
       return err
     }
   } else { // offline game
@@ -223,10 +225,11 @@ func init() {
 }
 
 type options struct {
-  serverMode string
-  connect    string
+  serverPort string
+  addr       string
   name       string
-  gui        bool
+  pass       string
+  GUI        bool
   numSeats   uint
 }
 
@@ -234,7 +237,6 @@ type options struct {
   TODO: - check if bets always have to be a multiple of blind(s)?
         - wrap errors
         - NetData related stuff is inefficient
-        - add table password option
 
         cli.go:
         - figure out why refocusing on a primitive increments the highlighted
@@ -249,33 +251,20 @@ func main() {
 
   usage := "usage: " + processName + " [options]"
 
-  var (
-    serverMode string
-    connect    string
-    name       string
-    gui        bool
-    numSeats   uint
-  )
-
   flag.Usage = func() {
     fmt.Println(usage)
     flag.PrintDefaults()
   }
 
-  flag.StringVar(&serverMode, "s", "", "host a poker table on <port>")
-  flag.StringVar(&connect, "c", "", "connect to a gopoker table")
-  flag.StringVar(&name, "n", "", "name you wish to be identified by while connected")
-  flag.BoolVar(&gui, "g", false, "run with a GUI")
-  flag.UintVar(&numSeats, "ns", 7, "max number of players allowed at the table")
-  flag.Parse()
+  opts := options{}
 
-  opts := &options{
-    serverMode: serverMode,
-    connect:    connect,
-    name:       name,
-    gui:        gui,
-    numSeats:   numSeats,
-  }
+  flag.StringVar(&opts.serverPort, "s", "", "host a poker table on <port>")
+  flag.StringVar(&opts.addr, "c", "", "connect to a gopoker table")
+  flag.StringVar(&opts.name, "n", "", "name you wish to be identified by while connected")
+  flag.StringVar(&opts.pass, "pass", "", "login password (as client)")
+  flag.BoolVar(&opts.GUI, "g", false, "run with a GUI")
+  flag.UintVar(&opts.numSeats, "ns", 7, "max number of players allowed at the table")
+  flag.Parse()
 
   /*go func() {
     fmt.Println("TMP: adding pprof server")

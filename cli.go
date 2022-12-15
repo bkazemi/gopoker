@@ -266,6 +266,11 @@ func (cli *CLI) unmakeAdmin() {
       cli.settingsForm.RemoveFormItem(tableLockDropDownIdx)
     }
 
+    if passwordIdx := cli.settingsForm.GetFormItemIndex("table password");
+       passwordIdx != -1 {
+      cli.settingsForm.RemoveFormItem(passwordIdx)
+    }
+
     cli.isTableAdmin = false // XXX
   }
 }
@@ -432,7 +437,6 @@ func (cli *CLI) Init() error {
         panic("bad bet val: " + n)
       }
 
-      cli.betInputField.SetText("")
       cli.actionsForm.SetFocus(cli.actionsForm.GetButtonIndex("raise"))
       cli.app.SetFocus(cli.actionsForm)
     })
@@ -533,11 +537,11 @@ func (cli *CLI) Init() error {
     }).
     AddButton("cancel", func() {
       cli.switchToPage("game")
-    })
+  })
   cli.settingsForm.SetFocus(0).SetBorder(true).SetTitle("Settings").
     SetBlurFunc(func() {
       cli.settingsForm.SetFocus(0)
-    })
+  })
 
   cli.settingsFlex = tview.NewFlex().
     AddItem(nil, 0, 1, false).
@@ -566,7 +570,7 @@ func (cli *CLI) Init() error {
       }
 
       return eventKey
-    })
+  })
 
   cli.yourInfoFlex = tview.NewFlex().SetDirection(tview.FlexRow)
 
@@ -669,7 +673,7 @@ func (cli *CLI) Init() error {
       }
 
       return eventKey
-    })
+  })
 
   cli.exitModal.SetText("do you want to quit the game?").
     AddButtons([]string{"quit", "cancel"}).
@@ -680,7 +684,7 @@ func (cli *CLI) Init() error {
       case "cancel":
         cli.switchToPage("game")
       }
-    })
+  })
 
   cli.errorModal.
     AddButtons([]string{"close"}).
@@ -690,7 +694,7 @@ func (cli *CLI) Init() error {
         cli.switchToPage("game")
         cli.errorModal.SetText("")
       }
-    })
+  })
 
   cli.focusList = &CLIFocusList{
     prev: &CLIFocusList{ prim: cli.tableInfoList },
@@ -822,7 +826,7 @@ func cliInputLoop(cli *CLI) {
         cli.removePlayer(netData.ID, netData.PlayerData)
         cli.updateInfoList("# players", netData.Table)
         cli.updateChat("", fmt.Sprintf("<server-msg>: %s left the table",
-                                               netData.PlayerData.Name))
+                                       netData.PlayerData.Name))
       case NetDataMakeAdmin:
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start game")
@@ -845,7 +849,12 @@ func cliInputLoop(cli *CLI) {
             if _, ok := TableLockNameMap[lock]; ok {
               cli.settings.Admin.Lock = lock
             }
+        }).
+        AddInputField("table password", netData.Table.Password, 0, nil,
+          func(pass string) {
+            cli.settings.Admin.Password = pass
         })
+
         cli.settingsForm.GetFormItemByLabel("admin options").
            SetFormAttributes(0, tcell.ColorRed, tcell.ColorWhite,
                              tcell.ColorWhite, tcell.ColorWhite)
@@ -968,7 +977,7 @@ func cliInputLoop(cli *CLI) {
 
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
-      case NetDataTableLocked:
+      case NetDataTableLocked, NetDataBadAuth:
         cli.finish <- errors.New(netData.Msg)
       case NetDataServerClosed:
         cli.finish <- errors.New("server closed")

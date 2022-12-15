@@ -293,8 +293,8 @@ func (server *Server) sendPlayerHead(conn *websocket.Conn, clear bool) {
     playerHead := playerHeadNode.Player
     id, ok := server.clientIDMap[server.getPlayerConn(playerHead)]
     if !ok {
-      panic(fmt.Sprintf("Server.sendPlayerTurnToAll(): BUG: playerHead <%s> not found in playerMap\n",
-                        playerHead.Name))
+      panic(fmt.Sprintf("Server.sendPlayerTurnToAll(): BUG: playerHead <%s> " +
+                        "not found in playerMap\n", playerHead.Name))
     }
 
     netData := &NetData {
@@ -372,6 +372,24 @@ func (server *Server) sendCurHands() {
   }
 }
 
+func (server *Server) sendActivePlayers(conn *websocket.Conn) {
+  if conn == nil {
+    fmt.Println("Server.sendCurPlayers(): conn is nil")
+    return
+  }
+
+  netData := &NetData{
+    Response: NetDataCurPlayers,
+    Table:    server.table,
+  }
+
+  for _, player := range server.table.activePlayers.ToPlayerArray() {
+    netData.ID = server.clientIDMap[server.getPlayerConn(player)]
+    netData.PlayerData = server.table.PublicPlayerInfo(*player)
+    sendData(netData, conn)
+  }
+}
+
 func (server *Server) sendAllPlayerInfo(conn *websocket.Conn, curPlayers bool) {
   netData := &NetData{Response: NetDataUpdatePlayer}
 
@@ -431,12 +449,23 @@ func (server *Server) removeEliminatedPlayers() {
 }
 
 func (server *Server) sendLock(conn *websocket.Conn) {
-  fmt.Printf("Server.WSCLIClient(): locked out %p with %s\n", conn,
+  fmt.Printf("Server.sendLock(): locked out %p with %s\n", conn,
              server.table.TableLockToString())
 
   sendData(&NetData{
     Response: NetDataTableLocked,
     Msg: fmt.Sprintf("table lock: %s", server.table.TableLockToString()),
+  }, conn)
+
+  time.Sleep(1 * time.Second)
+}
+
+func (server *Server) sendBadAuth(conn *websocket.Conn) {
+  fmt.Printf("Server.sendBadAuth(): %p had bad authentication\n", conn)
+
+  sendData(&NetData{
+    Response: NetDataBadAuth,
+    Msg: "your password was incorrect",
   }, conn)
 
   time.Sleep(1 * time.Second)
@@ -649,16 +678,23 @@ func (server *Server) serverError(err error) {
 }
 
 type ClientSettings struct {
-  Name string
+  Name     string
+  Password string
 
   Admin struct {
-    Lock TableLock
+    Lock     TableLock
+    Password string
   }
 }
 
 func (server *Server) handleClientSettings(conn *websocket.Conn, settings *ClientSettings) (string, error) {
   msg := ""
   errs := ""
+
+  const (
+    MaxNameLen uint8 = 15
+    MaxPassLen uint8 = 50
+  )
 
   if conn == nil || settings == nil {
     fmt.Println("Server.handleClientSettings(): called with a nil parameter")
@@ -668,11 +704,11 @@ func (server *Server) handleClientSettings(conn *websocket.Conn, settings *Clien
 
   settings.Name = strings.TrimSpace(settings.Name)
   if settings.Name != "" {
-    if len(settings.Name) > 15 {
+    if len(settings.Name) > int(MaxNameLen) {
       fmt.Printf("Server.handleClientSettings(): %p requested a name that was longer " +
-                 "than 15 characters. using a default name\n", conn)
-      msg += "You've requested a name that was longer than 15 characters. " +
-              "Using a default name.\n\n"
+                 "than %v characters. using a default name\n", conn, MaxNameLen)
+      msg += fmt.Sprintf("You've requested a name that was longer than %v characters. " +
+              "Using a default name.\n\n", MaxNameLen)
       settings.Name = ""
     } else {
       if player := server.playerMap[conn]; player != nil {
@@ -706,6 +742,7 @@ func (server *Server) handleClientSettings(conn *websocket.Conn, settings *Clien
   }
   if conn == server.tableAdmin {
     msg += "admin settings:\n\n"
+
     lock := TableLockToString(settings.Admin.Lock)
     if lock == "" {
       fmt.Printf("Server.handleClientSettings(): %p requested invalid table lock '%v'\n",
@@ -716,6 +753,21 @@ func (server *Server) handleClientSettings(conn *websocket.Conn, settings *Clien
       msg += "table lock: unchanged\n"
     } else {
       msg += "table lock: changed\n"
+    }
+
+    if settings.Admin.Password != server.table.Password {
+      msg += "table password: "
+      if settings.Admin.Password == "" {
+        msg += "removed\n"
+      } else if len(settings.Admin.Password) > int(MaxPassLen) {
+        return "", errors.New(fmt.Sprintf("Your password is too long. Please choose a " +
+                                          "password that is less than %v characters.", MaxPassLen))
+      } else {
+        msg += "changed\n"
+      }
+    } else {
+      fmt.Println("Server.handleClientSettings(): table password unchanged")
+      msg += "table password: unchanged\n"
     }
   }
 
@@ -736,6 +788,7 @@ func (server *Server) applyClientSettings(conn *websocket.Conn, settings *Client
     if conn == server.tableAdmin {
       server.table.mtx.Lock()
       server.table.Lock = settings.Admin.Lock
+      server.table.Password = settings.Admin.Password
       server.table.mtx.Unlock()
     }
   }
@@ -839,6 +892,14 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
         return
       }
+
+      if server.table.Password != "" &&
+         netData.ClientSettings.Password != server.table.Password {
+        server.sendBadAuth(conn)
+
+        return
+      }
+
       server.clients = append(server.clients, conn)
 
       server.table.mtx.Lock()
@@ -849,17 +910,11 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
       // server.send current player info to this client
       if server.table.NumConnected > 1 {
-        netData.Response = NetDataCurPlayers
-        netData.Table = server.table
-
-        for _, player := range server.table.activePlayers.ToPlayerArray() {
-          netData.ID = server.clientIDMap[server.getPlayerConn(player)]
-          netData.PlayerData = server.table.PublicPlayerInfo(*player)
-          sendData(&netData, conn)
-        }
+        server.sendActivePlayers(conn)
       }
 
-      if _, err := server.handleClientSettings(conn, netData.ClientSettings); err != nil {
+      if _, err := server.handleClientSettings(conn, netData.ClientSettings);
+            err != nil {
         sendData(&NetData{Response: NetDataBadRequest, Msg: err.Error()}, conn)
       }
 
@@ -1027,7 +1082,8 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           continue
         }
 
-        if err := server.table.PlayerAction(player, netData.PlayerData.Action); err != nil {
+        if err := server.table.PlayerAction(player, netData.PlayerData.Action);
+           err != nil {
           netData.Response = NetDataBadRequest
           netData.Table = nil
           netData.Msg = err.Error()

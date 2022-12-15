@@ -25,6 +25,7 @@ const (
   NetDataServerClosed
 
   NetDataTableLocked
+  NetDataBadAuth
   NetDataMakeAdmin
   NetDataStartGame
 
@@ -95,6 +96,7 @@ func netDataReqToString(netData *NetData) string {
     NetDataReset:          "NetDataReset",
 
     NetDataTableLocked: "NetDataTableLocked",
+    NetDataBadAuth:     "NetDataBadAuth",
     NetDataMakeAdmin:   "NetDataMakeAdmin",
     NetDataStartGame:   "NetDataStartGame",
 
