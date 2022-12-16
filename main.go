@@ -230,7 +230,7 @@ type options struct {
   name       string
   pass       string
   GUI        bool
-  numSeats   uint
+  numSeats   uint8
 }
 
 /*
@@ -256,6 +256,10 @@ func main() {
     flag.PrintDefaults()
   }
 
+  var (
+    numSeats uint = 0
+  )
+
   opts := options{}
 
   flag.StringVar(&opts.serverPort, "s", "", "host a poker table on <port>")
@@ -263,8 +267,15 @@ func main() {
   flag.StringVar(&opts.name, "n", "", "name you wish to be identified by while connected")
   flag.StringVar(&opts.pass, "pass", "", "login password (as client)")
   flag.BoolVar(&opts.GUI, "g", false, "run with a GUI")
-  flag.UintVar(&opts.numSeats, "ns", 7, "max number of players allowed at the table")
+  flag.UintVar(&numSeats, "ns", 7, "max number of players allowed at the table")
   flag.Parse()
+
+  if numSeats > uint(^uint8(0)) {
+    fmt.Printf("main(): numSeats %v is too large\n", numSeats)
+    return
+  }
+
+  opts.numSeats = uint8(numSeats)
 
   /*go func() {
     fmt.Println("TMP: adding pprof server")

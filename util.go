@@ -14,7 +14,7 @@ func assert(cond bool, msg string) {
   }
 }
 
-func absUint(x, y uint) uint {
+func absUInt64(x, y uint64) uint64 {
   if x > y {
     return x - y
   }
@@ -22,7 +22,15 @@ func absUint(x, y uint) uint {
   return y - x
 }
 
-func minUInt(x, y uint) uint {
+func absChips(x, y Chips) Chips {
+  if x > y {
+    return x - y
+  }
+
+  return y - x
+}
+
+func minUInt64(x, y uint64) uint64 {
   if x < y {
     return x
   }
@@ -30,8 +38,24 @@ func minUInt(x, y uint) uint {
   return y
 }
 
-func maxUInt(x, y uint) uint {
-  if x > y {
+func minChips(x, y Chips) Chips {
+  if x < y {
+    return x
+  }
+
+  return y
+}
+
+func maxUInt64(x, y uint64) uint64 {
+  if (x > y) {
+    return x
+  }
+
+  return y
+}
+
+func maxChips(x, y Chips) Chips {
+  if (x > y) {
     return x
   }
 

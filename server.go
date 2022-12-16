@@ -23,6 +23,8 @@ type Server struct {
   table *Table
   tableAdmin *websocket.Conn
 
+  MaxConnBytes int64
+
   http *http.Server
   upgrader websocket.Upgrader
 
@@ -32,20 +34,32 @@ type Server struct {
 }
 
 func (server *Server) Init(table *Table, addr string) error {
+  const (
+    MaxConnBytes = 10e3
+    IdleTimeout = 0
+    ReadTimeout = 0
+  )
+
   server.clients = make([]*websocket.Conn, 0)
   server.clientIDMap = make(map[*websocket.Conn]string)
   server.playerMap = make(map[*websocket.Conn]*Player)
   server.table = table
 
+  server.MaxConnBytes = MaxConnBytes
+
   server.errChan = make(chan error)
   server.panicked = false
 
-  server.upgrader = websocket.Upgrader{}
+  server.upgrader = websocket.Upgrader{
+    EnableCompression: true,
+    ReadBufferSize: 4096,
+    WriteBufferSize: 4096,
+  }
 
   server.http = &http.Server{
     Addr:        addr,
-    IdleTimeout: 0,
-    ReadTimeout: 0,
+    IdleTimeout: IdleTimeout,
+    ReadTimeout: ReadTimeout,
   }
   server.http.SetKeepAlivesEnabled(true)
   http.HandleFunc("/cli", server.WSCLIClient)
@@ -806,6 +820,8 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
     return
   }
 
+  conn.SetReadLimit(server.MaxConnBytes)
+
   cleanExit := false
   defer func() {
     if server.panicked { // server panic was already recovered in previous client handler
@@ -885,6 +901,12 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
     fmt.Printf("Server.WSCLIClient(): recv %s (%d bytes) from %p\n",
                netDataReqToString(&netData), len(rawData), conn)
+
+    if int64(len(rawData)) > server.MaxConnBytes {
+      fmt.Printf("Server.WSCLIClient(): conn: %p sent too many bytes (> %v)\n",
+                 conn, server.MaxConnBytes)
+      return
+    }
 
     if netData.Request == NetDataNewConn {
       if server.table.Lock == TableLockAll {

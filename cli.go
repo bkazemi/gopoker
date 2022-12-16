@@ -31,7 +31,7 @@ type CLI struct {
   yourName           string
   yourID             string
 
-  bet                uint
+  bet                Chips
   betAddedCommas     bool // XXX tmp
 
   commView,
@@ -136,7 +136,7 @@ func (cli *CLI) handleButton(btn string) {
     cli.outputChan <- &NetData{
       Request: req,
       PlayerData: &Player{
-        Action: Action{ Action: req, Amount: cli.bet, },
+        Action: Action{ Action: uint8(req), Amount: cli.bet, },
       }, // XXX action x3!
       Msg: msg,
       ClientSettings: cli.settings,
@@ -152,7 +152,7 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
     fallthrough
   case "# connected":
     cli.tableInfoList.SetItemText(2, "# connected",
-      strconv.FormatUint(uint64(table.NumConnected), 10))
+      strconv.FormatUint(table.NumConnected, 10))
   case "# players":
     cli.tableInfoList.SetItemText(0, "# players",
       strconv.FormatUint(uint64(table.NumPlayers), 10))
@@ -306,7 +306,8 @@ func textViewSetLine(textView *tview.TextView, lineNum int, txt string) {
     return // no update
   } else {
     if lineCnt > 1 {
-      for i, _ := range tv[lineNum:minUInt(uint(lineNum+lineCnt-1), uint(len(tv)))] {
+      for i, _ := range tv[lineNum:minUInt64(uint64(lineNum+lineCnt-1),
+                           uint64(len(tv)))] {
         tv[i] = ""
       }
     }
@@ -410,7 +411,7 @@ func (cli *CLI) Init() error {
       if err != nil {
         cli.bet = 0
       } else {
-        cli.bet = uint(n) // XXX
+        cli.bet = Chips(n) // XXX
       }
 
       if !cli.betAddedCommas {

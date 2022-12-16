@@ -17,8 +17,9 @@ import (
 )
 
 // ranks
+type Rank int8
 const (
-  RankMuck = iota - 1
+  RankMuck  Rank = iota - 1
   RankHighCard
   RankPair
   RankTwoPair
@@ -50,27 +51,29 @@ const (
 )
 
 // suits
+type Suit uint8
 const (
-  SuitClub = iota
+  SuitClub Suit = iota
   SuitDiamond
   SuitHeart
   SuitSpade
 )
 
+type CardVal uint8
 type Card struct {
   Name     string
   FullName string
-  Suit     int
-  NumValue int // numeric value of card
+  Suit     Suit
+  NumValue CardVal // numeric value of card
 }
 
 type Cards []*Card
 
 type Hole struct {
   IsSuited         bool
-  Suit             int
   IsPair           bool
-  CombinedNumValue int
+  Suit             Suit
+  CombinedNumValue uint16
   Cards            Cards
 }
 
@@ -84,17 +87,17 @@ func (hole *Hole) FillHoleInfo() {
     hole.Suit = hole.Cards[0].Suit
   }
 
-  hole.CombinedNumValue = hole.Cards[0].NumValue + hole.Cards[1].NumValue
+  hole.CombinedNumValue = uint16(hole.Cards[0].NumValue + hole.Cards[1].NumValue)
 }
 
 type Hand struct {
-  Rank   int
-  Kicker int
+  Rank   Rank
+  Kicker uint8
   Cards  Cards
 }
 
 func (hand *Hand) RankName() string {
-  rankNameMap := map[int]string{
+  rankNameMap := map[Rank]string{
     RankMuck:          "muck",
     RankHighCard:      "high card",
     RankPair:          "pair",
@@ -115,18 +118,19 @@ func (hand *Hand) RankName() string {
 }
 
 type Action struct {
-  Action int
-  Amount uint
+  Action uint8
+  Amount Chips
 }
 
+type Chips uint64
 type Player struct {
   defaultName string
-  Name  string // NOTE: must have unique names
-  IsCPU bool
+  Name        string // NOTE: must have unique names
+  IsCPU       bool
 
   IsVacant bool
 
-  ChipCount uint
+  ChipCount Chips
   Hole      *Hole
   Hand      *Hand
   PreHand   Hand // XXX tmp
@@ -413,7 +417,7 @@ func (deck *Deck) Init() error {
 
   for suit := SuitClub; suit <= SuitSpade; suit++ {
     for c_num := CardTwo; c_num <= CardAce; c_num++ {
-      curCard := &Card{Suit: suit, NumValue: c_num}
+      curCard := &Card{Suit: suit, NumValue: CardVal(c_num)}
       if err := cardNumToString(curCard); err != nil {
         return err
       }
@@ -469,8 +473,8 @@ const (
 )
 
 type Pot struct {
-  Bet      uint
-  Total    uint
+  Bet      Chips
+  Total    Chips
   Players  map[string]*Player
   IsClosed bool
   WinInfo  string
@@ -611,7 +615,7 @@ func (sidePots *SidePots) Clear() {
   sidePots.BettingPot = nil
 }
 
-func (sidePots *SidePots) CalculateTotals(mainPotBet uint) {
+func (sidePots *SidePots) CalculateTotals(mainPotBet Chips) {
   allInCount := mainPotBet
   for _, sidePot := range sidePots.AllInPots.Pots {
     betDiff := sidePot.Bet
@@ -620,7 +624,7 @@ func (sidePots *SidePots) CalculateTotals(mainPotBet uint) {
     } else {
       allInCount = sidePot.Bet
     }
-    sidePot.Total = betDiff * uint(len(sidePot.Players))
+    sidePot.Total = betDiff * Chips(len(sidePot.Players))
     printer.Printf("sidePots.CalculateTotals(): %v allin pot total set to %v\n",
                    sidePot.Bet, sidePot.Total)
     allInCount += sidePot.Bet
@@ -675,8 +679,8 @@ type Table struct {
 
   MainPot  *Pot     // table pot
   sidePots SidePots // sidepots for allins
-  Ante     uint     // current ante TODO allow both ante & blind modes
-  Bet      uint     // current bet
+  Ante     Chips    // current ante TODO allow both ante & blind modes
+  Bet      Chips    // current bet
 
   Dealer     *PlayerNode // current dealer
   SmallBlind *PlayerNode // current small blind
@@ -688,15 +692,15 @@ type Table struct {
   Winners       []*Player   // array of round winners
   curPlayer     *PlayerNode // keeps track of whose turn it is
   better        *Player     // last player to (re-)raise XXX currently unused
-  NumPlayers    uint        // number of current players
-  NumSeats      uint        // number of total possible players
-  roundCount    uint        // total number of rounds played
+  NumPlayers    uint8       // number of current players
+  NumSeats      uint8       // number of total possible players
+  roundCount    uint64      // total number of rounds played
 
   WinInfo string // XXX tmp
 
   State        TableState // current status of table
   CommState    TableState // current status of community
-  NumConnected uint       // number of people (players+spectators) currently at table (online mode)
+  NumConnected uint64     // number of people (players+spectators) currently at table (online mode)
 
   Lock         TableLock  // table admin option that restricts new connections
   Password     string     // table password (optional)
@@ -724,7 +728,7 @@ func (table *Table) Init(deck *Deck, CPUPlayers []bool) error {
     return errors.New("need at least two players")
   }
 
-  for i := uint(0); i < table.NumSeats; i++ {
+  for i := uint8(0); i < table.NumSeats; i++ {
     player := &Player{}
     if err := player.Init(fmt.Sprintf("p%d", i), CPUPlayers[i]); err != nil {
       return err
@@ -950,14 +954,14 @@ func (table *Table) closeSidePots() {
   table.sidePots.AllInPots.CloseAll()
 }
 
-func (table *Table) getChipLeaders(includeAllIns bool) (uint, uint) {
+func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
   if table.curPlayers.len < 2 {
     panic("BUG: Table.getChipLeaders() called with < 2 non-folded/allin players")
   }
 
   var (
-    chipLeader       uint
-    secondChipLeader uint
+    chipLeader       Chips
+    secondChipLeader Chips
   )
 
   var players []*Player
@@ -968,7 +972,7 @@ func (table *Table) getChipLeaders(includeAllIns bool) (uint, uint) {
   }
 
   for _, p := range players {
-    blindRequiredBet := uint(0)
+    blindRequiredBet := Chips(0)
     if p.Action.Amount == table.Ante || p.Action.Amount == table.Ante/2 {
       blindRequiredBet = p.Action.Amount
     }
@@ -978,7 +982,7 @@ func (table *Table) getChipLeaders(includeAllIns bool) (uint, uint) {
   }
 
   for _, p := range players {
-    blindRequiredBet := uint(0)
+    blindRequiredBet := Chips(0)
     if p.Action.Amount == table.Ante || p.Action.Amount == table.Ante/2 {
       blindRequiredBet = p.Action.Amount
     }
@@ -1049,7 +1053,7 @@ func (table *Table) getActiveSeats() []*Player {
   return seats
 }
 
-func (table *Table) GetNumOpenSeats() uint {
+func (table *Table) GetNumOpenSeats() uint8 {
   return table.NumSeats - table.NumPlayers
 }
 
@@ -1074,7 +1078,7 @@ func (table *Table) getEliminatedPlayers() []*Player {
     }
   }
 
-  if uint(len(ret)) == table.NumPlayers-1 {
+  if uint8(len(ret)) == table.NumPlayers-1 {
     table.State = TableStateGameOver
   } else {
     fmt.Printf("Table.getEliminatedPlayers(): len ret: %v NP-1: %v\n",
@@ -1324,7 +1328,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     return errors.New("invalid table state: " + table.TableStateToString())
   }
 
-  var blindRequiredBet uint = 0
+  var blindRequiredBet Chips = 0
 
   isSmallBlindPreFlop := false
 
@@ -1332,9 +1336,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
      table.State != TableStatePlayerRaised { // XXX mixed states...
     if table.SmallBlind != nil && player.Name == table.SmallBlind.Player.Name {
       isSmallBlindPreFlop = true
-      blindRequiredBet = minUInt(table.SmallBlind.Player.ChipCount, table.Ante / 2)
+      blindRequiredBet = minChips(table.SmallBlind.Player.ChipCount, table.Ante / 2)
     } else if table.BigBlind!= nil && player.Name == table.BigBlind.Player.Name {
-      blindRequiredBet = minUInt(table.BigBlind.Player.ChipCount, table.Ante)
+      blindRequiredBet = minChips(table.BigBlind.Player.ChipCount, table.Ante)
     }
   }
 
@@ -1398,7 +1402,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
                          player.Name, table.MainPot.Bet, player.Action.Amount, betDiff)
 
           table.MainPot.Bet = player.Action.Amount
-          table.MainPot.Total -= betDiff * uint(len(table.MainPot.Players))
+          table.MainPot.Total -= betDiff * Chips(len(table.MainPot.Players))
 
           sidePot.Init(table.MainPot.Players, nil)
           table.sidePots.AllInPots.Insert(sidePot, 0)
@@ -1444,7 +1448,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
                            table.sidePots.BettingPot.Bet - player.Action.Amount)
             printer.Printf(" bettingpot pot changed from %v to %v\n",
                            table.sidePots.BettingPot.Total,
-                           table.sidePots.BettingPot.Bet - (betDiff * uint(len(table.sidePots.BettingPot.Players))))
+                           table.sidePots.BettingPot.Bet - (betDiff * Chips(len(table.sidePots.BettingPot.Players))))
 
             if !table.MainPot.HasPlayer(player) {
               fmt.Printf(" <%s> adding to mainpot\n", player.Name)
@@ -1461,7 +1465,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
             table.sidePots.AllInPots.Add(sidePot)
 
             table.sidePots.BettingPot.Bet -= betDiff
-            table.sidePots.BettingPot.Total -= betDiff * uint(len(table.sidePots.BettingPot.Players))
+            table.sidePots.BettingPot.Total -= betDiff * Chips(len(table.sidePots.BettingPot.Players))
           default:
             if !table.MainPot.HasPlayer(player) {
               fmt.Printf("Table.PlayerAction(): handleSidePots(): <%s> " +
@@ -1482,7 +1486,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
           }
         }
       } else { // mainpot closed
-        idx, allInAmount := -1, uint(0)
+        idx, allInAmount := -1, Chips(0)
         for i, sidePot := range table.sidePots.AllInPots.Pots {
           if sidePot.IsClosed {
             continue
@@ -1518,7 +1522,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
                          table.sidePots.BettingPot.Bet - player.Action.Amount)
           printer.Printf(" bettingpot pot changed from %v to %v\n",
                          table.sidePots.BettingPot.Total,
-                         table.sidePots.BettingPot.Bet - (betDiff * uint(len(table.sidePots.BettingPot.Players))))
+                         table.sidePots.BettingPot.Bet - (betDiff * Chips(len(table.sidePots.BettingPot.Players))))
 
           sidePot := &SidePot{
             Pot{
@@ -1533,7 +1537,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
           table.sidePots.AllInPots.Add(sidePot)
 
           table.sidePots.BettingPot.Bet -= betDiff
-          table.sidePots.BettingPot.Total -= betDiff * uint(len(table.sidePots.BettingPot.Players))
+          table.sidePots.BettingPot.Total -= betDiff * Chips(len(table.sidePots.BettingPot.Players))
         default:
           printer.Printf("Table.PlayerAction(): handleSidePots(): mpclosed: <%s> inserting " +
                          "%v allin at idx %v\n",
@@ -1629,7 +1633,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
     if table.bettingIsImpossible() {
       fmt.Printf("Table.PlayerAction(): last player (%s) went all-in\n", player.Name)
-      player.Action.Amount = minUInt(table.Bet, player.ChipCount)
+      player.Action.Amount = minChips(table.Bet, player.ChipCount)
     } else {
       chipLeaderCount, secondChipLeaderCount := table.getChipLeaders(true)
 
@@ -1683,7 +1687,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
     // NOTE: A chipleader can only bet what at least one other player can match.
     if player.ChipCount == chipLeaderCount {
-      player.Action.Amount = minUInt(action.Amount, secondChipLeaderCount)
+      player.Action.Amount = minChips(action.Amount, secondChipLeaderCount)
     } else {
       player.Action.Amount = action.Amount
     }
@@ -1858,9 +1862,9 @@ func (table *Table) nextTableAction() {
 
     table.Bet = table.Ante
 
-    table.SmallBlind.Player.Action.Amount = minUInt(table.Ante/2,
+    table.SmallBlind.Player.Action.Amount = minChips(table.Ante/2,
                                                     table.SmallBlind.Player.ChipCount)
-    table.BigBlind.Player.Action.Amount = minUInt(table.Ante,
+    table.BigBlind.Player.Action.Amount = minChips(table.Ante,
                                                   table.BigBlind.Player.ChipCount)
 
     table.SmallBlind.Player.ChipCount -= table.SmallBlind.Player.Action.Amount
@@ -1878,9 +1882,9 @@ func (table *Table) nextTableAction() {
 
     table.Bet = table.Ante
 
-    table.SmallBlind.Player.Action.Amount = minUInt(table.Ante/2,
+    table.SmallBlind.Player.Action.Amount = minChips(table.Ante/2,
                                                     table.SmallBlind.Player.ChipCount)
-    table.BigBlind.Player.Action.Amount = minUInt(table.Ante,
+    table.BigBlind.Player.Action.Amount = minChips(table.Ante,
                                                   table.BigBlind.Player.ChipCount)
 
     table.SmallBlind.Player.ChipCount -= table.SmallBlind.Player.Action.Amount
@@ -2047,7 +2051,7 @@ func (table *Table) finishRound() {
   if len(bestPlayers) == 1 {
     bestPlayers[0].ChipCount += table.MainPot.Total
   } else {
-    splitChips := table.MainPot.Total / uint(len(bestPlayers))
+    splitChips := table.MainPot.Total / Chips(len(bestPlayers))
 
     printer.Printf("mainpot: split chips: %v\n", splitChips)
 
@@ -2098,7 +2102,7 @@ func (table *Table) finishRound() {
         fmt.Printf("%s won sidePot #%d\n", bestPlayers[0].Name, i)
         bestPlayers[0].ChipCount += sidePot.Total
       } else {
-        splitChips := sidePot.Total / uint(len(bestPlayers))
+        splitChips := sidePot.Total / Chips(len(bestPlayers))
 
         printer.Printf("sidepot #%d: split chips: %v\n", i, splitChips)
 
@@ -2257,7 +2261,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
   // used for tie breakers
   // this func assumes the card slice is sorted and ret will be <= 5
-  top_cards := func(cards Cards, num int, except []int) Cards {
+  top_cards := func(cards Cards, num int, except []CardVal) Cards {
     ret := make(Cards, 0, 5)
 
     assert(len(cards) <= 7, "too many cards in top_cards()")
@@ -2285,12 +2289,12 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   }
 
   // flush search function //
-  gotFlush := func(cards Cards, player *Player, addToCards bool) (bool, int) {
+  gotFlush := func(cards Cards, player *Player, addToCards bool) (bool, Suit) {
     type _suitstruct struct {
       cnt   uint
       cards Cards
     }
-    suits := make(map[int]*_suitstruct)
+    suits := make(map[Suit]*_suitstruct)
 
     for _, card := range cards {
       suits[card.Suit] = &_suitstruct{cards: Cards{}}
@@ -2466,7 +2470,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
   if haveFlush {
     // check for possible RF/straight flush suit
-    cardmap := make(map[int]int) // key == num, val == suit
+    cardmap := make(map[CardVal]Suit) // key == num, val == suit
 
     for _, card := range cards {
       mappedsuit, found := cardmap[card.NumValue]
@@ -2484,7 +2488,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     assert((len(uniqueCards) <= 7 && len(uniqueCards) >= 3),
       fmt.Sprintf("impossible number of unique cards (%v)", len(uniqueCards)))
   } else {
-    cardmap := make(map[int]bool)
+    cardmap := make(map[CardVal]bool)
 
     for _, card := range cards {
       if _, val := cardmap[card.NumValue]; !val {
@@ -2542,7 +2546,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     tripslice := make(Cards, 0, 3)
     tripslice = append(tripslice, cards[firstCard:firstCard+3]...)
 
-    kickers := top_cards(cards, 2, []int{cards[firstCard].NumValue})
+    kickers := top_cards(cards, 2, []CardVal{cards[firstCard].NumValue})
     // order => [kickers][trips]
     kickers = append(kickers, tripslice...)
 
@@ -2562,13 +2566,13 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       player.Hand.Cards = append(player.Hand.Cards, cards[lowPairIdx:lowPairIdx+2]...)
       player.Hand.Cards = append(player.Hand.Cards, cards[highPairIdx:highPairIdx+2]...)
 
-      kicker := top_cards(cards, 1, []int{cards[highPairIdx].NumValue,
+      kicker := top_cards(cards, 1, []CardVal{cards[highPairIdx].NumValue,
         cards[lowPairIdx].NumValue})
       player.Hand.Cards = append(kicker, player.Hand.Cards...)
     } else {
       player.Hand.Rank = RankPair
       pairidx := matchHands.pairs[0]
-      kickers := top_cards(cards, 3, []int{cards[pairidx].NumValue})
+      kickers := top_cards(cards, 3, []CardVal{cards[pairidx].NumValue})
       player.Hand.Cards = append(kickers, cards[pairidx:pairidx+2]...)
     }
 
@@ -2593,7 +2597,7 @@ func cardsSort(cards *Cards) error {
 }
 
 func cardNumToString(card *Card) error {
-  cardNumStringMap := map[int]string{
+  cardNumStringMap := map[CardVal]string{
     CardTwo:   "2",
     CardThree: "3",
     CardFour:  "4",
@@ -2616,7 +2620,7 @@ func cardNumToString(card *Card) error {
     return errors.New("cardNumToString")
   }
 
-  cardSuitStringMap := map[int][]string{
+  cardSuitStringMap := map[Suit][]string{
     SuitClub:    {"♣", "clubs"},
     SuitDiamond: {"♦", "diamonds"},
     SuitHeart:   {"♥", "hearts"},
