@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"context"
 	"encoding/gob"
 	"errors"
@@ -52,6 +53,7 @@ func (server *Server) Init(table *Table, addr string) error {
 
   server.upgrader = websocket.Upgrader{
     EnableCompression: true,
+    Subprotocols: []string{"permessage-deflate"},
     ReadBufferSize: 4096,
     WriteBufferSize: 4096,
   }
@@ -821,6 +823,8 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
   }
 
   conn.SetReadLimit(server.MaxConnBytes)
+  conn.EnableWriteCompression(true)
+  conn.SetCompressionLevel(flate.BestCompression)
 
   cleanExit := false
   defer func() {

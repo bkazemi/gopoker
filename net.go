@@ -8,9 +8,14 @@ import (
 )
 
 // requests/responses sent between client and server
+type NetAction uint64
 const (
-  NetDataClose = iota
+  NetDataClose NetAction = 1 << iota
   NetDataNewConn
+
+  //NetDataNeedsTable
+  //NetDataNeedsPlayer
+  //NetDataNeedsID
 
   NetDataYourPlayer
   NetDataNewPlayer
@@ -58,13 +63,22 @@ const (
 
   NetDataServerMsg
   NetDataBadRequest
-)
+) // 41 flags, 23 left
+
+const NetActionNeedsTableBitMask = (NetDataNewConn | NetDataClientExited | NetDataUpdateTable)
+
+const NetActionNeedsPlayerBitMask = (NetDataYourPlayer | NetDataNewPlayer | NetDataCurPlayers |
+         NetDataPlayerLeft | NetDataPlayerAction | NetDataPlayerTurn |
+         NetDataUpdatePlayer | NetDataCurHand | NetDataShowHand |
+         NetDataEliminated)
+
+const NetActionNeedsBitMask = (NetActionNeedsTableBitMask | NetActionNeedsPlayerBitMask)
 
 type NetData struct {
-  ID         string
-  Request    int
-  Response   int
-  Msg        string // server msg or client chat msg
+  ID       string
+  Request  NetAction
+  Response NetAction
+  Msg      string // server msg or client chat msg
 
   ClientSettings *ClientSettings // client requested settings
   Table          *Table
@@ -75,13 +89,31 @@ func (netData *NetData) Init() {
   return
 }
 
+func (netData *NetData) NeedsTable() bool {
+  if netData.Request != 0 { // its a request
+    return netData.Request & NetActionNeedsTableBitMask != 0
+  }
+
+  // it's a response
+  return netData.Response & NetActionNeedsTableBitMask != 0
+}
+
+func (netData *NetData) NeedsPlayer() bool {
+  if netData.Request != 0 { // it's a request
+    return netData.Request & NetActionNeedsPlayerBitMask != 0
+  }
+
+  // it's a response
+  return netData.Response & NetActionNeedsPlayerBitMask != 0
+}
+
 // NOTE: tmp for debugging
 func netDataReqToString(netData *NetData) string {
   if netData == nil {
     return "netData == nil"
   }
 
-  netDataReqStringMap := map[int]string{
+  netDataReqStringMap := map[NetAction]string{
     NetDataClose:          "NetDataClose",
     NetDataNewConn:        "NetDataNewConn",
 
@@ -133,10 +165,10 @@ func netDataReqToString(netData *NetData) string {
 
   // XXX remove me
   reqOrRes := NetDataClose
-  if netData.Request == NetDataClose {
-    reqOrRes = netData.Response
-  } else {
+  if netData.Request != 0 {
     reqOrRes = netData.Request
+  } else {
+    reqOrRes = netData.Response
   }
 
   if netDataStr, ok := netDataReqStringMap[reqOrRes]; ok {

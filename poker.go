@@ -53,7 +53,7 @@ const (
 // suits
 type Suit uint8
 const (
-  SuitClub Suit = iota
+  SuitClub Suit = 1 << iota
   SuitDiamond
   SuitHeart
   SuitSpade
@@ -78,16 +78,21 @@ type Hole struct {
 }
 
 func (hole *Hole) FillHoleInfo() {
-  if hole.Cards[0].NumValue == hole.Cards[1].NumValue {
+  var (
+    cardOne = hole.Cards[0]
+    cardTwo = hole.Cards[1]
+  )
+
+  if cardOne.NumValue == cardTwo.NumValue {
     hole.IsPair = true
   }
 
-  if hole.Cards[0].Suit == hole.Cards[1].Suit {
+  if cardOne.Suit == cardTwo.Suit {
     hole.IsSuited = true
-    hole.Suit = hole.Cards[0].Suit
+    hole.Suit = cardOne.Suit | cardTwo.Suit
   }
 
-  hole.CombinedNumValue = uint16(hole.Cards[0].NumValue + hole.Cards[1].NumValue)
+  hole.CombinedNumValue = uint16(cardOne.NumValue + cardTwo.NumValue)
 }
 
 type Hand struct {
@@ -118,7 +123,7 @@ func (hand *Hand) RankName() string {
 }
 
 type Action struct {
-  Action uint8
+  Action NetAction
   Amount Chips
 }
 
@@ -415,7 +420,7 @@ func (deck *Deck) Init() error {
   deck.size = 52 // 52 cards in a poker deck
   deck.cards = make(Cards, deck.size, deck.size)
 
-  for suit := SuitClub; suit <= SuitSpade; suit++ {
+  for suit := SuitClub; suit <= SuitSpade; suit <<= 1 {
     for c_num := CardTwo; c_num <= CardAce; c_num++ {
       curCard := &Card{Suit: suit, NumValue: CardVal(c_num)}
       if err := cardNumToString(curCard); err != nil {
@@ -862,8 +867,8 @@ func (table *Table) TableStateToString() string {
   return "BUG: bad table state"
 }
 
-func (table *Table) commState2NetDataResponse() int {
-  commStateNetDataMap := map[TableState]int{
+func (table *Table) commState2NetDataResponse() NetAction {
+  commStateNetDataMap := map[TableState]NetAction{
     TableStateFlop:  NetDataFlop,
     TableStateTurn:  NetDataTurn,
     TableStateRiver: NetDataRiver,
@@ -2615,7 +2620,7 @@ func cardNumToString(card *Card) error {
 
   name := cardNumStringMap[card.NumValue]
   if name == "" {
-    fmt.Println("cardNumToString(): BUG")
+    fmt.Println("cardNumToString(): BUG: couldn't find cardNum name")
     fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
     return errors.New("cardNumToString")
   }
@@ -2630,7 +2635,7 @@ func cardNumToString(card *Card) error {
   suitName := cardSuitStringMap[card.Suit]
   if suitName == nil {
     // TODO: fix redundancy.
-    fmt.Println("cardNumToString(): BUG")
+    fmt.Println("cardNumToString(): BUG: couldn't find suitName")
     fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
     return errors.New("cardNumToString")
   }

@@ -121,7 +121,7 @@ func (cli *CLI) handleButton(btn string) {
     return
   }
 
-  buttonLabelRequestMap := map[string]int{
+  buttonLabelRequestMap := map[string]NetAction{
     "all-in":     NetDataAllIn,
     "call":       NetDataCall,
     "check":      NetDataCheck,
@@ -136,7 +136,7 @@ func (cli *CLI) handleButton(btn string) {
     cli.outputChan <- &NetData{
       Request: req,
       PlayerData: &Player{
-        Action: Action{ Action: uint8(req), Amount: cli.bet, },
+        Action: Action{ Action: req, Amount: cli.bet, },
       }, // XXX action x3!
       Msg: msg,
       ClientSettings: cli.settings,
@@ -781,18 +781,17 @@ func cliInputLoop(cli *CLI) {
   for {
     select {
     case netData := <-cli.inputChan:
-      switch netData.Response {
-      case NetDataNewConn, NetDataClientExited, NetDataUpdateTable:
+      if netData.NeedsTable() {
         assert(netData.Table != nil,
           fmt.Sprintf("%s: netData.Table == nil", netDataReqToString(netData)))
-      case NetDataYourPlayer, NetDataNewPlayer, NetDataCurPlayers,
-           NetDataPlayerLeft, NetDataPlayerAction, NetDataPlayerTurn,
-           NetDataUpdatePlayer, NetDataCurHand, NetDataShowHand,
-           NetDataEliminated:
+      }
+      if netData.NeedsPlayer() {
         assert(netData.PlayerData != nil,
           fmt.Sprintf("%s: PlayerData == nil", netDataReqToString(netData)))
+        // players always have an ID as well
         assert(netData.ID != "",
-          fmt.Sprintf("%v %s: ID empty", netData.Response, netDataReqToString(netData)))
+          fmt.Sprintf("%v %s: ID empty", netData.Response,
+                      netDataReqToString(netData)))
       }
 
       switch netData.Response {
