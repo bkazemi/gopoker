@@ -74,6 +74,7 @@ const NetActionNeedsPlayerBitMask = (NetDataYourPlayer | NetDataNewPlayer | NetD
 
 const NetActionNeedsBitMask = (NetActionNeedsTableBitMask | NetActionNeedsPlayerBitMask)
 
+// data that gets sent between client and server
 type NetData struct {
   ID       string
   Request  NetAction
@@ -85,10 +86,11 @@ type NetData struct {
   PlayerData     *Player
 }
 
-func (netData *NetData) Init() {
+/*func (netData *NetData) Init() {
   return
-}
+}*/
 
+// check which NetActions must have a Table struct included
 func (netData *NetData) NeedsTable() bool {
   if netData.Request != 0 { // its a request
     return netData.Request & NetActionNeedsTableBitMask != 0
@@ -98,6 +100,7 @@ func (netData *NetData) NeedsTable() bool {
   return netData.Response & NetActionNeedsTableBitMask != 0
 }
 
+// check which NetActions must have a Player struct included
 func (netData *NetData) NeedsPlayer() bool {
   if netData.Request != 0 { // it's a request
     return netData.Request & NetActionNeedsPlayerBitMask != 0
@@ -107,8 +110,9 @@ func (netData *NetData) NeedsPlayer() bool {
   return netData.Response & NetActionNeedsPlayerBitMask != 0
 }
 
+// return the string representation of a NetAction
 // NOTE: tmp for debugging
-func netDataReqToString(netData *NetData) string {
+func (netData *NetData) NetActionToString() string {
   if netData == nil {
     return "netData == nil"
   }
@@ -164,7 +168,7 @@ func netDataReqToString(netData *NetData) string {
   }
 
   // XXX remove me
-  reqOrRes := NetDataClose
+  var reqOrRes NetAction
   if netData.Request != 0 {
     reqOrRes = netData.Request
   } else {
@@ -178,13 +182,9 @@ func netDataReqToString(netData *NetData) string {
   return "invalid NetData request"
 }
 
-func sendData(data *NetData, conn *websocket.Conn) {
-  if data == nil {
-    panic("sendData(): data == nil")
-  }
-
+func (netData *NetData) Send(conn *websocket.Conn) {
   if conn == nil {
-    panic("sendData(): websocket == nil")
+    panic("NetData.Send(): websocket == nil")
   }
 
   // TODO: move this
@@ -198,9 +198,9 @@ func sendData(data *NetData, conn *websocket.Conn) {
   var gobBuf bytes.Buffer
   enc := gob.NewEncoder(&gobBuf)
 
-  enc.Encode(data)
+  enc.Encode(netData)
 
-  //fmt.Fprintf(os.Stderr, "sendData(): send %s (%v bytes) to %p\n", netDataReqToString(data), len(gobBuf.Bytes()), conn)
+  //fmt.Fprintf(os.Stderr, "NetData.Send(): send %s (%v bytes) to %p\n", netData.NetActionToString(), len(gobBuf.Bytes()), conn)
 
   conn.WriteMessage(websocket.BinaryMessage, gobBuf.Bytes())
 }

@@ -77,10 +77,10 @@ func (server *Server) closeConn(conn *websocket.Conn) {
   conn.Close()
 }
 
-func (server *Server) sendResponseToAll(data *NetData, except *websocket.Conn) {
+func (server *Server) sendResponseToAll(netData *NetData, except *websocket.Conn) {
   for _, clientConn := range server.clients {
     if clientConn != except {
-      sendData(data, clientConn)
+      netData.Send(clientConn)
     }
   }
 }
@@ -251,7 +251,7 @@ func (server *Server) sendPlayerTurn(conn *websocket.Conn) {
 
   netData.PlayerData.Action.Action = NetDataPlayerTurn
 
-  sendData(netData, conn)
+  netData.Send(conn)
 
   if server.table.InBettingState() {
     server.sendPlayerHead(conn, false)
@@ -321,7 +321,7 @@ func (server *Server) sendPlayerHead(conn *websocket.Conn, clear bool) {
     if conn == nil {
       server.sendResponseToAll(netData, nil)
     } else {
-      sendData(netData, conn)
+      netData.Send(conn)
     }
   }
 }
@@ -348,7 +348,7 @@ func (server *Server) sendPlayerActionToAll(player *Player, conn *websocket.Conn
 
   if conn != nil { // conn is nil for blind auto allin corner case
     netData.PlayerData = player
-    sendData(netData, conn)
+    netData.Send(conn)
   }
 }
 
@@ -360,7 +360,7 @@ func (server *Server) sendDeals() {
     netData.PlayerData = player
     netData.Table = server.table
 
-    sendData(netData, conn)
+    netData.Send(conn)
   }
 }
 
@@ -384,7 +384,7 @@ func (server *Server) sendCurHands() {
   for conn, player := range server.playerMap {
     netData.ID = server.clientIDMap[conn]
     netData.PlayerData = player
-    sendData(netData, conn)
+    netData.Send(conn)
   }
 }
 
@@ -402,7 +402,7 @@ func (server *Server) sendActivePlayers(conn *websocket.Conn) {
   for _, player := range server.table.activePlayers.ToPlayerArray() {
     netData.ID = server.clientIDMap[server.getPlayerConn(player)]
     netData.PlayerData = server.table.PublicPlayerInfo(*player)
-    sendData(netData, conn)
+    netData.Send(conn)
   }
 }
 
@@ -424,11 +424,11 @@ func (server *Server) sendAllPlayerInfo(conn *websocket.Conn, curPlayers bool) {
     if conn != nil && netData.ID != server.clientIDMap[conn] {
       assert(server.clientIDMap[conn] != "",
              fmt.Sprintf("%p not found in client map", conn))
-      sendData(netData, conn)
+      netData.Send(conn)
     } else {
       server.sendResponseToAll(netData, playerConn)
       netData.PlayerData = player
-      sendData(netData, playerConn)
+      netData.Send(playerConn)
     }
   }
 }
@@ -468,10 +468,10 @@ func (server *Server) sendLock(conn *websocket.Conn) {
   fmt.Printf("Server.sendLock(): locked out %p with %s\n", conn,
              server.table.TableLockToString())
 
-  sendData(&NetData{
+  (&NetData{
     Response: NetDataTableLocked,
     Msg: fmt.Sprintf("table lock: %s", server.table.TableLockToString()),
-  }, conn)
+  }).Send(conn)
 
   time.Sleep(1 * time.Second)
 }
@@ -479,10 +479,10 @@ func (server *Server) sendLock(conn *websocket.Conn) {
 func (server *Server) sendBadAuth(conn *websocket.Conn) {
   fmt.Printf("Server.sendBadAuth(): %p had bad authentication\n", conn)
 
-  sendData(&NetData{
+  (&NetData{
     Response: NetDataBadAuth,
     Msg: "your password was incorrect",
-  }, conn)
+  }).Send(conn)
 
   time.Sleep(1 * time.Second)
 }
@@ -500,10 +500,10 @@ func (server *Server) makeAdmin(conn *websocket.Conn) {
 
   fmt.Printf("Server.makeAdmin(): making %p table admin\n", conn)
 
-  sendData(&NetData{
+  (&NetData{
     Response: NetDataMakeAdmin,
     Table: server.table,
-  }, conn)
+  }).Send(conn)
 }
 
 func (server *Server) roundOver() {
@@ -904,7 +904,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
     netData.Table = server.table
 
     fmt.Printf("Server.WSCLIClient(): recv %s (%d bytes) from %p\n",
-               netDataReqToString(&netData), len(rawData), conn)
+               netData.NetActionToString(), len(rawData), conn)
 
     if int64(len(rawData)) > server.MaxConnBytes {
       fmt.Printf("Server.WSCLIClient(): conn: %p sent too many bytes (> %v)\n",
@@ -941,14 +941,14 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
       if _, err := server.handleClientSettings(conn, netData.ClientSettings);
             err != nil {
-        sendData(&NetData{Response: NetDataBadRequest, Msg: err.Error()}, conn)
+        (&NetData{Response: NetDataBadRequest, Msg: err.Error()}).Send(conn)
       }
 
       if server.table.Lock == TableLockPlayers {
         netData.Response = NetDataServerMsg
         netData.Msg = "This table is not allowing new players. " +
                       "You have been added as a spectator."
-        sendData(&netData, conn)
+        netData.Send(conn)
       } else if player := server.table.getOpenSeat(); player != nil {
         server.playerMap[conn] = player
 
@@ -984,7 +984,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
         netData.Response = NetDataYourPlayer
         netData.PlayerData = player
-        sendData(&netData, conn)
+        netData.Send(conn)
       } else if server.table.Lock == TableLockSpectators {
           server.sendLock(conn)
 
@@ -993,7 +993,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         netData.Response = NetDataServerMsg
         netData.Msg = "No open seats available. You have been added as a spectator"
 
-        sendData(&netData, conn)
+        netData.Send(conn)
       }
 
       server.sendAllPlayerInfo(conn, false)
@@ -1025,14 +1025,14 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
             server.sendResponseToAll(&netData, conn)
 
             netData.Response = NetDataYourPlayer
-            sendData(&netData, conn)
+            netData.Send(conn)
 
             netData.Response = NetDataServerMsg
             netData.Msg = msg
-            sendData(&netData, conn)
+            netData.Send(conn)
           }
         } else {
-          sendData(&NetData{Response: NetDataServerMsg, Msg: err.Error()}, conn)
+          (&NetData{Response: NetDataServerMsg, Msg: err.Error()}).Send(conn)
         }
       case NetDataStartGame:
         if conn != server.tableAdmin {
@@ -1040,19 +1040,19 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           netData.Msg = "only the table admin can do that"
           netData.Table = nil
 
-          sendData(&netData, conn)
+          netData.Send(conn)
         } else if server.table.NumPlayers < 2 {
           netData.Response = NetDataBadRequest
           netData.Msg = "not enough players to start"
           netData.Table = nil
 
-          sendData(&netData, conn)
+          netData.Send(conn)
         } else if server.table.State != TableStateNotStarted {
           netData.Response = NetDataBadRequest
           netData.Msg = "this game has already started"
           netData.Table = nil
 
-          sendData(&netData, conn)
+          netData.Send(conn)
         } else { // start game
           server.table.nextTableAction()
 
@@ -1086,7 +1086,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           netData.Msg = "you are not a player"
           netData.Table = nil
 
-          sendData(&netData, conn)
+          netData.Send(conn)
           continue
         }
 
@@ -1095,7 +1095,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           netData.Msg = "a game has not been started yet"
           netData.Table = nil
 
-          sendData(&netData, conn)
+          netData.Send(conn)
           continue
         }
 
@@ -1104,7 +1104,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           netData.Msg = "it's not your turn"
           netData.Table = nil
 
-          sendData(&netData, conn)
+          netData.Send(conn)
           continue
         }
 
@@ -1114,7 +1114,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
           netData.Table = nil
           netData.Msg = err.Error()
 
-          sendData(&netData, conn)
+          netData.Send(conn)
         } else {
           server.postPlayerAction(player, &netData, conn)
         }
@@ -1123,7 +1123,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         netData.Msg = fmt.Sprintf("bad request %v", netData.Request)
         netData.Table, netData.PlayerData = nil, nil
 
-        sendData(&netData, conn)
+        netData.Send(conn)
       }
     } // else{} end
   } //for loop end

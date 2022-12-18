@@ -783,15 +783,15 @@ func cliInputLoop(cli *CLI) {
     case netData := <-cli.inputChan:
       if netData.NeedsTable() {
         assert(netData.Table != nil,
-          fmt.Sprintf("%s: netData.Table == nil", netDataReqToString(netData)))
+          fmt.Sprintf("%s: netData.Table == nil", netData.NetActionToString()))
       }
       if netData.NeedsPlayer() {
         assert(netData.PlayerData != nil,
-          fmt.Sprintf("%s: PlayerData == nil", netDataReqToString(netData)))
+          fmt.Sprintf("%s: PlayerData == nil", netData.NetActionToString()))
         // players always have an ID as well
         assert(netData.ID != "",
           fmt.Sprintf("%v %s: ID empty", netData.Response,
-                      netDataReqToString(netData)))
+                      netData.NetActionToString()))
       }
 
       switch netData.Response {

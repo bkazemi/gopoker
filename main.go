@@ -71,7 +71,7 @@ func runClient(opts options) (err error) {
   defer func() {
     fmt.Fprintf(os.Stderr, "closing connection\n")
 
-    sendData(&NetData{Request: NetDataClientExited}, conn)
+    (&NetData{Request: NetDataClientExited}).Send(conn)
 
     err := conn.WriteMessage(websocket.CloseMessage,
       websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
@@ -112,10 +112,10 @@ func runClient(opts options) (err error) {
   go func() {
     defer recoverFunc()
 
-    sendData(&NetData{
+    (&NetData{
       Request:        NetDataNewConn,
       ClientSettings: &ClientSettings{Name: opts.name, Password: opts.pass},
-    }, conn)
+    }).Send(conn)
 
     for {
       _, data, err := conn.ReadMessage()
@@ -155,7 +155,7 @@ func runClient(opts options) (err error) {
         }
         return
       case netData := <-frontEnd.OutputChan():
-        sendData(netData, conn)
+        netData.Send(conn)
       }
     }
   }()
