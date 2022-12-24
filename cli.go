@@ -28,8 +28,7 @@ type CLI struct {
   lastKey            rune
 
   isTableAdmin       bool
-  yourName           string
-  yourID             string
+  yourClient         Client
 
   bet                Chips
   betAddedCommas     bool // XXX tmp
@@ -48,7 +47,7 @@ type CLI struct {
 
   settingsForm       *tview.Form
   settingsFlex       *tview.Flex
-  settings           *ClientSettings
+  settings           ClientSettings
 
   betInputField      *tview.InputField
   actionsFlex        *tview.Flex
@@ -98,9 +97,17 @@ func (cli *CLI) switchToPage(page string) {
 }
 
 func (cli *CLI) eventHandler(eventKey *tcell.EventKey) *tcell.EventKey {
-  // the one universal key is esc to quit the game
+  // first of two universal keys is esc to quit the game
   if eventKey.Key() == tcell.KeyEscape {
     cli.switchToPage("exit")
+  }
+
+  // the second is Ctrl-R to refresh the screen in case something writes
+  // to std{out,err} (e.g. when you are using gdb)
+  if eventKey.Key() == tcell.KeyCtrlR {
+    focusedPrim := cli.app.GetFocus()
+    cli.app.SetRoot(cli.pages, true)
+    cli.app.SetFocus(focusedPrim)
   }
 
   return eventKey
@@ -132,17 +139,27 @@ func (cli *CLI) handleButton(btn string) {
     "settings":   NetDataClientSettings,
   }
 
+  netData := &NetData{
+    Client: &cli.yourClient,
+  }
+
   if req, ok := buttonLabelRequestMap[btn]; ok {
-    cli.outputChan <- &NetData{
-      Request: req,
-      PlayerData: &Player{
-        Action: Action{ Action: req, Amount: cli.bet, },
-      }, // XXX action x3!
-      Msg: msg,
-      ClientSettings: cli.settings,
+    if req & NetActionNeedsActionBitMask != 0 && cli.yourClient.Player != nil {
+      cli.yourClient.Player.Action.Action = req
+      cli.yourClient.Player.Action.Amount = cli.bet
     }
+
+    netData.Request = req
+    netData.Msg = msg
+
+    if req == NetDataClientSettings { // requested settings update
+      netData.Client.Settings = &cli.settings
+    }
+
+    cli.outputChan <- netData
   } else {
-    cli.outputChan <- &NetData{ Request: NetDataBadRequest }
+    netData.Request = NetDataBadRequest
+    cli.outputChan <- netData
   }
 }
 
@@ -167,8 +184,8 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
   }
 }
 
-func (cli *CLI) addNewPlayer(clientID string, player *Player) {
-  if clientID == cli.yourID {
+func (cli *CLI) addNewPlayer(client *Client) {
+  if client.ID == cli.yourClient.ID {
     return
   }
 
@@ -176,56 +193,42 @@ func (cli *CLI) addNewPlayer(clientID string, player *Player) {
 
   textView.SetTextAlign(tview.AlignCenter).
            SetBorder(true).
-           SetTitle(player.Name)
+           SetTitle(client.Player.Name)
 
-  cli.playersTextViewMap[clientID] = textView
+  cli.playersTextViewMap[client.ID] = textView
 
   cli.otherPlayersFlex.AddItem(textView, 0, 1, false)
 }
 
-func (cli *CLI) removePlayer(clientID string, player *Player) {
-  if player.Name == cli.yourName {
+func (cli *CLI) removePlayer(client *Client) {
+  if client.ID == cli.yourClient.ID {
     return
   }
 
-  textView := cli.playersTextViewMap[clientID]
+  textView := cli.playersTextViewMap[client.ID]
 
   cli.otherPlayersFlex.RemoveItem(textView)
 }
 
 //var postOut string
 
-func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
-  // FIXME
-  if player.Name != cli.yourName && clientID == "" {
-    for ID, textView := range cli.playersTextViewMap {
-      if textView.GetTitle() == player.Name {
-        clientID = ID
-        break
-      }
-    }
-    //postOut += fmt.Sprintf("updatePlayer(): cID nil %s ID is %s\n", player.Name, clientID)
-    if clientID == "" {
-      panic(fmt.Sprintf("updatePlayer(): couldnt find %s's clientID", player.Name))
-    }
-  }
-
-  textView := cli.playersTextViewMap[clientID]
+func (cli *CLI) updatePlayer(client *Client, table *Table) {
+  textView := cli.playersTextViewMap[client.ID]
   //postOut += fmt.Sprintf("updatePlayer(): %s ID is %s tvTitle %s\n", player.Name, clientID, textView.GetTitle())
 
-  if clientID == cli.yourID {
+  if client.ID == cli.yourClient.ID {
     if table != nil {
-      assembleBestHand(true, table, player)
+      assembleBestHand(true, table, client.Player)
 
-      preHand := player.PreHand.RankName()
+      preHand := client.Player.PreHand.RankName()
       textViewSetLine(textView, 4, "current hand: " + preHand)
 
       //return XXX update hand seperately
     }
 
-    textViewSetLine(textView, 1, "name: "           + player.Name)
-    textViewSetLine(textView, 2, "current action: " + player.ActionToString())
-    textViewSetLine(textView, 3, "chip count: "     + player.ChipCountToString())
+    textViewSetLine(textView, 1, "name: "           + client.Name)
+    textViewSetLine(textView, 2, "current action: " + client.Player.ActionToString())
+    textViewSetLine(textView, 3, "chip count: "     + client.Player.ChipCountToString())
 
     textView.ScrollToBeginning() // XXX find out why extra empty lines are being added to yourInfoView
   } else {
@@ -233,12 +236,12 @@ func (cli *CLI) updatePlayer(clientID string, player *Player, table *Table) {
       return
     }
 
-    textView.SetTitle(player.Name)
-    textViewSetLine(textView, 1, "current action: " + player.ActionToString())
-    textViewSetLine(textView, 2, "chip count: "     + player.ChipCountToString())
-    if player.Hole != nil {
-      textViewSetLine(textView, 3, "hand: " + player.Hand.RankName() + "\n")
-      textViewSetLine(textView, 4, cli.cards2String(player.Hole.Cards))
+    textView.SetTitle(client.Name)
+    textViewSetLine(textView, 1, "current action: " + client.Player.ActionToString())
+    textViewSetLine(textView, 2, "chip count: "     + client.Player.ChipCountToString())
+    if client.Player.Hole != nil {
+      textViewSetLine(textView, 3, "hand: " + client.Player.Hand.RankName() + "\n")
+      textViewSetLine(textView, 4, cli.cards2String(client.Player.Hole.Cards))
     }
   }
 }
@@ -275,14 +278,14 @@ func (cli *CLI) unmakeAdmin() {
   }
 }
 
-func (cli *CLI) updateChat(clientID string, msg string) {
+func (cli *CLI) updateChat(client *Client, msg string) {
   if msg == "" {
     return
   }
 
   cli.chatTextView.SetText(cli.chatTextView.GetText(false) + msg)
 
-  if clientID == "" || clientID != cli.yourID {
+  if client == nil || client.ID != cli.yourClient.ID {
     cli.chatFlex.SetBorderColor(tcell.ColorGreen)
   }
 }
@@ -322,8 +325,6 @@ func (cli *CLI) Init() error {
   cli.gameGrid   = tview.NewGrid()
   cli.exitModal  = tview.NewModal()
   cli.errorModal = tview.NewModal()
-
-  cli.settings = &ClientSettings{}
 
   cli.inputChan  = make(chan *NetData)
   cli.outputChan = make(chan *NetData)
@@ -529,7 +530,8 @@ func (cli *CLI) Init() error {
     })
 
   cli.settingsForm = tview.NewForm().
-    AddInputField("name", cli.yourName, 15, nil, func(newName string) {
+    AddInputField("name", cli.yourClient.Name, 15, nil, func(newName string) {
+        cli.yourClient.Name = newName
         cli.settings.Name = newName
     }).
     AddButton("request changes", func() {
@@ -786,47 +788,60 @@ func cliInputLoop(cli *CLI) {
           fmt.Sprintf("%s: netData.Table == nil", netData.NetActionToString()))
       }
       if netData.NeedsPlayer() {
-        assert(netData.PlayerData != nil,
-          fmt.Sprintf("%s: PlayerData == nil", netData.NetActionToString()))
+        assert(netData.Client.Player != nil,
+          fmt.Sprintf("%s: Client.Player == nil", netData.NetActionToString()))
         // players always have an ID as well
-        assert(netData.ID != "",
+        assert(netData.Client.ID != "",
           fmt.Sprintf("%v %s: ID empty", netData.Response,
                       netData.NetActionToString()))
       }
 
       switch netData.Response {
-      case NetDataNewConn, NetDataClientExited:
+      case NetDataNewConn:
+        if cli.yourClient.ID == "" {
+          cli.yourClient = *netData.Client
+          cli.settings = *netData.Client.Settings
+        }
+        cli.updateInfoList("# connected", netData.Table)
+      case NetDataClientExited:
         cli.updateInfoList("# connected", netData.Table)
       case NetDataChatMsg:
-        cli.updateChat(netData.ID, netData.Msg)
-      case NetDataYourPlayer: // TODO: i shouldn't use this for client settings.
+        cli.updateChat(netData.Client, netData.Msg)
+      case NetDataClientSettings:
+        cli.yourClient = *netData.Client
+        cli.settings = *netData.Client.Settings
+
+        textViewSetLine(cli.yourInfoView, 1, "name: " + cli.yourClient.Name)
+        nameInputField := cli.settingsForm.GetFormItem(0).(*tview.InputField)
+        nameInputField.SetText(cli.settings.Name)
+
+        if cli.yourClient.Player != nil {
+          cli.playersTextViewMap[cli.yourClient.ID] = cli.yourInfoView
+          cli.updatePlayer(&cli.yourClient, nil)
+        }
+      case NetDataYourPlayer:
         if netData.Table != nil {
           cli.updateInfoList("# players", netData.Table)
         }
 
-        cli.yourName = netData.PlayerData.Name
+        cli.yourClient = *netData.Client
+        cli.settings = *cli.yourClient.Settings
 
         nameInputField := cli.settingsForm.GetFormItem(0).(*tview.InputField)
-        nameInputField.SetText(cli.yourName)
+        nameInputField.SetText(cli.settings.Name)
 
-        if netData.ID != "" && netData.ID != cli.yourID {
-          //postOut += fmt.Sprintf("YOURPLAYER: ID change '%s' =>", cli.yourID)
-          cli.yourID = netData.ID
-          //postOut += fmt.Sprintf(" '%s'\n", cli.yourID)
-        }
+        cli.playersTextViewMap[cli.yourClient.ID] = cli.yourInfoView
 
-        cli.playersTextViewMap[cli.yourID] = cli.yourInfoView
-
-        cli.updatePlayer(cli.yourID, netData.PlayerData, nil)
+        cli.updatePlayer(&cli.yourClient, nil)
       case NetDataNewPlayer, NetDataCurPlayers:
         cli.updateInfoList("# players", netData.Table)
 
-        cli.addNewPlayer(netData.ID, netData.PlayerData)
+        cli.addNewPlayer(netData.Client)
       case NetDataPlayerLeft:
-        cli.removePlayer(netData.ID, netData.PlayerData)
+        cli.removePlayer(netData.Client)
         cli.updateInfoList("# players", netData.Table)
-        cli.updateChat("", fmt.Sprintf("<server-msg>: %s left the table",
-                                       netData.PlayerData.Name))
+        cli.updateChat(nil, fmt.Sprintf("<server-msg>: %s left the table",
+                                       netData.Client.Player.Name))
       case NetDataMakeAdmin:
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start game")
@@ -859,22 +874,20 @@ func cliInputLoop(cli *CLI) {
            SetFormAttributes(0, tcell.ColorRed, tcell.ColorWhite,
                              tcell.ColorWhite, tcell.ColorWhite)
 
-        cli.updateChat("", fmt.Sprintf("<server-msg>: you are now the table admin"))
+        cli.updateChat(nil, fmt.Sprintf("<server-msg>: you are now the table admin"))
 
         cli.isTableAdmin = true
       case NetDataDeal:
         cli.commView.Clear()
-        cli.clearPlayerScreens()
+        //cli.clearPlayerScreens()
 
-        if netData.PlayerData != nil {
-          cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
+        cli.updatePlayer(netData.Client, netData.Table)
 
-          txt := cli.cards2String(netData.PlayerData.Hole.Cards)
+        txt := cli.cards2String(netData.Client.Player.Hole.Cards)
 
-          cli.holeView.SetText(txt)
-        }
+        cli.holeView.SetText(txt)
       case NetDataPlayerAction:
-        cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
+        cli.updatePlayer(netData.Client, netData.Table)
         cli.updateInfoList("status", netData.Table)
       case NetDataPlayerHead:
         if cli.playerHeadTextView != nil {
@@ -884,16 +897,16 @@ func cliInputLoop(cli *CLI) {
             cli.playerHeadTextView.SetBorderColor(tcell.ColorWhite)
           }
         }
-        if netData.ID == "" {
+        if netData.Client == nil { // clear head request
           cli.app.Draw()
           continue
         }
-        if playerHeadTextView, ok := cli.playersTextViewMap[netData.ID]; ok {
+        if playerHeadTextView, ok := cli.playersTextViewMap[netData.Client.ID]; ok {
           playerHeadTextView.SetBorderColor(tcell.ColorOrange)
           cli.playerHeadTextView = playerHeadTextView
         }
       case NetDataPlayerTurn:
-        curPlayerTextView := cli.playersTextViewMap[netData.ID]
+        curPlayerTextView := cli.playersTextViewMap[netData.Client.ID]
 
         if curPlayerTextView == nil {
           continue // XXX probably would be a bug
@@ -918,26 +931,25 @@ func cliInputLoop(cli *CLI) {
           }
         }
       case NetDataUpdatePlayer:
-        cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
+        cli.updatePlayer(netData.Client, netData.Table)
       case NetDataUpdateTable:
         cli.updateInfoList("status", netData.Table)
       case NetDataCurHand:
-        cli.updatePlayer(netData.ID, netData.PlayerData, netData.Table)
+        cli.updatePlayer(netData.Client, netData.Table)
       case NetDataShowHand:
-        cli.updatePlayer(netData.ID, netData.PlayerData, nil)
+        cli.updatePlayer(netData.Client, nil)
       case NetDataRoundOver:
-        //cli.updatePlayer(netData.PlayerData)
         cli.updateInfoList("status", netData.Table)
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
 
-        for _, player := range netData.Table.Winners {
-          cli.updatePlayer("", player, nil)
-        }
+        //for _, player := range netData.Table.Winners {
+        //  cli.updatePlayer(netData.Client, nil)
+        //}
       case NetDataReset:
-        if netData.PlayerData != nil {
+        if netData.Client != nil && netData.Client.Player != nil {
           for name, textView := range cli.playersTextViewMap {
-            if name != netData.PlayerData.Name {
+            if name != netData.Client.Name {
               cli.otherPlayersFlex.RemoveItem(textView)
             }
           }
@@ -949,18 +961,16 @@ func cliInputLoop(cli *CLI) {
         cli.holeView.Clear()
         cli.updateInfoList("all", netData.Table)
       case NetDataEliminated:
-        if netData.ID == cli.yourID {
+        if netData.Client.ID == cli.yourClient.ID {
           cli.unmakeAdmin()
           cli.errorModal.SetText("you were eliminated")
-          cli.playersTextViewMap[cli.yourID].SetTextAlign(tview.AlignCenter)
-          cli.playersTextViewMap[cli.yourID].SetText("eliminated")
+          cli.yourInfoView.Clear()
+          textViewSetLine(cli.yourInfoView, 1, "name: " + cli.yourClient.Name)
           cli.holeView.Clear()
           cli.switchToPage("error")
         }
 
-        cli.updateChat(netData.ID, netData.Msg)
-
-        //cli.removePlayer(netData.PlayerData)
+        cli.updateChat(netData.Client, netData.Msg)
       case NetDataFlop, NetDataTurn, NetDataRiver:
         txt := cli.cards2String(netData.Table.Community)
 

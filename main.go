@@ -71,7 +71,10 @@ func runClient(opts options) (err error) {
   defer func() {
     fmt.Fprintf(os.Stderr, "closing connection\n")
 
-    (&NetData{Request: NetDataClientExited}).Send(conn)
+    (&NetData{
+      Request: NetDataClientExited,
+      Client: &Client{conn: conn},
+    }).Send()
 
     err := conn.WriteMessage(websocket.CloseMessage,
       websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
@@ -109,13 +112,17 @@ func runClient(opts options) (err error) {
 
   fmt.Fprintf(os.Stderr, "connected to %s\n", opts.addr)
 
+  // listen for messages from the server and send them to the frontend
   go func() {
     defer recoverFunc()
 
     (&NetData{
-      Request:        NetDataNewConn,
-      ClientSettings: &ClientSettings{Name: opts.name, Password: opts.pass},
-    }).Send(conn)
+      Request: NetDataNewConn,
+      Client: &Client{
+        Settings: &ClientSettings{Name: opts.name, Password: opts.pass},
+        conn: conn,
+      },
+    }).Send()
 
     for {
       _, data, err := conn.ReadMessage()
@@ -155,7 +162,7 @@ func runClient(opts options) (err error) {
         }
         return
       case netData := <-frontEnd.OutputChan():
-        netData.Send(conn)
+        netData.SendToConn(conn)
       }
     }
   }()

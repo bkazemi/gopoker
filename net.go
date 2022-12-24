@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 
 	"github.com/gorilla/websocket"
 )
@@ -65,30 +66,44 @@ const (
   NetDataBadRequest
 ) // 41 flags, 23 left
 
-const NetActionNeedsTableBitMask = (NetDataNewConn | NetDataClientExited | NetDataUpdateTable)
+const NetActionNeedsTableBitMask = (NetDataNewConn | NetDataClientExited | NetDataUpdateTable | NetDataDeal)
 
 const NetActionNeedsPlayerBitMask = (NetDataYourPlayer | NetDataNewPlayer | NetDataCurPlayers |
          NetDataPlayerLeft | NetDataPlayerAction | NetDataPlayerTurn |
-         NetDataUpdatePlayer | NetDataCurHand | NetDataShowHand |
-         NetDataEliminated)
+         NetDataUpdatePlayer | NetDataCurHand | NetDataShowHand | NetDataDeal)
+
+const NetActionNeedsActionBitMask = (NetDataAllIn | NetDataBet | NetDataCall | NetDataCheck | NetDataFold | NetDataRaise)
 
 const NetActionNeedsBitMask = (NetActionNeedsTableBitMask | NetActionNeedsPlayerBitMask)
 
 // data that gets sent between client and server
 type NetData struct {
-  ID       string
+  Client   *Client
   Request  NetAction
   Response NetAction
   Msg      string // server msg or client chat msg
 
-  ClientSettings *ClientSettings // client requested settings
   Table          *Table
-  PlayerData     *Player
 }
 
 /*func (netData *NetData) Init() {
   return
 }*/
+
+// clear all fields besides the client.
+// used when recycling a netData instance
+func (netData *NetData) ClearData(client *Client) {
+  netData.Request = 0
+  netData.Response = 0
+  netData.Msg = ""
+  netData.Table = nil
+
+  // we pass a client with NetData structs that clients send
+  // to ensure that the client member is valid (not modified by the client)
+  if client != nil {
+    netData.Client = client
+  }
+}
 
 // check which NetActions must have a Table struct included
 func (netData *NetData) NeedsTable() bool {
@@ -179,14 +194,53 @@ func (netData *NetData) NetActionToString() string {
     return netDataStr
   }
 
-  return "invalid NetData request"
+  return fmt.Sprintf("invalid NetData request: %v", reqOrRes)
 }
 
-func (netData *NetData) Send(conn *websocket.Conn) {
-  if conn == nil {
-    panic("NetData.Send(): websocket == nil")
+// send a NetData structure to the client assigned to it's Client member.
+func (netData *NetData) Send() {
+  if netData.Client == nil {
+    panic("NetData.Send(): .Client == nil")
+  } else if netData.Client.conn == nil {
+    panic("NetData.Send(): .Client.conn == nil")
   }
 
+  //fmt.Printf("NetData.Send(): send %s to `%s` (%s)\n", netData.NetActionToString(),
+  //           netData.Client.Name, netData.Client.ID)
+
+  netData.unwrappedSender(netData.Client.conn)
+}
+
+// send a NetData struct to a different client than the one assigned to it's
+// Client member.
+func (netData *NetData) SendTo(client *Client) {
+  if client == nil {
+    panic("NetData.SendTo(): client == nil")
+  } else if client.conn == nil {
+    panic("NetData.SendTo(): client.conn == nil")
+  }
+
+  //fmt.Printf("NetData.SendTo(): send %s to `%s` (%s)\n", netData.NetActionToString(),
+  //           client.Name, client.ID)
+
+  netData.unwrappedSender(client.conn)
+}
+
+// send a NetData struct to a websocket.Conn. only used when a client is
+// initiating their connection to the server.
+func (netData *NetData) SendToConn(conn *websocket.Conn) {
+  if conn == nil {
+    panic("NetData.SendToConn(): conn == nil")
+  }
+
+  //fmt.Printf("NetData.SendToConn(): send %s to %p\n", netData.NetActionToString(), conn)
+
+  netData.unwrappedSender(conn)
+}
+
+
+// internal function that actually send the message to the websocket. do not call directly!
+func (netData *NetData) unwrappedSender(conn *websocket.Conn) {
   // TODO: move this
   // XXX modifies global table
   /*if (data.Table != nil) {
@@ -194,7 +248,6 @@ func (netData *NetData) Send(conn *websocket.Conn) {
     data.Table.SmallBlind = data.Table.PublicPlayerInfo(*data.Table.SmallBlind)
     data.Table.BigBlind   = data.Table.PublicPlayerInfo(*data.Table.BigBlind)
   }*/
-
   var gobBuf bytes.Buffer
   enc := gob.NewEncoder(&gobBuf)
 

@@ -882,6 +882,16 @@ func (table *Table) commState2NetDataResponse() NetAction {
   return NetDataBadRequest
 }
 
+func (table *Table) DefaultPlayerNames() []string {
+  names := make([]string, 0, len(table.players))
+
+  for _, player := range table.players {
+    names = append(names, player.defaultName)
+  }
+
+  return names
+}
+
 func (table *Table) PotToString() string {
   return printer.Sprintf("%d chips", table.MainPot.Total)
 }
@@ -1008,6 +1018,10 @@ func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
 func (table *Table) getOpenSeat() *Player {
   table.mtx.Lock()
   defer table.mtx.Unlock()
+
+  if table.GetNumOpenSeats() == 0 {
+    return nil
+  }
 
   for _, seat := range table.players {
     if seat.IsVacant {
@@ -1784,7 +1798,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
     //table.curPlayers.RemovePlayer(player)
   default:
-    return errors.New("BUG: invalid player action: " + player.ActionToString())
+    return errors.New(fmt.Sprintf("BUG: invalid player action: %b", action.Action))
   }
 
   table.setNextPlayerTurn()
