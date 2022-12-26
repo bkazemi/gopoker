@@ -30,8 +30,10 @@ type CLI struct {
   isTableAdmin       bool
   yourClient         Client
 
-  bet                Chips
-  betAddedCommas     bool // XXX tmp
+  bet                 Chips
+  betAddedCommas      bool
+  betMultiplier       uint64
+  betInputReplacer   *strings.Replacer
 
   commView,
   otherPlayersView,
@@ -389,12 +391,20 @@ func (cli *CLI) Init() error {
 
   cli.playersTextViewMap = make(map[string]*tview.TextView)
 
+  cli.betInputReplacer = strings.NewReplacer(",", "", "k", "", "m", "")
+  cli.betMultiplier = 1
+
   cli.betInputField = tview.NewInputField() // XXX compiler claims I need a type assertion if I chain here?
   cli.betInputField.
     SetLabel("bet amount: ").
     SetFieldWidth(20).
     SetAcceptanceFunc(func(inp string, lastChar rune) bool {
-      inp = strings.ReplaceAll(inp, ",", "")
+      if lastChar == 'k' {
+        cli.betMultiplier = 1000
+      } else if lastChar == 'm' {
+        cli.betMultiplier = 1e6
+      }
+      inp = cli.betInputReplacer.Replace(inp)
       if _, err := strconv.ParseUint(inp, 10, 64); err != nil {
         return false
       }
@@ -407,21 +417,22 @@ func (cli *CLI) Init() error {
         return
       }
 
-      inp = strings.ReplaceAll(inp, ",", "")
+      inp = cli.betInputReplacer.Replace(inp)
       n, err := strconv.ParseUint(inp, 10, 64)
       if err != nil {
         cli.bet = 0
       } else {
-        cli.bet = Chips(n) // XXX
+        cli.bet = Chips(n * cli.betMultiplier)
       }
 
-      if !cli.betAddedCommas {
+      if !cli.betAddedCommas || cli.betMultiplier != 1 {
         go func() { // XXX yep..
             cli.app.QueueUpdateDraw(func() {
               cli.betInputField.SetText(printer.Sprintf("%d", cli.bet))
             })
         }()
         cli.betAddedCommas = true
+        cli.betMultiplier = 1
       }
     }).
     SetFinishedFunc(func(_ tcell.Key) {
@@ -429,14 +440,6 @@ func (cli *CLI) Init() error {
 
       if n == "" {
         return
-      }
-
-      n = strings.ReplaceAll(n, ",", "")
-
-      _, err := strconv.ParseUint(n, 10, 64)
-      if err != nil {
-        // should never happen, input is checked in accept func
-        panic("bad bet val: " + n)
       }
 
       cli.actionsForm.SetFocus(cli.actionsForm.GetButtonIndex("raise"))
@@ -670,9 +673,10 @@ func (cli *CLI) Init() error {
       case 'q':
         cli.switchToPage("exit")
       case 'm':
-        cli.app.SetFocus(cli.chatFlex)
-
-        return nil
+        if cli.app.GetFocus() != cli.betInputField {
+          cli.app.SetFocus(cli.chatFlex)
+          return nil
+        }
       }
 
       return eventKey
@@ -840,7 +844,7 @@ func cliInputLoop(cli *CLI) {
       case NetDataPlayerLeft:
         cli.removePlayer(netData.Client)
         cli.updateInfoList("# players", netData.Table)
-        cli.updateChat(nil, fmt.Sprintf("<server-msg>: %s left the table",
+        cli.updateChat(nil, fmt.Sprintf("<server-msg> %s left the table",
                                        netData.Client.Player.Name))
       case NetDataMakeAdmin:
         cli.actionsForm.AddButton("start game", func() {
@@ -874,7 +878,7 @@ func cliInputLoop(cli *CLI) {
            SetFormAttributes(0, tcell.ColorRed, tcell.ColorWhite,
                              tcell.ColorWhite, tcell.ColorWhite)
 
-        cli.updateChat(nil, fmt.Sprintf("<server-msg>: you are now the table admin"))
+        cli.updateChat(nil, fmt.Sprintf("<server-msg> you are now the table admin"))
 
         cli.isTableAdmin = true
       case NetDataDeal:
