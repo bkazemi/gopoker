@@ -37,7 +37,7 @@ func (client *Client) SetName(name string) {
     return
   }
 
-  fmt.Printf("Client.SetName(): %p => '%s'\n", client.conn, name)
+  fmt.Printf("Client.SetName(): <%s> (%p) '%s' => '%s'\n", client.ID, client.conn, client.Name, name)
   client.Name = name
 }
 
@@ -108,7 +108,7 @@ func (server *Server) Init(table *Table, addr string) error {
 }
 
 func (server *Server) closeConn(conn *websocket.Conn) {
-  fmt.Printf("<= closing conn to %s\n", conn.RemoteAddr().String())
+  fmt.Printf("Server.closeConn(): <= closing conn to %s\n", conn.RemoteAddr().String())
   conn.Close()
 }
 
@@ -375,7 +375,7 @@ func (server *Server) sendPlayerHead(client *Client, clear bool) {
 }
 
 func (server *Server) sendPlayerActionToAll(player *Player, client *Client) {
-  fmt.Printf("Server.sendPlayerActionToAll(): %s action => %s\n",
+  fmt.Printf("Server.sendPlayerActionToAll(): <%s> sending %s\n",
              player.Name, player.ActionToString())
 
   var c *Client
@@ -540,7 +540,7 @@ func (server *Server) makeAdmin(client *Client) {
     server.tableAdminID = ""
     return
   } else {
-    fmt.Printf("Server.makeAdmin(): making '%s' (%s) table admin\n", client.Name, client.ID)
+    fmt.Printf("Server.makeAdmin(): making <%s> (%s) table admin\n", client.ID, client.Name)
     server.tableAdminID = client.ID
   }
 
@@ -632,6 +632,7 @@ func (server *Server) gameOver() {
   server.sendReset(winnerClient)
 }
 
+// XXX: need to add to sidepots
 func (server *Server) checkBlindsAutoAllIn() {
   if server.table.SmallBlind.Player.Action.Action == NetDataAllIn {
     fmt.Printf("Server.checkBlindsAutoAllIn(): smallblind (%s) forced to go all in\n",
@@ -1089,8 +1090,8 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         server.playerClientMap[player] = client
 
         server.applyClientSettings(client, netData.Client.Settings)
-        fmt.Printf("Server.WSCLIClient(): adding %p (%s) as player '%s'\n",
-                   &conn, client.Name, player.Name)
+        fmt.Printf("Server.WSCLIClient(): adding <%s> (%p) (%s) as player '%s'\n",
+                   client.ID, &conn, client.Name, player.Name)
 
         if server.table.State == TableStateNotStarted {
           player.Action.Action = NetDataFirstAction

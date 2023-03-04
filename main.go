@@ -244,6 +244,7 @@ type options struct {
   TODO: - check if bets always have to be a multiple of blind(s)?
         - wrap errors
         - NetData related stuff is inefficient
+        - check if webasm/JS stuff allows for separate packages now
 
         cli.go:
         - figure out why refocusing on a primitive increments the highlighted

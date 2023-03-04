@@ -883,7 +883,7 @@ func cliInputLoop(cli *CLI) {
         cli.isTableAdmin = true
       case NetDataDeal:
         cli.commView.Clear()
-        //cli.clearPlayerScreens()
+        cli.clearPlayerScreens()
 
         cli.updatePlayer(netData.Client, netData.Table)
 
@@ -969,8 +969,10 @@ func cliInputLoop(cli *CLI) {
           cli.unmakeAdmin()
           cli.errorModal.SetText("you were eliminated")
           cli.yourInfoView.Clear()
-          textViewSetLine(cli.yourInfoView, 1, "name: " + cli.yourClient.Name)
           cli.holeView.Clear()
+          cli.clearPlayerScreens()
+          //textViewSetLine(cli.yourInfoView, 1, "name: " + cli.yourClient.Name)
+          cli.yourInfoView.SetText("name: " + cli.yourClient.Name)
           cli.switchToPage("error")
         }
 

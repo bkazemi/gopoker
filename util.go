@@ -6,6 +6,8 @@ import (
 
 	crypto_rand "crypto/rand"
 	math_rand "math/rand"
+
+	"github.com/rivo/uniseg"
 )
 
 func assert(cond bool, msg string) {
@@ -60,6 +62,28 @@ func maxChips(x, y Chips) Chips {
   }
 
   return y
+}
+
+func maxInt(x, y int) int {
+  if (x > y) {
+    return x
+  }
+
+  return y
+}
+
+func playerMapToArr(playerMap map[string]*Player) []*Player {
+  if playerMap == nil || len(playerMap) == 0 {
+    return []*Player{}
+  }
+
+  arr := make([]*Player, 0)
+
+  for _, p := range playerMap {
+    arr = append(arr, p)
+  }
+
+  return arr
 }
 
 // used to avoid execution of defers after a panic()
@@ -122,4 +146,40 @@ func randString(n int) string {
   randSeed() // re-seed just in case
 
   return string(b)
+}
+
+// FillLeft return string filled in left by spaces in w cells
+//
+// taken from github.com/go-runewidth
+func fillLeft(s string, w int) string {
+  width := uniseg.StringWidth(s)
+  count := w - width
+
+  if count > 0 {
+    b := make([]byte, count)
+    for i := range b {
+      b[i] = ' '
+    }
+    return string(b) + s
+  }
+
+  return s
+}
+
+// FillRight return string filled in right by spaces in w cells
+//
+// taken from github.com/go-runewidth
+func fillRight(s string, w int) string {
+  width := uniseg.StringWidth(s)
+  count := w - width
+
+  if count > 0 {
+    b := make([]byte, count)
+    for i := range b {
+      b[i] = ' '
+    }
+    return s + string(b)
+  }
+
+  return s
 }
