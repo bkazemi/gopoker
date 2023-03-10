@@ -89,22 +89,16 @@ func playerMapToArr(playerMap map[string]*Player) []*Player {
 // used to avoid execution of defers after a panic()
 type Panic struct {
   panicked  bool
-  panic     func(string)
-  ifNoPanic func(func())
 }
 
-func (p *Panic) Init() {
-  p.panicked = false
+func (p *Panic) panic(msg string) {
+  p.panicked = true
+  panic(msg)
+}
 
-  p.panic = func(msg string) {
-    p.panicked = true
-    panic(msg)
-  }
-
-  p.ifNoPanic = func(deferredFunc func()) {
-    if !p.panicked {
-      deferredFunc()
-    }
+func (p *Panic) ifNoPanic(deferredFunc func()) {
+  if !p.panicked {
+    deferredFunc()
   }
 }
 

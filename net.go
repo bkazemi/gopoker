@@ -86,8 +86,16 @@ type NetData struct {
   Table          *Table
 }
 
-/*func (netData *NetData) Init() {
-  return
+/*func NewNewData() *NetData {
+  netData := &NetData{}
+
+  return netData
+}
+
+func (netData *NetData) WithClient(client *Client) *NetData {
+  netData.Client = client
+
+  return netData
 }*/
 
 // clear all fields besides the client.

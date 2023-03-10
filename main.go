@@ -176,23 +176,17 @@ func runClient(opts options) (err error) {
 
 func runGame(opts options) (err error) {
   if opts.serverPort != "" {
-    deck := &Deck{}
-    if err := deck.Init(); err != nil {
-      return err
-    }
+    deck := NewDeck()
 
-    table := &Table{NumSeats: opts.numSeats}
-    if err := table.Init(deck, make([]bool, opts.numSeats)); err != nil {
-      return err
+    table, tableErr := NewTable(deck, opts.numSeats, make([]bool, opts.numSeats))
+    if tableErr != nil {
+      return tableErr
     }
 
     randSeed()
     deck.Shuffle()
 
-    server := &Server{}
-    if err := server.Init(table, "0.0.0.0:" + opts.serverPort); err != nil {
-      return err
-    }
+    server := NewServer(table, "0.0.0.0:" + opts.serverPort)
 
     if err := server.run(); err != nil {
       return err

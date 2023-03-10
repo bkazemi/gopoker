@@ -27,8 +27,12 @@ type Client struct {
   conn     *websocket.Conn
 }
 
-func (client *Client) Init() {
-  client.Settings = &ClientSettings{}
+func NewClient(settings *ClientSettings) *Client {
+  client := &Client{
+    Settings: settings,
+  }
+
+  return client
 }
 
 func (client *Client) SetName(name string) {
@@ -65,7 +69,7 @@ type Server struct {
   mtx sync.Mutex
 }
 
-func (server *Server) Init(table *Table, addr string) error {
+func NewServer(table *Table, addr string) *Server {
   const (
     MaxConnBytes = 10e3
     MaxChatMsgLen = 256
@@ -73,38 +77,42 @@ func (server *Server) Init(table *Table, addr string) error {
     ReadTimeout = 0
   )
 
-  server.connClientMap = make(map[*websocket.Conn]*Client)
-  server.playerClientMap = make(map[*Player]*Client)
-  server.nameClientMap = make(map[string]*Client)
-  server.IDClientMap = make(map[string]*Client)
+  server := &Server{
+    connClientMap: make(map[*websocket.Conn]*Client),
+    playerClientMap: make(map[*Player]*Client),
+    nameClientMap: make(map[string]*Client),
+    IDClientMap: make(map[string]*Client),
 
-  server.table = table
+    table: table,
 
-  server.MaxConnBytes = MaxConnBytes
-  server.MaxChatMsgLen = MaxChatMsgLen
+    MaxConnBytes: MaxConnBytes,
+    MaxChatMsgLen: MaxChatMsgLen,
 
-  server.errChan = make(chan error)
-  server.panicked = false
+    errChan: make(chan error),
+    panicked: false,
 
-  server.upgrader = websocket.Upgrader{
-    EnableCompression: true,
-    Subprotocols: []string{"permessage-deflate"},
-    ReadBufferSize: 4096,
-    WriteBufferSize: 4096,
+    upgrader: websocket.Upgrader{
+      EnableCompression: true,
+      Subprotocols: []string{"permessage-deflate"},
+      ReadBufferSize: 4096,
+      WriteBufferSize: 4096,
+    },
+
+    http: &http.Server{
+      Addr:        addr,
+      IdleTimeout: IdleTimeout,
+      ReadTimeout: ReadTimeout,
+    },
+
+    sigChan: make(chan os.Signal, 1),
   }
 
-  server.http = &http.Server{
-    Addr:        addr,
-    IdleTimeout: IdleTimeout,
-    ReadTimeout: ReadTimeout,
-  }
   server.http.SetKeepAlivesEnabled(true)
   http.HandleFunc("/cli", server.WSCLIClient)
 
-  server.sigChan = make(chan os.Signal, 1)
   signal.Notify(server.sigChan, os.Interrupt)
 
-  return nil
+  return server
 }
 
 func (server *Server) closeConn(conn *websocket.Conn) {
@@ -207,6 +215,9 @@ func (server *Server) removePlayer(client *Client) {
       } else if server.table.State == TableStateNotStarted {
         return
       } else {
+        // XXX: if a player who hasn't bet preflop is
+        //      the last player left he receives the mainpot chips.
+        //      if he's a blind he should also get (only) his blind chips back.
         if server.table.State != TableStateRoundOver &&
            server.table.State != TableStateGameOver {
           fmt.Println("Server.removePlayer(): state != (rndovr || gameovr)")
@@ -215,6 +226,9 @@ func (server *Server) removePlayer(client *Client) {
           server.gameOver()
         } else {
           fmt.Println("Server.removePlayer(): state == rndovr || gameovr")
+          server.table.finishRound()
+          server.table.State = TableStateGameOver
+          server.gameOver()
           return
         }
       }
@@ -707,8 +721,7 @@ func (server *Server) postBetting(player *Player, netData *NetData, client *Clie
     server.table.Bet, server.table.better = 0, nil
     for _, player := range server.table.curPlayers.ToPlayerArray() {
       fmt.Printf("Server.postBetting(): clearing %v's action\n", player.Name)
-      player.Action.Action = NetDataFirstAction
-      player.Action.Amount = 0
+      player.Action.Clear()
     }
 
     server.sendAllPlayerInfo(nil, true, true)

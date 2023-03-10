@@ -129,6 +129,11 @@ type Action struct {
   Amount Chips
 }
 
+func (action *Action) Clear() {
+  action.Action = NetDataFirstAction
+  action.Amount = 0
+}
+
 type Chips uint64
 type Player struct {
   defaultName string
@@ -159,6 +164,16 @@ func (p *Player) canBet() bool {
          p.Action.Action != NetDataFold && p.Action.Action != NetDataAllIn
 }
 
+// XXX: should consider adding an ~IsBlind field to Player struct
+func (p *Player) isABlind(table *Table) bool {
+  if table == nil {
+    panic("Player.isABlind(): table == nil")
+  }
+
+  return ((table.BigBlind   != nil && table.BigBlind.Player.Name   == p.Name) ||
+          (table.SmallBlind != nil && table.SmallBlind.Player.Name == p.Name))
+}
+
 type PlayerNode struct {
   /*prev,*/ next *PlayerNode // XXX don't think i need this to be a pointer. check back
   Player *Player
@@ -171,24 +186,32 @@ type playerList struct {
   head *PlayerNode // XXX don't think i need this to be a pointer. check back
 }
 
-func (list *playerList) Init(name string, players []*Player) error {
-  if len(players) < 2 {
-    return errors.New("playerList.Init(): players param must be >= 2")
+func NewPlayerList(name string, players []*Player) *playerList {
+  list := &playerList{
+    name: name,
   }
 
-  list.name = name
+  if players == nil || len(players) == 0 {
+    fmt.Printf("NewPlayerList(): <%s> called with empty player list\n", name)
+
+    return list
+  }
 
   list.head = &PlayerNode{Player: players[0]}
   head := list.head
-  for _, p := range players[1:] {
-    list.head.next = &PlayerNode{Player: p}
-    list.head = list.head.next
+  if len(players) > 1 {
+    for _, p := range players[1:] {
+      list.head.next = &PlayerNode{Player: p}
+      list.head = list.head.next
+    }
+  } else {
+    fmt.Printf("NewPlayerList(): <%s> called with len(players) == 1\n", name)
   }
   list.head.next = head
   list.head = head
   list.len = len(players)
 
-  return nil
+  return list
 }
 
 func (list *playerList) Print() {
@@ -203,23 +226,8 @@ func (list *playerList) Print() {
   fmt.Println("]")
 }
 
-func (list *playerList) Clone(newName string) playerList {
-  if list.len == 0 {
-    return playerList{}
-  }
-
-  if list.len == 1 {
-    clonedList := playerList{name: newName,
-                             head: &PlayerNode{Player: list.head.Player}, len: 1}
-    clonedList.head.next = clonedList.head
-
-    return clonedList
-  }
-
-  clonedList := playerList{}
-  clonedList.Init(newName, list.ToPlayerArray())
-
-  return clonedList
+func (list *playerList) Clone(newName string) *playerList {
+  return NewPlayerList(newName, list.ToPlayerArray())
 }
 
 func (list *playerList) AddPlayer(player *Player) {
@@ -350,19 +358,22 @@ func (list *playerList) ToPlayerArray() []*Player {
   return players
 }
 
-func (player *Player) Init(name string, isCPU bool) error {
-  player.defaultName = name
-  player.Name = name
-  player.IsCPU = isCPU
+func NewPlayer(name string, isCPU bool) *Player {
+  player := &Player{
+    defaultName: name,
+    Name: name,
+    IsCPU: isCPU,
 
-  player.IsVacant = true
+    IsVacant: true,
 
-  player.ChipCount = 1e5 // XXX
+    ChipCount: 1e5, // TODO: add knob
+
+    Action: Action{Action: NetDataVacantSeat},
+  }
+
   player.NewCards()
 
-  player.Action = Action{Action: NetDataVacantSeat}
-
-  return nil
+  return player
 }
 
 func (player *Player) NewCards() {
@@ -418,15 +429,17 @@ type Deck struct {
   size  int
 }
 
-func (deck *Deck) Init() error {
-  deck.size = 52 // 52 cards in a poker deck
+func NewDeck() *Deck {
+  deck := &Deck{
+    size: 52, // 52 cards in a poker deck
+  }
   deck.cards = make(Cards, deck.size, deck.size)
 
   for suit := SuitClub; suit <= SuitSpade; suit <<= 1 {
     for c_num := CardTwo; c_num <= CardAce; c_num++ {
       curCard := &Card{Suit: suit, NumValue: CardVal(c_num)}
       if err := cardNumToString(curCard); err != nil {
-        return err
+        panic(err)
       }
 
       deck.cards[deck.pos] = curCard
@@ -436,7 +449,7 @@ func (deck *Deck) Init() error {
 
   deck.pos = 0
 
-  return nil
+  return deck
 }
 
 func (deck *Deck) Shuffle() {
@@ -488,24 +501,26 @@ type Pot struct {
   WinInfo  string
 }
 
-func NewPot(name string, bet Chips, players map[string]*Player) *Pot {
+func NewPot(name string, bet Chips) *Pot {
+  if name == "" {
+    name = "unnamed pot"
+  }
+
   pot := &Pot{
     Name: name,
     Bet: bet,
     Players: make(map[string]*Player),
   }
 
-  if players != nil {
-    for pName, p := range players {
-      pot.Players[pName] = p
-    }
-  }
-
   return pot
 }
 
-func (pot *Pot) Init() {
-  pot.Players = make(map[string]*Player)
+func (pot *Pot) WithPlayers(players map[string]*Player) *Pot {
+  for name, p := range players {
+    pot.Players[name] = p
+  }
+
+  return pot
 }
 
 func (pot *Pot) HasPlayer(player *Player) bool {
@@ -551,8 +566,11 @@ func (pot *Pot) PlayerInfo() string {
 }
 
 func (pot *Pot) Clear() {
-  fmt.Printf("Pot.Clear(): cleared %s\n", pot.Name)
-  pot.Init()
+  defer func() {
+    fmt.Printf("Pot.Clear(): cleared %s\n", pot.Name)
+  }()
+
+  pot.Players = make(map[string]*Player)
   pot.Bet = 0
   pot.Total = 0
   pot.IsClosed = false
@@ -560,49 +578,46 @@ func (pot *Pot) Clear() {
 }
 
 type SidePot struct {
-  Pot // XXX
+  *Pot // XXX
   MustCall *Pot
 }
 
 // XXX: mixed init constructs
-func NewSidePot(bet Chips, playerMap map[string]*Player, player *Player,
-                mustCall *Pot) *SidePot {
+func NewSidePot(bet Chips) *SidePot {
   name := "unknown sidepot"
-  if player != nil {
-    name = fmt.Sprintf("%s sidepot", player.Name)
-  }
 
   sidePot := &SidePot{
-    Pot{
-      Name: name,
-      Bet: bet,
-    },
-    nil,
+    Pot: NewPot(name, bet),
   }
-
-  // FIXME: tmp until I switch to factory funcs
-  sidePot.Init(playerMap, player, mustCall)
 
   return sidePot
 }
 
-func (sidePot *SidePot) Init(playerMap map[string]*Player, player *Player,
-                             mustCall *Pot) {
-  sidePot.Players = make(map[string]*Player)
+func (sidePot *SidePot) WithName(name string) *SidePot {
+  sidePot.Name = name
 
-  if playerMap != nil {
-    for pName, p := range playerMap {
-      sidePot.Players[pName] = p
-    }
+  return sidePot
+}
+
+func (sidePot *SidePot) WithPlayers(players map[string]*Player) *SidePot {
+  for name, p := range players {
+    sidePot.Players[name] = p
   }
 
-  if player != nil {
-    sidePot.Players[player.Name] = player
-  }
+  return sidePot
+}
 
-  if mustCall != nil {
-    sidePot.MustCall = mustCall
-  }
+func (sidePot *SidePot) WithPlayer(player *Player) *SidePot {
+  sidePot.Name = player.Name + " sidePot"
+  sidePot.Players[player.Name] = player
+
+  return sidePot
+}
+
+func (sidePot *SidePot) WithMustCall(mustCall *Pot) *SidePot {
+  sidePot.MustCall = mustCall
+
+  return sidePot
 }
 
 func (sidePot *SidePot) Calculate(prevBet Chips) {
@@ -690,9 +705,11 @@ type SidePots struct {
   BettingPot *SidePot
 }
 
-func (sidePots *SidePots) Init() {
-  sidePots.AllInPots = SidePotArray{
-    Pots: make([]*SidePot, 0),
+func NewSidePots() *SidePots {
+  return &SidePots{
+    AllInPots: SidePotArray{
+      Pots: make([]*SidePot, 0),
+    },
   }
 }
 
@@ -714,7 +731,9 @@ func (sidePots *SidePots) IsEmpty() bool {
 }
 
 func (sidePots *SidePots) Clear() {
-  sidePots.Init()
+  sidePots.AllInPots = SidePotArray{
+    Pots: make([]*SidePot, 0),
+  }
   sidePots.BettingPot = nil
 }
 
@@ -785,42 +804,35 @@ type Table struct {
   mtx sync.Mutex
 }
 
-func (table *Table) Init(deck *Deck, CPUPlayers []bool) error {
-  table.deck = deck
-  table.Ante = 10
+func NewTable(deck *Deck, numSeats uint8, CPUPlayers []bool) (*Table, error) {
+  if numSeats < 2 {
+    return nil, errors.New("need at least two players")
+  }
+
+  players := make([]*Player, 0, numSeats)
+  for i := uint8(0); i < numSeats; i++ {
+    players = append(players, NewPlayer(fmt.Sprintf("p%d", i), CPUPlayers[i]))
+  }
+
+  table := &Table{
+    deck: deck,
+    Ante: 10, // TODO: add knob
+
+    MainPot:  NewPot("mainpot", 0),
+    sidePots: *NewSidePots(),
+
+    players:        players,
+    activePlayers: *NewPlayerList("activePlayers", nil),
+    curPlayers:    *NewPlayerList("curPlayers", nil),
+
+    NumSeats: numSeats,
+  }
 
   table.newCommunity()
 
-  table.MainPot = &Pot{Name: "mainpot"}
-  table.MainPot.Init()
-
-  table.sidePots = SidePots{}
-  table.sidePots.Init()
-
-  table.players = make([]*Player, 0, table.NumSeats) // 2 players min, 7 max
-  table.activePlayers = playerList{name: "activePlayers"}
-  table.curPlayers = playerList{name: "curPlayers"}
-
-  if table.NumSeats < 2 {
-    return errors.New("need at least two players")
-  }
-
-  for i := uint8(0); i < table.NumSeats; i++ {
-    player := &Player{}
-    if err := player.Init(fmt.Sprintf("p%d", i), CPUPlayers[i]); err != nil {
-      return err
-    }
-
-    table.players = append(table.players, player)
-  }
-
   //table.curPlayers = table.players
 
-  table.Dealer = nil
-  table.SmallBlind = nil
-  table.BigBlind = nil
-
-  return nil
+  return table, nil
 }
 
 func (table *Table) reset(player *Player) {
@@ -869,6 +881,9 @@ func (table *Table) reset(player *Player) {
   table.Bet, table.NumPlayers, table.roundCount = 0, 0, 0
 
   if player != nil {
+    fmt.Printf("Table.reset(): clearing winner's (%s) action\n", player.Name)
+    player.Action.Clear()
+
     table.NumPlayers++
   }
 
@@ -1096,13 +1111,18 @@ func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
   }
 
   for _, p := range players {
+    printer.Printf("Table.getChipLeaders() %s action.amt == %v\n", p.Name, p.Action.Amount)
+  }
+
+  for _, p := range players {
     blindRequiredBet := Chips(0)
-    if p.Action.Amount == table.Ante || p.Action.Amount == table.Ante/2 {
-      blindRequiredBet = p.Action.Amount
-      printer.Printf("Table.getChipLeaders(): %s has blindRequiredBet %d\n", p.Name, blindRequiredBet)
-    }
-    if p.ChipCount + (p.Action.Amount - blindRequiredBet) > chipLeader {
-      chipLeader = p.ChipCount + (p.Action.Amount - blindRequiredBet)
+    //if p.isABlind(table) {
+    //  blindRequiredBet = p.Action.Amount
+    //  printer.Printf("Table.getChipLeaders(): %s has blindRequiredBet %d\n", p.Name, blindRequiredBet)
+    //}
+    realChipCount := p.ChipCount + (p.Action.Amount - blindRequiredBet)
+    if realChipCount > chipLeader {
+      chipLeader = realChipCount
       chipLeaderName = p.Name
     }
   }
@@ -1113,19 +1133,21 @@ func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
     }
 
     blindRequiredBet := Chips(0)
-    if p.Action.Amount == table.Ante || p.Action.Amount == table.Ante/2 {
-      blindRequiredBet = p.Action.Amount
-      printer.Printf("Table.getChipLeaders(): %s has blindRequiredBet %d\n", p.Name, blindRequiredBet)
-    }
+    //if p.isABlind(table) {
+    //  blindRequiredBet = p.Action.Amount
+    //  printer.Printf("Table.getChipLeaders(): %s has blindRequiredBet %d\n", p.Name, blindRequiredBet)
+    //}
 
-    if p.ChipCount + (p.Action.Amount - blindRequiredBet) == chipLeader {
+    realChipCount := p.ChipCount + (p.Action.Amount - blindRequiredBet)
+
+    if realChipCount == chipLeader {
       // chipLeader and secondChipLeader had the same amount of chips
       return chipLeader, chipLeader
     }
 
-    if p.ChipCount + (p.Action.Amount - blindRequiredBet) != chipLeader &&
-       p.ChipCount + (p.Action.Amount - blindRequiredBet) > secondChipLeader {
-      secondChipLeader = p.ChipCount + (p.Action.Amount - blindRequiredBet)
+    if realChipCount != chipLeader &&
+       realChipCount > secondChipLeader {
+      secondChipLeader = realChipCount
     }
   }
 
@@ -1356,7 +1378,6 @@ func (table *Table) rotatePlayers() {
     table.BigBlind.Player.Name)
 
   Panic := &Panic{}
-  Panic.Init()
 
   defer Panic.ifNoPanic(func() {
     fmt.Printf("D=%s S=%s B=%s\n",
@@ -1386,7 +1407,6 @@ func (table *Table) setNextPlayerTurn() {
   defer table.mtx.Unlock()
 
   Panic := &Panic{}
-  Panic.Init()
 
   thisPlayer := table.curPlayer // save in case we need to remove from curPlayers list
 
@@ -1500,8 +1520,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
   handleSidePots := func(prevBet Chips, betDiff Chips) {
     if table.sidePots.IsEmpty() { // first sidePot
-      sidePot := NewSidePot(table.Bet - player.Action.Amount, nil, nil, nil)
-      sidePot.Name = "bettingpot"
+      sidePot := NewSidePot(table.Bet - player.Action.Amount).WithName("bettingPot")
 
       if prevBet > 0 {
         fmt.Printf("Table.PlayerAction(): handleSidePots(): firstSidePot: <%s> removing prevBet (%v) from mainPot\n",
@@ -1556,7 +1575,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
                          "bet from %v to %v betDiff %v\n",
                          player.Name, mainPot.Bet, player.Action.Amount, betDiff)
 
-          sidePot := NewSidePot(mainPot.Bet, mainPot.Players, nil, nil)
+          sidePot := NewSidePot(mainPot.Bet).WithPlayers(mainPot.Players)
 
           mainPot.Bet = player.Action.Amount
           printer.Printf("Table.PlayerAction(): handleSidePots(): mainpot %v => ", mainPot.Total)
@@ -1626,12 +1645,15 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
             if sidePotBetDiff == bettingPot.Bet {
               fmt.Printf("Table.PlayerAction(): handleSidePots(): allin == bettingpot bet\n")
-              sidePot = NewSidePot(player.Action.Amount, bettingPot.Players, player, nil)
+               sidePot = NewSidePot(player.Action.Amount).
+                          WithPlayers(bettingPot.Players).
+                          WithPlayer(player)
             } else if sidePotBetDiff > bettingPot.Bet {
               fmt.Printf("Table.PlayerAction(): handleSidePots(): allin > bettingpot bet\n")
-              sidePot = NewSidePot(player.Action.Amount, nil, player, nil)
+              sidePot = NewSidePot(player.Action.Amount).WithPlayer(player)
               if bettingPot.Bet != 0 {
-                sidePot.MustCall = NewPot(fmt.Sprintf("%s mustcall pot", sidePot.Name), bettingPot.Bet, bettingPot.Players)
+                sidePot.MustCall = NewPot(fmt.Sprintf("%s mustcall pot", sidePot.Name), bettingPot.Bet).
+                                     WithPlayers(bettingPot.Players)
                 printer.Printf("Table.PlayerAction(): handleSidePots(): created new MustCall pot: bet %v players %v\n",
                                sidePot.MustCall.Bet, sidePot.MustCall.Players)
               }
@@ -1639,7 +1661,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
               sidePotBetDiff = 0
             } else {
               fmt.Printf("Table.PlayerAction(): allin < bettingpot bet\n")
-              sidePot = NewSidePot(player.Action.Amount, bettingPot.Players, player, nil)
+              sidePot = NewSidePot(player.Action.Amount).
+                          WithPlayers(bettingPot.Players).
+                          WithPlayer(player)
             }
 
             if sidePotBetDiff != 0 {
@@ -1656,8 +1680,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
             table.sidePots.AllInPots.Add(sidePot)
           default:
-            sidePot := NewSidePot(player.Action.Amount, bettingPot.Players,
-                                  player, nil)
+            sidePot := NewSidePot(player.Action.Amount).
+                         WithPlayers(bettingPot.Players).
+                         WithPlayer(player)
 
             /* allin players get automatically added to the smaller allin sidePots
             for _, sidePot := range table.sidePots.AllInPots.Pots[:idx] {
@@ -1725,12 +1750,15 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
           if sidePotBetDiff == bettingPot.Bet {
             fmt.Printf("Table.PlayerAction(): handleSidePots(): allin == bettingpot bet\n")
-            sidePot = NewSidePot(player.Action.Amount, bettingPot.Players, player, nil)
+            sidePot = NewSidePot(player.Action.Amount).
+                        WithPlayers(bettingPot.Players).
+                        WithPlayer(player)
           } else if sidePotBetDiff > bettingPot.Bet {
             fmt.Printf("Table.PlayerAction(): handleSidePots(): allin > bettingpot bet\n")
-            sidePot = NewSidePot(player.Action.Amount, nil, player, nil)
+            sidePot = NewSidePot(player.Action.Amount).WithPlayer(player)
             if bettingPot.Bet != 0 {
-              sidePot.MustCall = NewPot(fmt.Sprintf("%s mustcall pot", sidePot.Name), bettingPot.Bet, bettingPot.Players)
+              sidePot.MustCall = NewPot(fmt.Sprintf("%s mustcall pot", sidePot.Name), bettingPot.Bet).
+                                   WithPlayers(bettingPot.Players)
               printer.Printf("Table.PlayerAction(): handleSidePots(): created new MustCall pot: bet %v players %v\n",
                              sidePot.MustCall.Bet, sidePot.MustCall.Players)
             }
@@ -1738,7 +1766,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
             bettingPotBetDiff = 0
           } else {
             fmt.Printf("Table.PlayerAction(): handleSidePots(): allin < bettingpot bet\n")
-            sidePot = NewSidePot(player.Action.Amount, bettingPot.Players, player, nil)
+            sidePot = NewSidePot(player.Action.Amount).
+                        WithPlayers(bettingPot.Players).
+                        WithPlayer(player)
           }
 
           if bettingPotBetDiff != 0 {
@@ -1756,7 +1786,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
           table.sidePots.AllInPots.Add(sidePot)
         default:
-          sidePot := NewSidePot(player.Action.Amount, bettingPot.Players, player, nil)
+          sidePot := NewSidePot(player.Action.Amount).
+                       WithPlayers(bettingPot.Players).
+                       WithPlayer(player)
 
           // everyone in larger allins are automatically added to smaller sidePots
           // (including the bettingpot which is included in the factory function)
@@ -2239,7 +2271,7 @@ func (table *Table) newRound() {
 
   table.handleOrphanedSeats()
 
-  table.curPlayers = table.activePlayers.Clone("curPlayers")
+  table.curPlayers = *table.activePlayers.Clone("curPlayers")
   table.better = nil
   table.Bet = table.Ante // min bet is big blind bet
   table.MainPot.Clear()
