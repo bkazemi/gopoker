@@ -83,7 +83,7 @@ type NetData struct {
   Response NetAction
   Msg      string // server msg or client chat msg
 
-  Table          *Table
+  Table    *Table
 }
 
 /*func NewNewData() *NetData {

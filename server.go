@@ -1038,7 +1038,12 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
     // modify our server.table structure if a user sends that member
     netData := NetData{Response: NetDataNewConn, Table: nil}
 
-    gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&netData)
+    if err := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&netData);
+      err != nil {
+      fmt.Printf("Server.WSCLIClient(): %p had a problem decoding gob stream: %s\n", conn, err.Error())
+
+      return
+    }
 
     netData.Table = server.table
 
@@ -1321,6 +1326,4 @@ func (server *Server) run() error {
 
     return err
   }
-
-  return nil
 }

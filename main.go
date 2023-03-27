@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -139,7 +140,12 @@ func runClient(opts options) (err error) {
 
       netData := &NetData{}
       dec := gob.NewDecoder(bytes.NewReader(data))
-      dec.Decode(&netData)
+      if err := dec.Decode(&netData); err != nil {
+        fmt.Printf("runClient(): problem decoding gob stream %s\n", err.Error())
+
+        frontEnd.Finish() <- errors.New("server had a problem decoding a gob stream")
+        return
+      }
       frontEnd.InputChan() <- netData
 
       /*var gobBuf bytes.Buffer
