@@ -1,0 +1,61 @@
+.chatContainer {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0;
+  max-height: 100%;
+  max-width: 800px;
+}
+
+.chatLabel {
+  padding: 7px;
+  padding-left: 0;
+  font-size: 1.7rem;
+  font-weight: bold;
+  font-style: italic;
+}
+
+.chatMsgs {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  min-height: 100px;
+  max-height: 100%;
+  resize: vertical;
+  background: #1122;
+  border: 1px solid;
+  padding: 1rem;
+  word-wrap: break-word;
+  overflow-y: scroll;
+  scroll-behavior: smooth;
+}
+
+.chatMsgs > div {
+  padding-left: 20px;
+  text-indent: -20px;
+}
+
+.chatSendMsgContainer {
+  display: flex;
+  flex-direction: row;
+  flex: 1 0 0;
+}
+
+.chatSendMsgContainer button {
+  cursor: pointer;
+}
+
+.chatInput {
+  width: 80%;
+  min-height: 50px;
+  height: 120px;
+  max-height: 250px; 
+  resize: vertical;
+  padding: 1rem;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.chatSendBtn {
+  width: 20%;
+  height: 50px;
+}

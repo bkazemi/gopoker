@@ -1,0 +1,25 @@
+.newGameForm {
+  cursor: default;
+}
+
+.newGameForm form {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.newGameForm form label {
+  align-self: flex-start;
+  padding: 5px;
+}
+
+.newGameForm form input {
+  margin: 3px;
+  padding: 5px;
+}
+
+.newGameForm form button {
+  padding: 7px;
+  margin-top: 2rem;
+  align-self: center;
+}

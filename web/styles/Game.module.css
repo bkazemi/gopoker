@@ -1,0 +1,40 @@
+.spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner p {
+  font-size: 1.5rem;
+  padding: 7px;
+  padding-bottom: 15px;
+}
+
+.spinner img {
+  animation: spin 15s linear infinite;
+  transform: translateZ(0);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.fadeEnter {
+  opacity: 0;
+}
+
+.fadeEnterActive {
+  opacity: 1;
+  transition: opacity 700ms ease-in;
+}
+
+.fadeExit {
+  opacity: 1;
+}
+
+.fadeExitActive {
+  opacity: 0;
+  transition: opacity 700ms ease-out;
+}

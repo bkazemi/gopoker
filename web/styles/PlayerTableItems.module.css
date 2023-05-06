@@ -1,0 +1,32 @@
+.playerItems {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.playerCards {
+  display: flex;
+  flex-direction: row;
+}
+
+.playerCards > img:first-child {
+  position: relative;
+  left: 32.5px;
+}
+
+.playerCards > img:nth-child(2) {
+  rotate: 180deg;
+}
+
+.positions {
+  display: flex;
+  flex-direction: row;
+  align-self: flex-start;
+  padding-left: 10px;
+  padding-bottom: 5px;
+}
+
+.positions > img:first-child {
+  margin-right: 3px;
+}

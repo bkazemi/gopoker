@@ -1,0 +1,39 @@
+.player {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1;
+  border: 1px solid;
+  border-radius: 10px;
+  text-align: center;
+  justify-content: center;
+  box-shadow: 0 3px 1px rgba(0, 0, 0, 0.2);
+}
+
+.name {
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.player > p {
+  padding: 5px;
+}
+
+.yourPlayerActions.buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  padding: 5px;
+  text-align: center;
+}
+
+.yourPlayerActions.buttons button {
+  padding: 5px;
+}
+
+.yourPlayerActions label {
+  padding-right: 5px;
+}
+
+.yourPlayerActions input {
+  padding: 5px;
+}
