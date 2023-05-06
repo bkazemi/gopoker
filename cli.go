@@ -998,7 +998,7 @@ func cliInputLoop(cli *CLI) {
       case NetDataServerClosed:
         cli.finish <- errors.New("server closed")
       default:
-        cli.finish <- errors.New("bad response")
+        cli.finish <- errors.New(fmt.Sprintf("bad response %v", netData.Response))
       }
 
       cli.app.Draw()

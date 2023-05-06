@@ -850,12 +850,12 @@ func (table *Table) reset(player *Player) {
       fmt.Printf("Table.reset(): cleared %s\n", node.Player.Name)
       node.Player.Clear()
       table.curPlayers.RemovePlayer(node.Player)
-    } else {
+    } else { // XXX: not being found sometimes
       fmt.Printf("Table.reset(): skipped %s\n", node.Player.Name)
       table.curPlayers.SetHead(node)
 
-      player.NewCards()
-      player.Action.Action, player.Action.Amount = NetDataFirstAction, 0
+      //player.NewCards()
+      //player.Action.Action, player.Action.Amount = NetDataFirstAction, 0
     }
   }
 
@@ -881,8 +881,9 @@ func (table *Table) reset(player *Player) {
   table.Bet, table.NumPlayers, table.roundCount = 0, 0, 0
 
   if player != nil {
-    fmt.Printf("Table.reset(): clearing winner's (%s) action\n", player.Name)
+    fmt.Printf("Table.reset(): clearing winner's (%s) action and cards\n", player.Name)
     player.Action.Clear()
+    player.NewCards()
 
     table.NumPlayers++
   }
@@ -1320,7 +1321,7 @@ func (table *Table) handleOrphanedSeats() {
     table.SmallBlind = table.Dealer.next
     table.BigBlind = table.SmallBlind.next
   }
-  if table.Dealer == nil && table.SmallBlind == nil && table.BigBlind != nil {
+  if table.Dealer == nil && table.SmallBlind == nil { // (bigBlind != nil)
     var newDealerNode *PlayerNode
     for i, n := 0, table.activePlayers.head; i < table.activePlayers.len; i++ {
       if n.next.next.Player.Name == table.BigBlind.Player.Name {
@@ -1338,6 +1339,7 @@ func (table *Table) handleOrphanedSeats() {
     table.SmallBlind = table.Dealer.next
     table.BigBlind = table.SmallBlind.next
   }
+
   if table.Dealer == nil {
     var newDealerNode *PlayerNode
     for i, n := 0, table.activePlayers.head; i < table.activePlayers.len; i++ {
@@ -1353,10 +1355,14 @@ func (table *Table) handleOrphanedSeats() {
     fmt.Printf("Table.handleOrphanedSeats(): setting dealer to %s\n", newDealerNode.Player.Name)
 
     table.Dealer = newDealerNode
-  } else if table.SmallBlind == nil {
+  }
+
+  if table.SmallBlind == nil {
     table.SmallBlind = table.Dealer.next
     fmt.Printf("Table.handleOrphanedSeats(): setting smallblind to %s\n", table.SmallBlind.Player.Name)
-  } else if table.BigBlind == nil {
+  }
+
+  if table.BigBlind == nil {
     table.BigBlind = table.SmallBlind.next
     fmt.Printf("Table.handleOrphanedSeats(): setting bigblind to %s\n", table.BigBlind.Player.Name)
   }
@@ -2267,6 +2273,7 @@ func (table *Table) newRound() {
 
   if table.roundCount%10 == 0 {
     table.Ante *= 2 // TODO increase with time interval instead
+    fmt.Printf("Table.newRound(): ante increased to %v\n", table.Ante)
   }
 
   table.handleOrphanedSeats()

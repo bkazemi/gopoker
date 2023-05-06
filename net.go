@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"os"
 
 	"github.com/gorilla/websocket"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // requests/responses sent between client and server
@@ -216,7 +218,7 @@ func (netData *NetData) Send() {
   //fmt.Printf("NetData.Send(): send %s to `%s` (%s)\n", netData.NetActionToString(),
   //           netData.Client.Name, netData.Client.ID)
 
-  netData.unwrappedSender(netData.Client.conn)
+  netData.unwrappedSender(netData.Client.conn, netData.Client.connType)
 }
 
 // send a NetData struct to a different client than the one assigned to it's
@@ -231,24 +233,24 @@ func (netData *NetData) SendTo(client *Client) {
   //fmt.Printf("NetData.SendTo(): send %s to `%s` (%s)\n", netData.NetActionToString(),
   //           client.Name, client.ID)
 
-  netData.unwrappedSender(client.conn)
+  netData.unwrappedSender(client.conn, client.connType)
 }
 
 // send a NetData struct to a websocket.Conn. only used when a client is
 // initiating their connection to the server.
-func (netData *NetData) SendToConn(conn *websocket.Conn) {
+func (netData *NetData) SendToConn(conn *websocket.Conn, connType string) {
   if conn == nil {
     panic("NetData.SendToConn(): conn == nil")
   }
 
   //fmt.Printf("NetData.SendToConn(): send %s to %p\n", netData.NetActionToString(), conn)
 
-  netData.unwrappedSender(conn)
+  netData.unwrappedSender(conn, connType)
 }
 
 
 // internal function that actually send the message to the websocket. do not call directly!
-func (netData *NetData) unwrappedSender(conn *websocket.Conn) {
+func (netData *NetData) unwrappedSender(conn *websocket.Conn, connType string) {
   // TODO: move this
   // XXX modifies global table
   /*if (data.Table != nil) {
@@ -256,12 +258,26 @@ func (netData *NetData) unwrappedSender(conn *websocket.Conn) {
     data.Table.SmallBlind = data.Table.PublicPlayerInfo(*data.Table.SmallBlind)
     data.Table.BigBlind   = data.Table.PublicPlayerInfo(*data.Table.BigBlind)
   }*/
-  var gobBuf bytes.Buffer
-  enc := gob.NewEncoder(&gobBuf)
+  if connType == "cli" {
+    var gobBuf bytes.Buffer
+    enc := gob.NewEncoder(&gobBuf)
 
-  enc.Encode(netData)
+    enc.Encode(netData)
 
-  //fmt.Fprintf(os.Stderr, "NetData.Send(): send %s (%v bytes) to %p\n", netData.NetActionToString(), len(gobBuf.Bytes()), conn)
+    //fmt.Fprintf(os.Stderr, "NETDATA: cli: sending %v to %p\n", netData.NetActionToString(), conn)
 
-  conn.WriteMessage(websocket.BinaryMessage, gobBuf.Bytes())
+    conn.WriteMessage(websocket.BinaryMessage, gobBuf.Bytes())
+  } else if connType == "web" {
+    //conn.WriteJSON(netData)
+    b, err := msgpack.Marshal(netData)
+    if err != nil {
+      panic(err)
+    }
+
+    fmt.Fprintf(os.Stderr, "NETDATA: web: sending: %v to %p\n", netData.NetActionToString(), conn)
+
+    conn.WriteMessage(websocket.BinaryMessage, b)
+  } else {
+    panic(fmt.Sprintf("netData.unwrappedSender(): bad connType '%s'", connType))
+  }
 }

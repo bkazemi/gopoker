@@ -74,7 +74,7 @@ func runClient(opts options) (err error) {
 
     (&NetData{
       Request: NetDataClientExited,
-      Client: &Client{conn: conn},
+      Client: &Client{conn: conn, connType: "cli"},
     }).Send()
 
     err := conn.WriteMessage(websocket.CloseMessage,
@@ -122,6 +122,7 @@ func runClient(opts options) (err error) {
       Client: &Client{
         Settings: &ClientSettings{Name: opts.name, Password: opts.pass},
         conn: conn,
+        connType: "cli",
       },
     }).Send()
 
@@ -168,7 +169,7 @@ func runClient(opts options) (err error) {
         }
         return
       case netData := <-frontEnd.OutputChan():
-        netData.SendToConn(conn)
+        netData.SendToConn(conn, "cli")
       }
     }
   }()

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 const MaxClientNameLen = 20
@@ -25,6 +26,7 @@ type Client struct {
   Player   *Player
   Settings *ClientSettings // XXX: Settings.Name is redundant now
   conn     *websocket.Conn
+  connType string
 }
 
 func NewClient(settings *ClientSettings) *Client {
@@ -96,6 +98,9 @@ func NewServer(table *Table, addr string) *Server {
       Subprotocols: []string{"permessage-deflate"},
       ReadBufferSize: 4096,
       WriteBufferSize: 4096,
+      CheckOrigin: func(r *http.Request) bool {
+        return true; // XXX TMP REMOVE ME
+      },
     },
 
     http: &http.Server{
@@ -109,6 +114,7 @@ func NewServer(table *Table, addr string) *Server {
 
   server.http.SetKeepAlivesEnabled(true)
   http.HandleFunc("/cli", server.WSCLIClient)
+  http.HandleFunc("/web", server.WSWebClient)
 
   signal.Notify(server.sigChan, os.Interrupt)
 
@@ -226,9 +232,9 @@ func (server *Server) removePlayer(client *Client) {
           server.gameOver()
         } else {
           fmt.Println("Server.removePlayer(): state == rndovr || gameovr")
-          server.table.finishRound()
+          /*server.table.finishRound()
           server.table.State = TableStateGameOver
-          server.gameOver()
+          server.gameOver()*/
           return
         }
       }
@@ -476,15 +482,19 @@ func (server *Server) sendAllPlayerInfo(client *Client, curPlayers bool, sendToS
 
   for _, player := range players.ToPlayerArray() {
     playerClient := server.connClientMap[server.getPlayerConn(player)]
-    netData.Client = server.publicClientInfo(playerClient)
+
+    netData.Client = playerClient
 
     if client != nil {
       if !sendToSelf && playerClient.ID == client.ID {
         continue
+      } else if playerClient.ID != client.ID {
+        netData.Client = server.publicClientInfo(playerClient)
       }
       netData.SendTo(client)
     } else {
       netData.Send()
+      netData.Client = server.publicClientInfo(playerClient)
       server.sendResponseToAll(netData, playerClient)
     }
   }
@@ -520,27 +530,31 @@ func (server *Server) removeEliminatedPlayers() {
   }
 }
 
-func (server *Server) sendLock(conn *websocket.Conn) {
+func (server *Server) sendLock(conn *websocket.Conn, connType string) {
   fmt.Printf("Server.sendLock(): locked out %p with %s\n", conn,
              server.table.TableLockToString())
 
-  (&NetData{
-    Client: &Client{conn: conn},
+  netData := &NetData{
+    Client: &Client{conn: conn, connType: connType},
     Response: NetDataTableLocked,
     Msg: fmt.Sprintf("table lock: %s", server.table.TableLockToString()),
-  }).Send()
+  }
+
+  netData.Send()
 
   time.Sleep(1 * time.Second)
 }
 
-func (server *Server) sendBadAuth(conn *websocket.Conn) {
+func (server *Server) sendBadAuth(conn *websocket.Conn, connType string) {
   fmt.Printf("Server.sendBadAuth(): %p had bad authentication\n", conn)
 
-  (&NetData{
-    Client: &Client{conn: conn},
+  netData := &NetData{
+    Client: &Client{conn: conn, connType: connType},
     Response: NetDataBadAuth,
     Msg: "your password was incorrect",
-  }).Send()
+  }
+
+  netData.Send()
 
   time.Sleep(1 * time.Second)
 }
@@ -558,11 +572,13 @@ func (server *Server) makeAdmin(client *Client) {
     server.tableAdminID = client.ID
   }
 
-  (&NetData{
+  netData := &NetData{
     Client: client,
     Response: NetDataMakeAdmin,
     Table: server.table,
-  }).Send()
+  }
+
+  netData.Send()
 }
 
 func (server *Server) newRound() {
@@ -756,7 +772,9 @@ func (server *Server) postPlayerAction(client *Client, netData *NetData) {
     netData.Response = NetDataRoundOver
     netData.Table = server.table
     netData.Msg = server.table.Winners[0].Name + " wins by folds"
-    netData.Client.Player = nil
+    if netData.Client != nil { // XXX ?
+      netData.Client.Player = nil
+    }
 
     server.sendResponseToAll(netData, nil)
 
@@ -927,11 +945,11 @@ func (server *Server) applyClientSettings(client *Client, settings *ClientSettin
   }
 }
 
-func (server *Server) newClient(conn *websocket.Conn, clientSettings *ClientSettings) *Client {
+func (server *Server) newClient(conn *websocket.Conn, connType string, clientSettings *ClientSettings) *Client {
   server.mtx.Lock()
   defer server.mtx.Unlock()
 
-  client, ID := &Client{conn: conn}, ""
+  client, ID := &Client{conn: conn, connType: connType}, ""
   for {
     ID = randString(10) // 62^10 is plenty ;)
     if _, found := server.IDClientMap[ID]; !found {
@@ -954,8 +972,22 @@ func (server *Server) newClient(conn *websocket.Conn, clientSettings *ClientSett
 }
 
 func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
+  server.WSClient(w, req, "cli")
+}
+
+func (server *Server) WSWebClient(w http.ResponseWriter, req *http.Request) {
+  server.WSClient(w, req, "web")
+}
+
+func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, connType string) {
   if req.Header.Get("keepalive") != "" {
     return // NOTE: for heroku
+  }
+
+  if connType != "cli" && connType != "web" {
+    fmt.Printf("Server.WSClient: connType '%s' is invalid.\n", connType)
+
+    return
   }
 
   conn, err := server.upgrader.Upgrade(w, req, nil)
@@ -982,7 +1014,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
       if client != nil && client.Player != nil {
         player := client.Player
         if !cleanExit {
-          fmt.Printf("Server.WSCLIClient(): %s had an unclean exit\n", player.Name)
+          fmt.Printf("Server.WSClient(): %s had an unclean exit\n", player.Name)
         }
         if server.table.activePlayers.len > 1 &&
            server.table.curPlayer != nil &&
@@ -1000,7 +1032,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
     }
   }()
 
-  fmt.Printf("Server.WSCLIClient(): => new conn from %s\n", req.Host)
+  fmt.Printf("Server.WSClient(): => new conn from %s\n", req.Host)
 
   stopPing := make(chan bool)
   go func() {
@@ -1012,7 +1044,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         return
       case <-ticker.C:
         if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-          fmt.Printf("Server.WSCLIClient(): ping err: %s\n", err.Error())
+          fmt.Printf("Server.WSClient(): ping err: %s\n", err.Error())
           return
         }
       }
@@ -1025,53 +1057,95 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
   //netData := NetData{}
 
   for {
-    _, rawData, err := conn.ReadMessage()
-    if err != nil {
-      if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
-        fmt.Printf("Server.WSCLIClient(): readConn() conn: %p err: %v\n", conn, err)
+    var netData NetData
+
+    if connType == "cli" {
+      _, rawData, err := conn.ReadMessage()
+      if err != nil {
+        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+          fmt.Printf("Server.WSClient(): cli: readConn() conn: %p err: %v\n", conn, err)
+        }
+
+        return
       }
 
-      return
-    }
+      // we need to set Table member to nil otherwise gob will
+      // modify our server.table structure if a user sends that member
+      nd := NetData{Response: NetDataNewConn, Table: nil}
 
-    // we need to set Table member to nil otherwise gob will
-    // modify our server.table structure if a user sends that member
-    netData := NetData{Response: NetDataNewConn, Table: nil}
+      if err := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&nd);
+        err != nil {
+        fmt.Printf("Server.WSClient(): cli: %p had a problem decoding gob stream: %s\n", conn, err.Error())
 
-    if err := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&netData);
-      err != nil {
-      fmt.Printf("Server.WSCLIClient(): %p had a problem decoding gob stream: %s\n", conn, err.Error())
+        return
+      }
 
-      return
-    }
+      nd.Table = server.table
 
-    netData.Table = server.table
+      fmt.Printf("Server.WSClient(): cli: recv %s (%d bytes) from %p\n",
+                 nd.NetActionToString(), len(rawData), conn)
 
-    fmt.Printf("Server.WSCLIClient(): recv %s (%d bytes) from %p\n",
-               netData.NetActionToString(), len(rawData), conn)
+      if int64(len(rawData)) > server.MaxConnBytes {
+        fmt.Printf("Server.WSClient(): cli: conn: %p sent too many bytes (> %v)\n",
+                   conn, server.MaxConnBytes)
+        return
+      }
 
-    if int64(len(rawData)) > server.MaxConnBytes {
-      fmt.Printf("Server.WSCLIClient(): conn: %p sent too many bytes (> %v)\n",
-                 conn, server.MaxConnBytes)
-      return
+      netData = nd
+    } else { // webclient
+      /*if err := conn.ReadJSON(&netData); err != nil {
+        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+          fmt.Printf("Server.WSClient(): ReadJSON(): conn: %p err %v\n", conn, err)
+        }
+
+        //fmt.Printf("Server.WSClient(): ReadJSON() err: %s\n", err.Error())
+
+        return
+      }*/
+      _, rawData, err := conn.ReadMessage()
+      if err != nil {
+        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+          fmt.Printf("Server.WSClient(): web: readConn() conn: %p err: %v\n", conn, err)
+        }
+
+        return
+      }
+
+      err = msgpack.Unmarshal(rawData, &netData)
+      if err != nil {
+        fmt.Printf("Server.WSClient(): web: %p had a problem decoding msgpack steam: %s\n", conn, err.Error())
+
+        return
+      }
+
+      if netData.Client.conn == nil {
+        netData.Client.conn = conn
+      }
+      if netData.Client.Settings == nil {
+        netData.Client.Settings = &ClientSettings{}
+      }
+      fmt.Printf("Server.WSClient(): web: recv msgpack: %v nd.Request == %v\n", netData, netData.Request)
+      fmt.Printf("Server.WSClient(): web: nd %s\n", netData.NetActionToString())
+      netData.Table = server.table
     }
 
     if netData.Request == NetDataNewConn {
+      netData.Response = NetDataNewConn
       netData.Request = 0
       if server.table.Lock == TableLockAll {
-        server.sendLock(conn)
+        server.sendLock(conn, connType)
 
         return
       }
 
       if server.table.Password != "" &&
          netData.Client.Settings.Password != server.table.Password {
-        server.sendBadAuth(conn)
+        server.sendBadAuth(conn, connType)
 
         return
       }
 
-      client := server.newClient(conn, netData.Client.Settings)
+      client := server.newClient(conn, connType, netData.Client.Settings)
 
       if _, err := server.handleClientSettings(client, netData.Client.Settings); err != nil {
         (&NetData{
@@ -1099,7 +1173,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
 
       if server.table.Lock == TableLockPlayers {
         netData.Response = NetDataServerMsg
-        netData.Client = &Client{conn: conn}
+        //netData.Client = &Client{conn: conn}
         netData.Msg = "This table is not allowing new players. " +
                       "You have been added as a spectator."
         netData.Send()
@@ -1108,7 +1182,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         server.playerClientMap[player] = client
 
         server.applyClientSettings(client, netData.Client.Settings)
-        fmt.Printf("Server.WSCLIClient(): adding <%s> (%p) (%s) as player '%s'\n",
+        fmt.Printf("Server.WSClient(): adding <%s> (%p) (%s) as player '%s'\n",
                    client.ID, &conn, client.Name, player.Name)
 
         if server.table.State == TableStateNotStarted {
@@ -1141,7 +1215,7 @@ func (server *Server) WSCLIClient(w http.ResponseWriter, req *http.Request) {
         netData.Response = NetDataYourPlayer
         netData.Send()
       } else if server.table.Lock == TableLockSpectators {
-          server.sendLock(conn)
+          server.sendLock(conn, connType)
 
           return
       } else {
