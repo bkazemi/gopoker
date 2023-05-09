@@ -1,14 +1,18 @@
 import React, {useCallback, useContext, useEffect, useRef, useState} from 'react';
 
-import styles from '@/styles/Player.module.css';
+import Image from 'next/image';
 
 import cx from 'classnames';
+import { cloneDeep } from 'lodash';
 
-import { NETDATA, NetData, PlayerActionToString } from '@/lib/libgopoker';
+import { TABLE_STATE, NETDATA, NetData, PlayerActionToString } from '@/lib/libgopoker';
+
+import styles from '@/styles/Player.module.css';
+
 
 const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
   if (!isYourPlayer)
-    return; 
+    return;
 
   const checkBtnRef = useRef(null);
   const callBtnRef = useRef(null);
@@ -16,6 +20,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
   const foldBtnRef = useRef(null);
   const allInBtnRef = useRef(null);
 
+  const [raiseInputValue, setRaiseInputValue] = useState('');
   const [raiseAmount, setRaiseAmount] = useState(BigInt(0));
 
   const btnRefMap = new Map([
@@ -26,7 +31,13 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
     ['a', allInBtnRef],
   ]);
 
-  const handleRaiseInput = (e) => {
+  const handleRaiseInput = useCallback((e) => {
+    if (e.target.value === '') {
+      if (raiseInputValue !== '') setRaiseInputValue('');
+      if (raiseAmount !== 0n) setRaiseAmount(0n);
+      return;
+    }
+
     let multiplier = 1n;
     if (e.target.value.charAt(e.target.value.length - 1).match(/[Kk]/))
       multiplier = 1000n;
@@ -34,11 +45,13 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
       multiplier = 1000000n;
 
     const num = BigInt(e.target.value.replace(/[^0-9]/g, ''));
-    e.target.value = (num * multiplier).toLocaleString() || '';
-    if (e.target.value === '0')
-      e.target.value = '';
+    let numStr = (num * multiplier).toLocaleString() || '';
+    if (numStr === '0')
+      numStr = '';
+
+    setRaiseInputValue(numStr);
     setRaiseAmount(num * multiplier);
-  };
+  }, [raiseInputValue, raiseAmount]);
 
   const handleButton = useCallback((btn) => {
     const map = new Map([
@@ -48,7 +61,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
       ['fold',  NETDATA.FOLD],
       ['allin', NETDATA.ALLIN],
     ]);
-    
+
     const action = map.get(btn);
     if (!action) {
       console.error(`Player: handleButton: BUG: ${btn} not in map`);
@@ -57,11 +70,19 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
 
     console.log(`sending ${btn} ${action}`);
 
-    client.Player.Action.Action = action;
-    client.Player.Action.Amount = raiseAmount;
+    const newClient = {...client};
+    newClient.Player = cloneDeep(client.Player);
+
+    newClient.Player.Action.Action = action;
+    newClient.Player.Action.Amount = raiseAmount;
+
+    if (raiseAmount) {
+      setRaiseInputValue('');
+      setRaiseAmount(0);
+    }
 
     socket.send(
-      (new NetData(client, action)).toMsgPack()
+      (new NetData(newClient, action)).toMsgPack()
     );
   }, [client, socket, raiseAmount]);
 
@@ -84,6 +105,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
         name='raiseInput'
         step={10}
         min={0}
+        value={raiseInputValue}
         onInput={handleRaiseInput}
         /*max={} TODO: add me */
       />
@@ -101,14 +123,62 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
   );
 };
 
-export default function Player({ client, socket, curPlayer, playerHead, side,
-  gridRow, gridCol, isYourPlayer, keyPressed }) {
+const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
+  if (tableState === TABLE_STATE.NOT_STARTED ||
+     (!isDealer && !isBigBlind && !isSmallBlind))
+    return;
+
+  return (
+    <div className={styles.positions}>
+      {
+        isDealer &&
+        <Image
+          src={'/D.png'}
+          width={35}
+          height={35}
+          alt='[D]'
+        />
+      }
+      {
+        isSmallBlind &&
+        <Image
+          src={'/SB.png'}
+          width={35}
+          height={35}
+          alt='[Sb]'
+        />
+      }
+      {
+        isBigBlind &&
+        <Image
+          src={'/BB.png'}
+          width={35}
+          height={35}
+          alt='[Bb]'
+        />
+      }
+    </div>
+  );
+};
+
+export default function Player({ client, socket, tableState, curPlayer,
+  playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer, keyPressed }) {
   const [name, setName] = useState(client.Name);
   const [curAction, setCurAction] = useState(client.Player?.Action || {});
-  const [chipCount, setChipCount] = useState(Number(client.Player?.ChipCount));
+  const [chipCount, setChipCount] = useState(BigInt(client.Player?.ChipCount));
+
+  const [isDealer, setIsDealer] = useState(false);
+  const [isSmallBlind, setIsSmallBlind] = useState(false);
+  const [isBigBlind, setIsBigBlind] = useState(false);
+
+  const posSetStateMap = {
+    dealer: setIsDealer,
+    smallBlind: setIsSmallBlind,
+    bigBlind: setIsBigBlind,
+  };
 
   const [style, setStyle] = useState({gridRow, gridCol});
-  
+
   useEffect(() => {
     setName(client.Name);
     setCurAction(client.Player?.Action);
@@ -177,11 +247,58 @@ export default function Player({ client, socket, curPlayer, playerHead, side,
     });
   }, [side]);
 
+  useEffect(() => {
+    [...Object.entries(dealerAndBlinds)]
+      .filter(([name, seat]) => {
+        //console.log(`dSB ${name} name: ${seat?.Player?.Name} cid ${client?._ID}  cname ${client?.Player?.Name}`);
+        if (seat?.Player?.Name === client?.Player?.Name)
+          return true;
+        else
+          posSetStateMap[name](false);
+      })
+      .map(([name]) => {
+        console.log(`MAP ${client.Player.Name} ${name}`);
+        posSetStateMap[name](true);
+      });
+  }, [dealerAndBlinds, client]);
+
+  if (client._ID) {
+    return (
+      <div
+        key={'vacant'}
+        className={styles.player}
+        style={style}
+      >
+        <div className={styles.nameContainer}>
+          <p className={styles.name}>{name}{isYourPlayer && <span style={{fontStyle: 'italic'}}> (You)</span>}</p>
+        </div>
+        <Image
+          src={'/seat.png'}
+          height={85}
+          width={60}
+          style={{
+            marginTop: '10px',
+            paddingBottom: '5px',
+            width: 'auto',
+          }}
+          alt='[seat img]'
+        />
+      </div>
+    );
+  }
+
   return (
-    <div key={client?.ID || String(Math.random())} className={styles.player} style={style}>
-      <p className={styles.name}>{name}{isYourPlayer && <span style={{fontStyle: 'italic'}}> (You)</span>}</p>
-      <p>current action: {PlayerActionToString(curAction)}</p>
-      <p>chip count: {chipCount.toLocaleString()}</p>
+    <div
+      key={client?.ID || String(Math.random())}
+      className={styles.player}
+      style={style}
+    >
+      <div className={styles.nameContainer}>
+        <p className={styles.name}>{name}{isYourPlayer && <span style={{fontStyle: 'italic'}}> (You)</span>}</p>
+        <Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />
+      </div>
+      <p>current action: { PlayerActionToString(curAction) }</p>
+      <p>chip count: { chipCount.toLocaleString() }</p>
       <YourPlayerActions {...{isYourPlayer, client, keyPressed, socket}} />
     </div>
   );

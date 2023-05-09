@@ -51,7 +51,7 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
             }}
           />
           <h2>quit game</h2>
-        </div> 
+        </div>
         <p className={styles.modalTxt}>{ modalTxt }</p>
         <div style={{ display: 'flex', paddingTop: '7px' }}>
           <button
@@ -132,7 +132,7 @@ export default function TableModal({ modalType, modalTxt, modalOpen, setModalOpe
           backgroundColor: modalType === 'preGame' ? 'white' : 'transparent',
           zIndex: 2,
         },
-        content: { 
+        content: {
           top: '50%',
           left: '50%',
           right: 'auto',

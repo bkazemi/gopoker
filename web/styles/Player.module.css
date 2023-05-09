@@ -5,8 +5,18 @@
   border: 1px solid;
   border-radius: 10px;
   text-align: center;
+  align-items: center;
   justify-content: center;
   box-shadow: 0 3px 1px rgba(0, 0, 0, 0.2);
+  background-color: #44362e12;
+}
+
+.nameContainer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
 }
 
 .name {
@@ -36,4 +46,16 @@
 
 .yourPlayerActions input {
   padding: 5px;
+}
+
+.positions {
+  display: flex;
+  flex-direction: row;
+  align-self: flex-start;
+  padding-left: 10px;
+  padding-bottom: 5px;
+}
+
+.positions > img:first-child {
+  margin-right: 3px;
 }

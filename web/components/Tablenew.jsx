@@ -4,7 +4,7 @@ import Image from 'next/image';
 
 import cx from 'classnames';
 
-import { NETDATA, NetData, TABLE_STATE } from '@/lib/libgopoker';
+import { NETDATA, NetData, NetDataToString, TABLE_STATE } from '@/lib/libgopoker';
 
 import TableModal from '@/components/TableModal';
 import TableCenter from '@/components/TableCenter';
@@ -42,13 +42,13 @@ const PlayerList = ({
           else
             gridCol = idx+1;
 
-          return innerTableItem 
+          return innerTableItem
             ? <PlayerTableItems
                 {...{client, isYourPlayer, dealerAndBlinds, side, gridRow, gridCol, tableState}}
               />
             : <Player
-                {...{client, side, curPlayer, playerHead, gridRow, gridCol,
-                     isYourPlayer, keyPressed, socket}}
+                {...{client, side, tableState, curPlayer, playerHead, gridRow, gridCol,
+                     isYourPlayer, dealerAndBlinds, keyPressed, socket}}
               />
       })
     }
@@ -58,7 +58,7 @@ const PlayerList = ({
 const nullPlayer = {
   Name: 'vacant seat',
   Action: {Action: NETDATA.VACANT_SEAT},
-  ChipCount: Infinity,
+  ChipCount: 0,
 };
 
 const nullClient = {
@@ -102,16 +102,26 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTxt, setModalTxt] = useState('');
 
+  const chatInputRef = useRef(null);
+
   // keyboard event state
   const [keyPressed, setKeyPressed] = useState('');
 
   // keyboard action shortcuts
   useEffect(() => {
+    if (modalOpen)
+      return;
+
     const handleKeyDown = (event) => {
+      if (chatInputRef?.current?.contains(document.activeElement))
+        return;
       setKeyPressed(event.key);
     };
 
     const handleKeyUp = (event) => {
+      if (chatInputRef?.current?.contains(document.activeElement))
+        return;
+
       setKeyPressed('');
     };
 
@@ -122,7 +132,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [chatInputRef, modalOpen]);
 
   const updateTable = useCallback(() => {
     setMainPot(netData.Table.MainPot);
@@ -140,11 +150,11 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       console.log(`updating ${players[pIdx].Name} to ${nullClient ?? client}`);
       setPlayers(c => {
         const newClients = [...c];
-        newClients[pIdx] = nullClient ?? client; 
+        newClients[pIdx] = nullClient ?? client;
         return newClients;
       });
     } else {
-      console.error(`updatePlayer(): couldn't find ${client.ID} ${client.Player?.Name} in players array, pIdx: ${pIdx}`); 
+      console.error(`updatePlayer(): couldn't find ${client.ID} ${client.Player?.Name} in players array, pIdx: ${pIdx}`);
       console.log(players);
     }
   }, [players]);
@@ -165,6 +175,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
 
   useEffect(() => {
   if (netData.Response) {
+    console.log(`%cresp: ${NetDataToString(netData.Response)} (${netData.Response})`, "background-color:red;color:white;padding:5px;font-size:1.3rem");
     if (NETDATA.needsTable(netData) && !netData.Table)
       console.error('table needed but netData.Table is null');
     if (NETDATA.needsPlayer(netData) && (!netData.Client?.Player || !netData.Client?.ID))
@@ -183,7 +194,6 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       setChatMsgs(msgs => [...msgs, netData.Msg]);
       break;
     case NETDATA.CLIENT_SETTINGS:
-      console.log(`client settings`);
       setYourClient(netData.Client);
       updatePlayer(netData.Client);
       break;
@@ -234,67 +244,59 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       break;
     }
     case NETDATA.MAKE_ADMIN:
-      console.log('make admin');
       setIsAdmin(true);
       break;
     case NETDATA.DEAL:
-      console.log('deal');
       //setTableState(netData.Table.State);
       //setCommunity(netData.Table.Community);
       updatePlayer(netData.Client);
       break;
     case NETDATA.PLAYER_ACTION:
-      console.log('player action');
       updatePlayer(netData.Client);
       updateTable();
       break;
     case NETDATA.PLAYER_HEAD:
-      console.log('player head');
       setPlayerHead(netData.Client);
       break;
     case NETDATA.PLAYER_TURN:
-      console.log('player turn');
       setCurPlayer(netData.Client);
       break;
     case NETDATA.UPDATE_PLAYER:
-      console.log('update player');
       updatePlayer(netData.Client)
       break;
     case NETDATA.UPDATE_TABLE:
-      console.log('update table');
       updateTable();
       break;
     case NETDATA.CUR_HAND:
-      console.log('cur hand');
       updatePlayer(netData.Client);
       break;
     case NETDATA.SHOW_HAND:
-      console.log('show hand');
       break;
     case NETDATA.ROUND_OVER:
-      console.log('round over');
       updateTable();
       setModalType('');
       setModalTxt(netData.Msg);
       setModalOpen(true);
       break;
     case NETDATA.RESET:
-      console.log('reset');
       updateTable();
+      setPlayerHead(null);
+      setCurPlayer(null);
       break;
     case NETDATA.ELIMINATED:
-      console.log('elim');
       if (netData.Client.ID === yourClient.ID) {
+        if (isAdmin)
+          setIsAdmin(false);
         setModalType('');
         setModalTxt('you have been eliminated');
         setModalOpen(true);
+        updatePlayer(netData.Client, nullClient)
       }
       setChatMsgs(msgs => [...msgs, netData.Msg]);
       break;
     case NETDATA.FLOP:
     case NETDATA.TURN:
     case NETDATA.RIVER:
-      console.log('flop, turn or river');
       setCommunity(netData.Table.Community);
       updateTable();
       break;
@@ -361,6 +363,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         {/* TOP-SIDE PLAYERS */}
           <PlayerList
             {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={2}
           />
         </div>
@@ -375,6 +378,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         {/* LEFT-SIDE PLAYERS */}
         <PlayerList
           {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+          dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
           sideNum={1}
         />
       </div>
@@ -462,6 +466,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         {/* RIGHT-SIDE PLAYERS */}
         <PlayerList
           {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+          dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
           sideNum={3}
         />
       </div>
@@ -479,8 +484,9 @@ export default function Tablenew({ socket, netData, setShowGame }) {
           )}
         >
           {/* BOTTOM-SIDE PLAYERS */}
-          <PlayerList 
+          <PlayerList
             {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={0}
           />
         </div>
@@ -523,8 +529,9 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         <p>status: { TABLE_STATE.toString(tableState) }</p>
       </div>
       <Chat
-        {...{yourClient, socket}}
-        msgs={chatMsgs}/>
+        {...{yourClient, socket, chatInputRef}}
+        msgs={chatMsgs}
+      />
     </div>
   </>
   );

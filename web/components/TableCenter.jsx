@@ -26,7 +26,7 @@ export default function TableCenter({ isAdmin, tableState, community, yourClient
         </div> || ''
       }
       {
-        (isAdmin && tableState === TABLE_STATE.NOT_STARTED) && 
+        (isAdmin && tableState === TABLE_STATE.NOT_STARTED) &&
           <div className={styles.preGame}>
             <button
               onClick={() => {

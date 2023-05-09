@@ -38,7 +38,7 @@
 }
 
 .unselectable {
-  user-drag: none; 
+  user-drag: none;
   user-select: none;
   -moz-user-select: none;
   -webkit-user-drag: none;
@@ -52,9 +52,13 @@
 }
 
 .logo img {
+  align-self: flex-end;
   animation: spin 25s linear infinite;
   transform: translateZ(0);
-  align-self: flex-end;
+}
+
+.pauseAnimation {
+  animation-play-state: paused !important;
 }
 
 @keyframes spin {

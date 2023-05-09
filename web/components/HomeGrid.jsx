@@ -25,7 +25,7 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
 
     for (const el of gridRef.current.children) {
       if (el !== visibleCard) {
-        if (isOn) 
+        if (isOn)
           el.classList.remove('hidden');
         else
           el.classList.add('hidden');

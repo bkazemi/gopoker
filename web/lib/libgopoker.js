@@ -52,6 +52,10 @@ export const NETDATA = {
   BAD_REQUEST:        1n << 39n,
 };
 
+export const NetDataToString = (netDataReqOrRes) => {
+  return Object.keys(NETDATA).find(k => NETDATA[k] === netDataReqOrRes);
+};
+
 export const PlayerActionToString = (action) => {
   switch (action.Action) {
   case NETDATA.ALLIN:

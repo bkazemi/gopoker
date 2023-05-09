@@ -3,7 +3,7 @@ import Image from 'next/image'
 import { Exo } from 'next/font/google'
 import styles from '@/styles/Home.module.css'
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState, useRef } from 'react';
 
 import { CSSTransition } from 'react-transition-group';
 
@@ -16,6 +16,15 @@ export default function Home() {
   const [newGameFormData, setNewGameFormData] = useState(null);
   const [showGame, setShowGame] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
+
+  const logoImgRef = useRef(null);
+
+  const toggleSpin = useCallback(() => {
+    if (logoImgRef.current.classList.contains(styles.pauseAnimation))
+      logoImgRef.current.classList.remove(styles.pauseAnimation);
+    else
+      logoImgRef.current.classList.add(styles.pauseAnimation);
+  }, [logoImgRef]);
 
   return (
     <>
@@ -30,12 +39,15 @@ export default function Home() {
           <div className={`${styles.logo} ${styles.unselectable}`}>
             <h1>g</h1>
             <Image
+              ref={logoImgRef}
+              className={styles.logoImgSpin}
               priority
               src={'/pokerchip3.png'}
               width={75}
               height={75}
-              alt='o'>
-            </Image>
+              alt='o'
+              onClick={toggleSpin}
+            />
             <h1>poker</h1>
           </div>
           <p>current games: {'...'}</p>

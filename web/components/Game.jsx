@@ -54,8 +54,8 @@ export default function Game({ websocketOpts, setShowGame }) {
             //const msg = JSON.parse(event.data.toString());
             //const msg = await decodeFromBlob(event.data);
             const msg = decode(await event.data.arrayBuffer(), { useBigInt64: true });
-            console.warn('msg', msg);
-            
+            console.warn('Game: recv msg:', msg);
+
             msg.ShallowThis = Math.random();
             next(null, msg);
           } catch(e) {
@@ -75,8 +75,8 @@ export default function Game({ websocketOpts, setShowGame }) {
     return () => socket.close();
   });
 
-  if (error) 
-    return ( 
+  if (error)
+    return (
       <div
         className={literata.className}
         style={{
@@ -104,7 +104,7 @@ export default function Game({ websocketOpts, setShowGame }) {
     <div className={styles.spinner}>
       <p className={literata.className}>connecting to server...</p>
       <Image
-        src='/pokerchip3.png' 
+        src='/pokerchip3.png'
         width={100} height={100}
         alt='spinner'
       />
@@ -117,5 +117,5 @@ export default function Game({ websocketOpts, setShowGame }) {
       netData={data}
     />
   );
-    
+
 }

@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   padding-right: 2rem;
+  min-width: 245px;
 }
 
 .tableInfo > div > label {
@@ -143,6 +144,10 @@
   border-radius: 7px;
   word-wrap: break-word;
   box-shadow: 0 3px 1px rgba(0, 0, 0, 0.2);
+  background-color: #44362e12;
+  /*background-image: url('/tableBackgroundTexture2.jpg');
+  background-repeat: repeat;
+  background-size: contain;*/
 }
 
 .innerTableGridItem {

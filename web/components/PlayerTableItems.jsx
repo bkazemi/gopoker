@@ -4,10 +4,14 @@ import Image from 'next/image';
 
 import styles from '@/styles/PlayerTableItems.module.css';
 
-import { TABLE_STATE, cardToImagePath } from '@/lib/libgopoker';
+import { NETDATA, TABLE_STATE, cardToImagePath } from '@/lib/libgopoker';
 
 const Cards = ({ client, isYourPlayer, side, tableState }) => {
-  if (tableState === TABLE_STATE.NOT_STARTED)
+  if (
+    tableState === TABLE_STATE.NOT_STARTED ||
+    client.Player.Action.Action === NETDATA.FOLD ||
+    client.Player.Action.Action === NETDATA.MIDROUND_ADDITION
+  )
     return;
 
   let style = {};
@@ -19,13 +23,13 @@ const Cards = ({ client, isYourPlayer, side, tableState }) => {
 
   if (!isYourPlayer && tableState !== TABLE_STATE.SHOW_HANDS)
     return <div className={styles.playerCards}>
-            <Image 
+            <Image
               src={'/cards/cardBack_blue5.png'}
               height={90}
               width={65}
               alt={'[card]'}
             />
-            <Image 
+            <Image
               src={'/cards/cardBack_blue5.png'}
               height={90}
               width={65}
@@ -49,14 +53,15 @@ const Cards = ({ client, isYourPlayer, side, tableState }) => {
     </div>
 };
 
-const Positions = ({ isDealer, isSmallBlind, isBigBlind }) => {
-  if (!isDealer && !isBigBlind && !isSmallBlind)
+const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
+  if (tableState === TABLE_STATE.NOT_STARTED ||
+     (!isDealer && !isBigBlind && !isSmallBlind))
     return;
 
   return (
     <div className={styles.positions}>
       {
-        isDealer && 
+        isDealer &&
         <Image
           src={'/D.png'}
           width={35}
@@ -65,7 +70,7 @@ const Positions = ({ isDealer, isSmallBlind, isBigBlind }) => {
         />
       }
       {
-        isSmallBlind && 
+        isSmallBlind &&
         <Image
           src={'/SB.png'}
           width={35}
@@ -74,7 +79,7 @@ const Positions = ({ isDealer, isSmallBlind, isBigBlind }) => {
         />
       }
       {
-        isBigBlind && 
+        isBigBlind &&
         <Image
           src={'/BB.png'}
           width={35}
@@ -97,7 +102,8 @@ export default function PlayerTableItems({ client, isYourPlayer, dealerAndBlinds
   if (client._ID === 'vacant')
     return;
 
-  const [isDealer, setIsDealer] = useState(false);
+  // currently disabled
+  /*const [isDealer, setIsDealer] = useState(false);
   const [isSmallBlind, setIsSmallBlind] = useState(false);
   const [isBigBlind, setIsBigBlind] = useState(false);
 
@@ -120,21 +126,7 @@ export default function PlayerTableItems({ client, isYourPlayer, dealerAndBlinds
         console.log(`MAP ${client.Player.Name} ${name}`);
         posSetStateMap[name](true);
       });
-  }, [dealerAndBlinds, client]);
-
-  /*useEffect(() => {
-  //  console.log(`isDSB: ${client?.Player?.Name} ${isDealer} ${isBigBlind} ${isSmallBlind}`);
-  //}, [isDealer, isSmallBlind, isBigBlind]);
-  
-  useEffect(() => {
-    console.log(`${client?.Player?.Name} D => ${isDealer}`);
-  }, [isDealer]);
-  useEffect(() => {
-    console.log(`${client?.Player?.Name} Sb => ${isDealer}`);
-  }, [isSmallBlind]);
-  useEffect(() => {
-    console.log(`${client?.Player?.Name} Bb => ${isBigBlind}`);
-  }, [isBigBlind]);*/
+  }, [dealerAndBlinds, client]);*/
 
   let justifyContent;
   if (side === 'top') {
@@ -144,11 +136,11 @@ export default function PlayerTableItems({ client, isYourPlayer, dealerAndBlinds
   }
 
   return (
-    <div 
+    <div
       className={styles.playerItems}
       style={{ justifyContent, gridRow: gridRow, gridColumn: gridCol }}
     >
-      <Positions {...{isDealer, isSmallBlind, isBigBlind}} />
+      {/*<Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />*/}
       <Cards
         client={client}
         isYourPlayer={isYourPlayer}
