@@ -72,6 +72,8 @@ const nullPot = {
 };
 
 export default function Tablenew({ socket, netData, setShowGame }) {
+  //const [isPaused, setIsPaused] = useState(false);
+
   const [yourClient, setYourClient] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [numSeats, setNumSeats] = useState(netData.Table?.NumSeats || 0);
@@ -279,6 +281,8 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       setModalOpen(true);
       break;
     case NETDATA.RESET:
+      if (netData.Client)
+        updatePlayer(netData.Client);
       updateTable();
       setPlayerHead(null);
       setCurPlayer(null);
@@ -299,6 +303,15 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     case NETDATA.RIVER:
       setCommunity(netData.Table.Community);
       updateTable();
+      // we need to pause when there are new community cards
+      // because for example when curPlayers are all in, the
+      // server loops thru all the rounds automatically.
+      // NOTE: this isn't really feasible. i've added this to
+      // the backend for now.
+      /*setIsPaused(true);
+      setTimeout(() => {
+        setIsPaused(false);
+      }, 3000)*/
       break;
     case NETDATA.BAD_REQUEST:
     case NETDATA.SERVER_MSG:
@@ -307,9 +320,13 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       setModalOpen(true);
       break;
     case NETDATA.TABLE_LOCKED:
+        setModalType('preGame');
+        setModalTxt('this table is locked');
+        setModalOpen(true);
+        break;
     case NETDATA.BAD_AUTH:
       setModalType('preGame');
-      setModalTxt('lock or bad auth');
+      setModalTxt('your password was incorrect');
       setModalOpen(true);
       break;
     case NETDATA.SERVER_CLOSED:
@@ -341,6 +358,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   }, [settingsFormData]);
 
   return (
+    //!isPaused &&
     <>
     <TableModal
       {...{modalType, modalTxt, modalOpen, setModalOpen, setShowGame}}

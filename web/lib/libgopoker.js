@@ -157,10 +157,10 @@ export function NewClient(settings) {
       Name,
       Password,
 
-      Admin: (TableLock !== undefined || TablePass != undefined) ? {
+      Admin: (TableLock !== undefined || TablePass !== undefined) ? ({
         Lock: TableLock,
         Password: TablePass
-      } : null,
+      }) : null,
     },
   };
 }

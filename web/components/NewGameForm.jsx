@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, { useEffect, useState } from 'react';
 import Select from 'react-select';
 
 import { Literata } from 'next/font/google';
@@ -20,22 +20,26 @@ const lockOpts = [
 ];
 
 const maxPlayerOpts = [
-  { value: '2', label: '2'},
-  { value: '3', label: '3'},
-  { value: '4', label: '4'},
-  { value: '5', label: '5'},
-  { value: '6', label: '6'},
-  { value: '7', label: '7'},
+  { value: 2, label: '2'},
+  { value: 3, label: '3'},
+  { value: 4, label: '4'},
+  { value: 5, label: '5'},
+  { value: 6, label: '6'},
+  { value: 7, label: '7'},
 ];
 
 export default function NewGameForm({ isVisible, isSettings, setFormData}) {
+  const [tableLock, setTableLock] = useState(TABLE_LOCK.NONE);
+  const [tablePwd , setTablePwd] = useState('');
+  const [maxPlayers, setMaxPlayers] = useState(7);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     //const Name = event.target.tableName.value,
-      const Name = event.target.playerName.value,
-      Password = event.target.tablePwd.value,
-      TableLock = TABLE_LOCK.NONE;//event.target.tableLock.value;
+      const Name = event.target.playerName.value;
+      const Password = tablePwd;
+      const TableLock = tableLock;
 
     const data = new NetData(
       NewClient({
@@ -82,9 +86,17 @@ export default function NewGameForm({ isVisible, isSettings, setFormData}) {
           }}
         />
         <label>table lock</label>
-        <Select options={lockOpts} inputId='tableLock' />
+        <Select
+          options={lockOpts}
+          inputId='tableLock'
+          onChange={(sel) => setTableLock(sel.value)}
+        />
         <label>maximum seats</label>
-        <Select options={maxPlayerOpts} inputId='maxPlayers' />
+        <Select
+          options={maxPlayerOpts}
+          inputId='maxPlayers'
+          onChange={sel => setMaxPlayers(sel.value)}
+        />
         <button type="submit">submit</button>
       </form>
     </div>

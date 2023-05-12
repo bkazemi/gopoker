@@ -70,6 +70,7 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
       className={styles.card}
       target="_blank"
       rel="noopener noreferrer"
+      tabIndex={0}
     >
       <h2 className={exo.className}>
         view public rooms{' '}
@@ -91,6 +92,10 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
       ref={newGameRef}
       className={styles.card}
       onClick={() => {setShowNewGameForm(!showNewGameForm)}}
+      onKeyDown={(e) => {
+        e.key === 'Enter' && e.target.click()
+      }}
+      tabIndex={0}
     >
       <h2 className={exo.className}>
         new game{' '}
@@ -114,6 +119,7 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
       className={styles.card}
       target="_blank"
       rel="noopener noreferrer"
+      tabIndex={0}
     >
       <h2 className={exo.className}>
         join room{' '}
