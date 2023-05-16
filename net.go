@@ -115,6 +115,17 @@ func (netData *NetData) ClearData(client *Client) {
   }
 }
 
+func (netData *NetData) Clone() *NetData {
+  return &NetData{
+    Client: netData.Client,
+    Request: netData.Request,
+    Response: netData.Response,
+    Msg: netData.Msg,
+
+    Table: netData.Table,
+  }
+}
+
 // check which NetActions must have a Table struct included
 func (netData *NetData) NeedsTable() bool {
   if netData.Request != 0 { // its a request

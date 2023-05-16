@@ -68,7 +68,30 @@ type Server struct {
   errChan chan error
   panicked bool
 
+  IsLocked bool
   mtx sync.Mutex
+}
+
+// wrap the mutex Lock() so that we can check if the lock is active
+// without acquiring it like TryLock() does.
+func (server *Server) Lock() {
+  server.mtx.Lock()
+  server.IsLocked = true
+}
+
+func (server *Server) TryLock() bool {
+  if server.mtx.TryLock() {
+    server.IsLocked = true
+
+    return true
+  }
+
+  return false
+}
+
+func (server *Server) Unlock() {
+  server.IsLocked = false
+  server.mtx.Unlock()
 }
 
 func NewServer(table *Table, addr string) *Server {
@@ -208,40 +231,51 @@ func (server *Server) removeClient(conn *websocket.Conn) {
   server.sendResponseToAll(netData, nil)
 }
 
-func (server *Server) removePlayer(client *Client) {
+func (server *Server) removePlayer(client *Client, calledFromClientExit bool) {
   reset := false // XXX race condition guard
   noPlayersLeft := false // XXX race condition guard
 
   server.table.mtx.Lock()
   defer func() {
+    fmt.Println("Server.removePlayer(): cleanup defer CALLED");
     if reset {
+      if calledFromClientExit {
+        server.Lock()
+      }
+
       if noPlayersLeft {
+        fmt.Println("Server.removePlayers(): no players left, resetting")
         server.table.reset(nil)
         server.sendReset(nil)
-      } else if server.table.State == TableStateNotStarted {
+      } else if !calledFromClientExit {
+        fmt.Println("Server.removePlayer(): !calledFromClientExit, returning")
         return
+      } else if server.table.State == TableStateNotStarted {
+        fmt.Printf("Server.removePlayer(): State == TableStateNotStarted\n")
       } else {
         // XXX: if a player who hasn't bet preflop is
         //      the last player left he receives the mainpot chips.
         //      if he's a blind he should also get (only) his blind chips back.
-        if server.table.State != TableStateRoundOver &&
-           server.table.State != TableStateGameOver {
-          fmt.Println("Server.removePlayer(): state != (rndovr || gameovr)")
-          server.table.finishRound()
-          server.table.State = TableStateGameOver
-          server.gameOver()
-        } else {
-          fmt.Println("Server.removePlayer(): state == rndovr || gameovr")
-          /*server.table.finishRound()
-          server.table.State = TableStateGameOver
-          server.gameOver()*/
-          return
-        }
+        fmt.Println("Server.removePlayer(): state != (rndovr || gameovr)")
+
+        server.table.finishRound()
+        server.table.State = TableStateGameOver
+        server.gameOver()
       }
+
+      server.Unlock()
     } else if server.table.State == TableStateDoneBetting ||
               server.table.State == TableStateRoundOver {
+      if calledFromClientExit {
+        server.Lock()
+      }
+
       fmt.Println("Server.removePlayer(): defer postPlayerAction")
       server.postPlayerAction(nil, &NetData{})
+
+      if calledFromClientExit {
+        server.Unlock()
+      }
     }
   }()
   defer server.table.mtx.Unlock()
@@ -525,7 +559,7 @@ func (server *Server) removeEliminatedPlayers() {
     netData.Msg = fmt.Sprintf("<%s id: %s> was eliminated", client.Player.Name,
                               netData.Client.ID[:7])
 
-    server.removePlayer(client)
+    server.removePlayer(client, false)
     server.sendResponseToAll(netData, nil)
   }
 }
@@ -560,9 +594,6 @@ func (server *Server) sendBadAuth(conn *websocket.Conn, connType string) {
 }
 
 func (server *Server) makeAdmin(client *Client) {
-  server.mtx.Lock() // XXX lock probably unnecessary
-  defer server.mtx.Unlock()
-
   if client == nil {
     fmt.Printf("Server.makeAdmin(): client is nil, unsetting tableAdmin\n")
     server.tableAdminID = ""
@@ -591,6 +622,7 @@ func (server *Server) newRound() {
   server.table.mtx.Lock()
   realRoundState := server.table.State
   server.table.State = TableStateNewRound
+  server.sendAllPlayerInfo(nil, true, false)
   server.sendPlayerTurnToAll()
   server.table.State = realRoundState
   server.table.mtx.Unlock()
@@ -598,14 +630,13 @@ func (server *Server) newRound() {
   server.sendTable()
 }
 
+// NOTE: called w/ server lock acquired in handleAsyncRequest()
 func (server *Server) roundOver() {
-  server.mtx.Lock()
   if server.table.State == TableStateReset ||
      server.table.State == TableStateNewRound {
-    server.mtx.Unlock()
+    //server.mtx.Unlock()
     return
   }
-  server.mtx.Unlock()
 
   server.table.finishRound()
   server.sendHands()
@@ -626,11 +657,13 @@ func (server *Server) roundOver() {
   server.removeEliminatedPlayers()
 
   if server.table.State == TableStateGameOver {
+    time.Sleep(5 * time.Second)
     server.gameOver()
 
     return
   }
 
+  time.Sleep(5 * time.Second)
   server.newRound()
 }
 
@@ -704,6 +737,7 @@ func (server *Server) postBetting(player *Player, netData *NetData, client *Clie
 
   if player != nil {
     server.sendPlayerActionToAll(player, client)
+    time.Sleep(2 * time.Second)
     server.sendPlayerTurnToAll()
   }
 
@@ -712,9 +746,23 @@ func (server *Server) postBetting(player *Player, netData *NetData, client *Clie
   if server.table.bettingIsImpossible() {
     fmt.Println("Server.postBetting(): no more betting possible this round")
 
+    tmpReq := netData.Request
+    tmpClient := netData.Client
+
+    netData.Request = 0
+    netData.Table = server.table
+    netData.Client = nil
     for server.table.State != TableStateRoundOver {
       server.table.nextCommunityAction()
+      netData.Response = server.table.commState2NetDataResponse()
+
+      server.sendResponseToAll(netData, nil)
+
+      time.Sleep(2500 * time.Millisecond)
     }
+
+    netData.Request = tmpReq
+    netData.Client = tmpClient
   } else {
     server.table.nextCommunityAction()
   }
@@ -722,9 +770,9 @@ func (server *Server) postBetting(player *Player, netData *NetData, client *Clie
   if server.table.State == TableStateRoundOver {
     server.roundOver()
 
-    if server.table.State == TableStateGameOver {
-      return // XXX
-    }
+    //if server.table.State == TableStateGameOver {
+    //  ;
+    //}
   } else { // new community card(s)
     netData.Response = server.table.commState2NetDataResponse()
     netData.Table = server.table
@@ -789,6 +837,7 @@ func (server *Server) postPlayerAction(client *Client, netData *NetData) {
     server.newRound()
   } else {
     server.sendPlayerActionToAll(player, client)
+    time.Sleep(2 * time.Second)
     server.sendPlayerTurnToAll()
   }
 }
@@ -946,8 +995,8 @@ func (server *Server) applyClientSettings(client *Client, settings *ClientSettin
 }
 
 func (server *Server) newClient(conn *websocket.Conn, connType string, clientSettings *ClientSettings) *Client {
-  server.mtx.Lock()
-  defer server.mtx.Unlock()
+  server.Lock()
+  defer server.Unlock()
 
   client, ID := &Client{conn: conn, connType: connType}, ""
   for {
@@ -1024,7 +1073,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, connTyp
           server.sendPlayerTurnToAll()
         }
 
-        server.removePlayer(client)
+        server.removePlayer(client, true)
       }
 
       server.removeClient(conn)
@@ -1056,309 +1105,365 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, connTyp
 
   //netData := NetData{}
 
+  returnFromInputLoop := make(chan bool)
+
+  handleAsyncRequest := func(client *Client, netData NetData) {
+    switch netData.Request {
+    case NetDataClientExited:
+      cleanExit = true
+
+      returnFromInputLoop <- true
+      return
+    case NetDataClientSettings: // TODO: check pointers
+      if !server.TryLock() {
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        netData.Msg = "cannot change your settings right now. please try again later"
+        netData.Send()
+
+        returnFromInputLoop <- false
+        return
+      }
+
+      if msg, err := server.handleClientSettings(client, netData.Client.Settings); err == nil {
+        server.applyClientSettings(client, netData.Client.Settings)
+
+        netData.ClearData(client)
+        if client.Player != nil { // send updated player info to other clients
+          netData.Response = NetDataUpdatePlayer
+          netData.Client = server.publicClientInfo(client)
+
+          server.sendResponseToAll(&netData, client)
+        }
+
+        netData.Client = client
+        netData.Response = NetDataClientSettings
+        netData.Send()
+
+        // TODO: combine server msg with prev response
+        netData.Response = NetDataServerMsg
+        netData.Msg = msg
+        netData.Send()
+      } else {
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        netData.Msg = err.Error()
+        netData.Send()
+      }
+
+      server.Unlock()
+    case NetDataStartGame:
+      netData.ClearData(client)
+      if client.ID != server.tableAdminID {
+        netData.Response = NetDataBadRequest
+        netData.Msg = "only the table admin can do that"
+
+        netData.Send()
+      } else if server.table.NumPlayers < 2 {
+        netData.Response = NetDataBadRequest
+        netData.Msg = "not enough players to start"
+
+        netData.Send()
+      } else if server.table.State != TableStateNotStarted {
+        netData.Response = NetDataBadRequest
+        netData.Msg = "this game has already started"
+
+        netData.Send()
+      } else { // start game
+        server.table.nextTableAction()
+
+        server.sendDeals()
+        server.sendAllPlayerInfo(nil, false, true)
+        server.sendPlayerTurnToAll()
+        server.sendTable()
+      }
+    case NetDataChatMsg:
+      msg := netData.Msg
+
+      netData.ClearData(client)
+      netData.Response = NetDataChatMsg
+      netData.Msg = msg
+
+      if len(netData.Msg) > int(server.MaxChatMsgLen) {
+        netData.Msg = netData.Msg[:server.MaxChatMsgLen] + "(snipped)"
+      }
+
+      if client.Player != nil {
+        netData.Msg = fmt.Sprintf("[%s id: %s]: %s", client.Name,
+                                  netData.Client.ID[:7], netData.Msg)
+      } else {
+        netData.Msg = fmt.Sprintf("{%s id: %s}: %s", client.Name,
+                                  netData.Client.ID[:7], netData.Msg)
+      }
+
+      server.sendResponseToAll(&netData, nil)
+    case NetDataAllIn, NetDataBet, NetDataCall, NetDataCheck, NetDataFold:
+      if server.IsLocked {
+        fmt.Printf("<%s> (%p) (%s) tried to send action while server mtx was locked.\n",
+                   client.ID, &client.conn, client.Name)
+        netData.ClearData(client)
+        netData.Response = NetDataBadRequest
+        netData.Msg = "that action is not valid at this time"
+
+        netData.Send()
+
+        returnFromInputLoop <- false
+        return
+      }
+
+      if client.Player == nil {
+        netData.ClearData(client)
+        netData.Response = NetDataBadRequest
+        netData.Msg = "you are not a player"
+
+        netData.Send()
+
+        returnFromInputLoop <- false
+        return
+      }
+
+      if server.table.State == TableStateNotStarted {
+        netData.ClearData(client)
+        netData.Response = NetDataBadRequest
+        netData.Msg = "a game has not been started yet"
+
+        netData.Send()
+
+        returnFromInputLoop <- false
+        return
+      }
+
+      if client.Player.Name != server.table.curPlayer.Player.Name {
+        netData.ClearData(client)
+        netData.Response = NetDataBadRequest
+        netData.Msg = "it's not your turn"
+
+        netData.Send()
+
+        returnFromInputLoop <- false
+        return
+      }
+
+      server.Lock()
+
+      if err := server.table.PlayerAction(client.Player, netData.Client.Player.Action);
+         err != nil {
+        netData.ClearData(client)
+        netData.Response = NetDataBadRequest
+        netData.Msg = err.Error()
+
+        netData.Send()
+      } else {
+        server.postPlayerAction(client, &netData)
+      }
+
+      server.Unlock()
+    default:
+      netData.ClearData(client)
+      netData.Response = NetDataBadRequest
+      netData.Msg = fmt.Sprintf("bad request %v", netData.Request)
+
+      netData.Send()
+    }
+  }
+
   for {
     var netData NetData
 
-    if connType == "cli" {
-      _, rawData, err := conn.ReadMessage()
-      if err != nil {
-        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
-          fmt.Printf("Server.WSClient(): cli: readConn() conn: %p err: %v\n", conn, err)
+    select {
+    case isReturn := <-returnFromInputLoop:
+      if isReturn {
+        break
+      } // else, implicit continue
+
+    default:
+      if connType == "cli" {
+        _, rawData, err := conn.ReadMessage()
+        if err != nil {
+          if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+            fmt.Printf("Server.WSClient(): cli: readConn() conn: %p err: %v\n", conn, err)
+          }
+
+          return
         }
 
-        return
-      }
+        // we need to set Table member to nil otherwise gob will
+        // modify our server.table structure if a user sends that member
+        nd := NetData{Response: NetDataNewConn, Table: nil}
 
-      // we need to set Table member to nil otherwise gob will
-      // modify our server.table structure if a user sends that member
-      nd := NetData{Response: NetDataNewConn, Table: nil}
+        if err := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&nd);
+          err != nil {
+          fmt.Printf("Server.WSClient(): cli: %p had a problem decoding gob stream: %s\n", conn, err.Error())
 
-      if err := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&nd);
-        err != nil {
-        fmt.Printf("Server.WSClient(): cli: %p had a problem decoding gob stream: %s\n", conn, err.Error())
-
-        return
-      }
-
-      nd.Table = server.table
-
-      fmt.Printf("Server.WSClient(): cli: recv %s (%d bytes) from %p\n",
-                 nd.NetActionToString(), len(rawData), conn)
-
-      if int64(len(rawData)) > server.MaxConnBytes {
-        fmt.Printf("Server.WSClient(): cli: conn: %p sent too many bytes (> %v)\n",
-                   conn, server.MaxConnBytes)
-        return
-      }
-
-      netData = nd
-    } else { // webclient
-      /*if err := conn.ReadJSON(&netData); err != nil {
-        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
-          fmt.Printf("Server.WSClient(): ReadJSON(): conn: %p err %v\n", conn, err)
+          return
         }
 
-        //fmt.Printf("Server.WSClient(): ReadJSON() err: %s\n", err.Error())
+        nd.Table = server.table
 
-        return
-      }*/
-      _, rawData, err := conn.ReadMessage()
-      if err != nil {
-        if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
-          fmt.Printf("Server.WSClient(): web: readConn() conn: %p err: %v\n", conn, err)
+        fmt.Printf("Server.WSClient(): cli: recv %s (%d bytes) from %p\n",
+                   nd.NetActionToString(), len(rawData), conn)
+
+        if int64(len(rawData)) > server.MaxConnBytes {
+          fmt.Printf("Server.WSClient(): cli: conn: %p sent too many bytes (> %v)\n",
+                     conn, server.MaxConnBytes)
+          return
         }
 
-        return
-      }
+        netData = nd
+      } else { // webclient
+        _, rawData, err := conn.ReadMessage()
+        if err != nil {
+          if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+            fmt.Printf("Server.WSClient(): web: readConn() conn: %p err: %v\n", conn, err)
+          }
 
-      err = msgpack.Unmarshal(rawData, &netData)
-      if err != nil {
-        fmt.Printf("Server.WSClient(): web: %p had a problem decoding msgpack steam: %s\n", conn, err.Error())
-
-        return
-      }
-
-      if netData.Client.conn == nil {
-        netData.Client.conn = conn
-      }
-      if netData.Client.Settings == nil {
-        netData.Client.Settings = &ClientSettings{}
-      }
-      fmt.Printf("Server.WSClient(): web: recv msgpack: %v nd.Request == %v\n", netData, netData.Request)
-      fmt.Printf("Server.WSClient(): web: nd %s\n", netData.NetActionToString())
-      netData.Table = server.table
-    }
-
-    if netData.Request == NetDataNewConn {
-      netData.Response = NetDataNewConn
-      netData.Request = 0
-      if server.table.Lock == TableLockAll {
-        server.sendLock(conn, connType)
-
-        return
-      }
-
-      if server.table.Password != "" &&
-         netData.Client.Settings.Password != server.table.Password {
-        server.sendBadAuth(conn, connType)
-
-        return
-      }
-
-      client := server.newClient(conn, connType, netData.Client.Settings)
-
-      if _, err := server.handleClientSettings(client, netData.Client.Settings); err != nil {
-        (&NetData{
-          Response: NetDataBadRequest,
-          Client: client,
-          Msg: err.Error(),
-        }).Send()
-      }
-
-      server.table.mtx.Lock()
-      server.table.NumConnected++
-      server.table.mtx.Unlock()
-
-      server.sendResponseToAll(&netData, nil)
-
-      // send current player info to this client
-      if server.table.NumConnected > 1 {
-        server.sendActivePlayers(client)
-      }
-
-      server.applyClientSettings(client, netData.Client.Settings)
-      netData.Client = client
-      netData.Response = NetDataClientSettings
-      netData.Send()
-
-      if server.table.Lock == TableLockPlayers {
-        netData.Response = NetDataServerMsg
-        //netData.Client = &Client{conn: conn}
-        netData.Msg = "This table is not allowing new players. " +
-                      "You have been added as a spectator."
-        netData.Send()
-      } else if player := server.table.getOpenSeat(); player != nil {
-        client.Player = player
-        server.playerClientMap[player] = client
-
-        server.applyClientSettings(client, netData.Client.Settings)
-        fmt.Printf("Server.WSClient(): adding <%s> (%p) (%s) as player '%s'\n",
-                   client.ID, &conn, client.Name, player.Name)
-
-        if server.table.State == TableStateNotStarted {
-          player.Action.Action = NetDataFirstAction
-          server.table.curPlayers.AddPlayer(player)
-        } else {
-          player.Action.Action = NetDataMidroundAddition
-        }
-        server.table.activePlayers.AddPlayer(player)
-
-        if server.table.curPlayer == nil {
-          server.table.curPlayer = server.table.curPlayers.head
+          return
         }
 
-        if server.table.Dealer == nil {
-          server.table.Dealer = server.table.activePlayers.head
-        } else if server.table.SmallBlind == nil {
-          server.table.SmallBlind = server.table.Dealer.next
-        } else if server.table.BigBlind == nil {
-          server.table.BigBlind = server.table.SmallBlind.next
+        err = msgpack.Unmarshal(rawData, &netData)
+        if err != nil {
+          fmt.Printf("Server.WSClient(): web: %p had a problem decoding msgpack steam: %s\n", conn, err.Error())
+
+          return
         }
 
-        netData.Client = server.publicClientInfo(client)
-        netData.Response = NetDataNewPlayer
+        if netData.Client.conn == nil {
+          netData.Client.conn = conn
+        }
+        if netData.Client.Settings == nil {
+          netData.Client.Settings = &ClientSettings{}
+        }
+        fmt.Printf("Server.WSClient(): web: recv msgpack: %v nd.Request == %v\n", netData, netData.Request)
+        fmt.Printf("Server.WSClient(): web: nd %s\n", netData.NetActionToString())
         netData.Table = server.table
+      }
 
-        server.sendResponseToAll(&netData, client)
+      if netData.Request == NetDataNewConn {
+        netData.Request = 0
 
-        netData.Client = client
-        netData.Response = NetDataYourPlayer
-        netData.Send()
-      } else if server.table.Lock == TableLockSpectators {
+        if client := server.connClientMap[conn]; client != nil {
+          netData.Client = client
+          netData.Response = NetDataServerMsg
+          netData.Msg = "you are already connected to the server."
+
+          netData.Send()
+
+          return
+        }
+
+        netData.Response = NetDataNewConn
+        if server.table.Lock == TableLockAll {
           server.sendLock(conn, connType)
 
           return
-      } else {
-        netData.Response = NetDataServerMsg
-        netData.Msg = "No open seats available. You have been added as a spectator"
-
-        netData.Send()
-      }
-
-      server.sendAllPlayerInfo(client, false, false)
-
-      if server.table.State != TableStateNotStarted {
-        server.sendPlayerTurn(client)
-      }
-
-      if server.tableAdminID == "" {
-        server.makeAdmin(client)
-      }
-    } else {
-      client := server.connClientMap[conn]
-
-      switch netData.Request {
-      case NetDataClientExited:
-        cleanExit = true
-
-        return
-      case NetDataClientSettings: // TODO: check pointers
-        if msg, err := server.handleClientSettings(client, netData.Client.Settings); err == nil {
-          server.applyClientSettings(client, netData.Client.Settings)
-
-          netData.ClearData(client)
-          if client.Player != nil { // send updated player info to other clients
-            netData.Response = NetDataUpdatePlayer
-            netData.Client = server.publicClientInfo(client)
-
-            server.sendResponseToAll(&netData, client)
-          }
-
-          netData.Client = client
-          netData.Response = NetDataClientSettings
-          netData.Send()
-
-          // TODO: combine server msg with prev response
-          netData.Response = NetDataServerMsg
-          netData.Msg = msg
-          netData.Send()
-        } else {
-          netData.ClearData(client)
-          netData.Response = NetDataServerMsg
-          netData.Msg = err.Error()
-          netData.Send()
-        }
-      case NetDataStartGame:
-        netData.ClearData(client)
-        if client.ID != server.tableAdminID {
-          netData.Response = NetDataBadRequest
-          netData.Msg = "only the table admin can do that"
-
-          netData.Send()
-        } else if server.table.NumPlayers < 2 {
-          netData.Response = NetDataBadRequest
-          netData.Msg = "not enough players to start"
-
-          netData.Send()
-        } else if server.table.State != TableStateNotStarted {
-          netData.Response = NetDataBadRequest
-          netData.Msg = "this game has already started"
-
-          netData.Send()
-        } else { // start game
-          server.table.nextTableAction()
-
-          server.sendDeals()
-          server.sendAllPlayerInfo(nil, false, true)
-          server.sendPlayerTurnToAll()
-          server.sendTable()
-        }
-      case NetDataChatMsg:
-        msg := netData.Msg
-
-        netData.ClearData(client)
-        netData.Response = NetDataChatMsg
-        netData.Msg = msg
-
-        if len(netData.Msg) > int(server.MaxChatMsgLen) {
-          netData.Msg = netData.Msg[:server.MaxChatMsgLen] + "(snipped)"
         }
 
-        if client.Player != nil {
-          netData.Msg = fmt.Sprintf("[%s id: %s]: %s", client.Name,
-                                    netData.Client.ID[:7], netData.Msg)
-        } else {
-          netData.Msg = fmt.Sprintf("{%s id: %s}: %s", client.Name,
-                                    netData.Client.ID[:7], netData.Msg)
+        if server.table.Password != "" &&
+           netData.Client.Settings.Password != server.table.Password {
+          server.sendBadAuth(conn, connType)
+
+          return
         }
+
+        // set this to a nonnil value so that the guard at the top of this block
+        // works if newClient is waiting on the server lock
+        // XXX: I have to check if is actually necessary. probably not
+        server.connClientMap[conn] = &Client{}
+
+        client := server.newClient(conn, connType, netData.Client.Settings)
+
+        if _, err := server.handleClientSettings(client, netData.Client.Settings); err != nil {
+          (&NetData{
+            Response: NetDataBadRequest,
+            Client: client,
+            Msg: err.Error(),
+          }).Send()
+        }
+
+        server.table.mtx.Lock()
+        server.table.NumConnected++
+        server.table.mtx.Unlock()
 
         server.sendResponseToAll(&netData, nil)
-      case NetDataAllIn, NetDataBet, NetDataCall, NetDataCheck, NetDataFold:
-        if client.Player == nil {
-          netData.ClearData(client)
-          netData.Response = NetDataBadRequest
-          netData.Msg = "you are not a player"
 
-          netData.Send()
-          continue
+        // send current player info to this client
+        if server.table.NumConnected > 1 {
+          server.sendActivePlayers(client)
         }
 
-        if server.table.State == TableStateNotStarted {
-          netData.ClearData(client)
-          netData.Response = NetDataBadRequest
-          netData.Msg = "a game has not been started yet"
-
-          netData.Send()
-          continue
-        }
-
-        if client.Player.Name != server.table.curPlayer.Player.Name {
-          netData.ClearData(client)
-          netData.Response = NetDataBadRequest
-          netData.Msg = "it's not your turn"
-
-          netData.Send()
-          continue
-        }
-
-        if err := server.table.PlayerAction(client.Player, netData.Client.Player.Action);
-           err != nil {
-          netData.ClearData(client)
-          netData.Response = NetDataBadRequest
-          netData.Msg = err.Error()
-
-          netData.Send()
-        } else {
-          server.postPlayerAction(client, &netData)
-        }
-      default:
-        netData.ClearData(client)
-        netData.Response = NetDataBadRequest
-        netData.Msg = fmt.Sprintf("bad request %v", netData.Request)
-
+        server.applyClientSettings(client, netData.Client.Settings)
+        netData.Client = client
+        netData.Response = NetDataClientSettings
         netData.Send()
-      }
-    } // else{} end
+
+        if server.table.Lock == TableLockPlayers {
+          netData.Response = NetDataServerMsg
+          //netData.Client = &Client{conn: conn}
+          netData.Msg = "This table is not allowing new players. " +
+                        "You have been added as a spectator."
+          netData.Send()
+        } else if player := server.table.getOpenSeat(); player != nil {
+          client.Player = player
+          server.playerClientMap[player] = client
+
+          server.applyClientSettings(client, netData.Client.Settings)
+          fmt.Printf("Server.WSClient(): adding <%s> (%p) (%s) as player '%s'\n",
+                     client.ID, &conn, client.Name, player.Name)
+
+          if server.table.State == TableStateNotStarted {
+            player.Action.Action = NetDataFirstAction
+            server.table.curPlayers.AddPlayer(player)
+          } else {
+            player.Action.Action = NetDataMidroundAddition
+          }
+          server.table.activePlayers.AddPlayer(player)
+
+          if server.table.curPlayer == nil {
+            server.table.curPlayer = server.table.curPlayers.head
+          }
+
+          if server.table.Dealer == nil {
+            server.table.Dealer = server.table.activePlayers.head
+          } else if server.table.SmallBlind == nil {
+            server.table.SmallBlind = server.table.Dealer.next
+          } else if server.table.BigBlind == nil {
+            server.table.BigBlind = server.table.SmallBlind.next
+          }
+
+          netData.Client = server.publicClientInfo(client)
+          netData.Response = NetDataNewPlayer
+          netData.Table = server.table
+
+          server.sendResponseToAll(&netData, client)
+
+          netData.Client = client
+          netData.Response = NetDataYourPlayer
+          netData.Send()
+        } else if server.table.Lock == TableLockSpectators {
+            server.sendLock(conn, connType)
+
+            return
+        } else {
+          netData.Response = NetDataServerMsg
+          netData.Msg = "No open seats available. You have been added as a spectator"
+
+          netData.Send()
+        }
+
+        server.sendAllPlayerInfo(client, false, false)
+
+        if server.table.State != TableStateNotStarted {
+          server.sendPlayerTurn(client)
+        }
+
+        if server.tableAdminID == "" {
+          server.makeAdmin(client)
+        }
+      } else {
+        client := server.connClientMap[conn]
+        go handleAsyncRequest(client, netData)
+      } // else{} end
+    } // returnFromInputLoop select end
   } //for loop end
 } // func end
 
