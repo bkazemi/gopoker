@@ -112,6 +112,17 @@ export const TABLE_LOCK = {
   ALL:        3,
 };
 
+const TABLE_LOCK_NAME = [
+  'none',
+  'player lock',
+  'spectator lock',
+  'player & spectator lock',
+];
+
+TABLE_LOCK.toString = (lock) => {
+  return TABLE_LOCK_NAME[lock] ?? 'invalid table lock';
+};
+
 export const TABLE_STATE = {
   NOT_STARTED: 0,
 

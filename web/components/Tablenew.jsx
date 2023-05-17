@@ -4,7 +4,7 @@ import Image from 'next/image';
 
 import cx from 'classnames';
 
-import { NETDATA, NetData, NetDataToString, TABLE_STATE } from '@/lib/libgopoker';
+import { NETDATA, NetData, NetDataToString, TABLE_LOCK, TABLE_STATE } from '@/lib/libgopoker';
 
 import TableModal from '@/components/TableModal';
 import TableCenter from '@/components/TableCenter';
@@ -34,8 +34,8 @@ const PlayerList = ({
         .map((client, idx) => {
           //console.log(`${side} inner: ${!!innerTableItem} map: idx: ${idx} name: ${c.Name}`)
           const isYourPlayer = client.ID && client.ID === yourClient?.ID;
-          if (isYourPlayer)
-            console.log(`PlayerList: yourPlayer found: id: ${client.ID}`);
+          //if (isYourPlayer)
+          //  console.log(`PlayerList: yourPlayer found: id: ${client.ID}`);
 
           if (side === 'left' || side === 'right')
             gridRow = idx+1;
@@ -94,6 +94,8 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   const [smallBlind, setSmallBlind] = useState(netData.Table?.SmallBlind || nullPlayer);
   const [bigBlind, setBigBlind] = useState(netData.Table?.BigBlind || nullPlayer);
 
+  const [tablePass, setTablePass] = useState(netData.Table?.Password || "");
+  const [tableLock, setTableLock] = useState(netData.Table?.Lock || TABLE_LOCK.NONE);
   const [tableState, setTableState] = useState(netData.Table?.State || TABLE_STATE.NOT_STARTED);
 
   // settings form
@@ -142,6 +144,8 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     setDealer(netData.Table.Dealer || nullClient);
     setSmallBlind(netData.Table.SmallBlind || nullClient);
     setBigBlind(netData.Table.BigBlind || nullClient);
+    setTablePass(netData.Table.Password);
+    setTableLock(netData.Table.Lock);
     setTableState(netData.Table.State);
   }, [netData]);
 
@@ -149,7 +153,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     console.log(players);
     const pIdx = players.findIndex(c => c.ID === client.ID);
     if (pIdx !== -1) {
-      console.log(`updating ${players[pIdx].Name} to ${nullClient ?? client}`);
+      console.log(`updating ${players[pIdx].Name} to`, nullClient ?? client);
       setPlayers(c => {
         const newClients = [...c];
         newClients[pIdx] = nullClient ?? client;
@@ -162,7 +166,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   }, [players]);
 
   useEffect(() => {
-    console.log(`yourClient is ${yourClient}`);
+    console.log('yourClient is ', yourClient);
   }, [yourClient]);
 
   useEffect(() => {
@@ -541,9 +545,8 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         <p># connected: { String(numConnected) }</p>
         <p># open seats: { numSeats - numPlayers }</p>
         <p>pot: { mainPot.Total.toLocaleString() }</p>
-        <p>dealer: { String(dealer.Player?.Name || '') }</p>
-        <p>small blind: { String(smallBlind.Player?.Name || '') }</p>
-        <p>big blind: { String(bigBlind.Player?.Name || '') }</p>
+        <p>password protected: { tablePass ? 'yes' : 'no' }</p>
+        <p>table lock: { TABLE_LOCK.toString(tableLock) }</p>
         <p>status: { TABLE_STATE.toString(tableState) }</p>
       </div>
       <Chat

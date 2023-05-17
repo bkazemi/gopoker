@@ -14,6 +14,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
   if (!isYourPlayer)
     return;
 
+  const betInputRef = useRef(null);
   const checkBtnRef = useRef(null);
   const callBtnRef = useRef(null);
   const raiseBtnRef = useRef(null);
@@ -24,6 +25,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
   const [raiseAmount, setRaiseAmount] = useState(BigInt(0));
 
   const btnRefMap = new Map([
+    ['b', betInputRef],
     ['C', callBtnRef],
     ['c', checkBtnRef],
     ['r', raiseBtnRef],
@@ -100,6 +102,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
     <div className={styles.yourPlayerActions}>
       <label htmlFor='raiseInput'>bet amount</label>
       <input
+        ref={betInputRef}
         id='raiseInput'
         type='text'
         name='raiseInput'
@@ -257,7 +260,7 @@ export default function Player({ client, socket, tableState, curPlayer,
           posSetStateMap[name](false);
       })
       .map(([name]) => {
-        console.log(`MAP ${client.Player.Name} ${name}`);
+        //console.log(`MAP ${client.Player.Name} ${name}`);
         posSetStateMap[name](true);
       });
   }, [dealerAndBlinds, client]);

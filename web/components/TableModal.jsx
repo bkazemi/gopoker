@@ -68,7 +68,7 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
             className={styles.modalBtn}
             onClick={() => setModalOpen(false)}
           >
-            close
+            cancel
           </button>
         </div>
       </>

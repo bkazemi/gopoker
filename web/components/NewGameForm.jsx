@@ -29,6 +29,7 @@ const maxPlayerOpts = [
 ];
 
 export default function NewGameForm({ isVisible, isSettings, setFormData}) {
+  const [name, setName] = useState('');
   const [tableLock, setTableLock] = useState(TABLE_LOCK.NONE);
   const [tablePwd , setTablePwd] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(7);
@@ -37,7 +38,7 @@ export default function NewGameForm({ isVisible, isSettings, setFormData}) {
     event.preventDefault();
 
     //const Name = event.target.tableName.value,
-      const Name = event.target.playerName.value;
+      const Name = name;
       const Password = tablePwd;
       const TableLock = tableLock;
 
@@ -75,6 +76,7 @@ export default function NewGameForm({ isVisible, isSettings, setFormData}) {
           type='text'
           id='playerName'
           name='playerName'
+          onChange={(e) => setName(e.target.value)}
         />
         <label htmlFor='tablePwd'>password</label>
         <input
@@ -84,6 +86,7 @@ export default function NewGameForm({ isVisible, isSettings, setFormData}) {
           onClick={(e) => {
             e.target.type = e.target.type === 'password' ? 'text' : 'password';
           }}
+          onChange={(e) => setTablePwd(e.target.value)}
         />
         <label>table lock</label>
         <Select

@@ -1140,6 +1140,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, connTyp
         netData.Response = NetDataClientSettings
         netData.Send()
 
+        server.sendTable()
+
         // TODO: combine server msg with prev response
         netData.Response = NetDataServerMsg
         netData.Msg = msg
@@ -1327,12 +1329,17 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, connTyp
           return
         }
 
-        if netData.Client.conn == nil {
-          netData.Client.conn = conn
+        if netData.Client != nil {
+          if netData.Client.conn == nil {
+            netData.Client.conn = conn
+          }
+          if netData.Client.Settings == nil {
+            netData.Client.Settings = &ClientSettings{}
+          }
+        } else {
+          fmt.Printf("Server.WSClient(): web: WARNING: (%p) netData.Client == nil\n", conn)
         }
-        if netData.Client.Settings == nil {
-          netData.Client.Settings = &ClientSettings{}
-        }
+
         fmt.Printf("Server.WSClient(): web: recv msgpack: %v nd.Request == %v\n", netData, netData.Request)
         fmt.Printf("Server.WSClient(): web: nd %s\n", netData.NetActionToString())
         netData.Table = server.table

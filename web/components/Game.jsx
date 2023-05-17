@@ -9,6 +9,8 @@ import {CSSTransition } from 'react-transition-group';
 
 import Tablenew from '@/components/Tablenew';
 
+import { NETDATA, NetData } from '@/lib/libgopoker';
+
 import styles from '@/styles/Game.module.css';
 
 const literata = Literata({
@@ -72,7 +74,10 @@ export default function Game({ websocketOpts, setShowGame }) {
       next(e);
     }
 
-    return () => socket.close();
+    return () => {
+      socket.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
+      socket.close(1000, 'web client exited');
+    }
   });
 
   if (error)
