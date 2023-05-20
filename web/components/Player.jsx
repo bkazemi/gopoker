@@ -9,7 +9,6 @@ import { TABLE_STATE, NETDATA, NetData, PlayerActionToString } from '@/lib/libgo
 
 import styles from '@/styles/Player.module.css';
 
-
 const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
   if (!isYourPlayer)
     return;
@@ -164,8 +163,11 @@ const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
   );
 };
 
-export default function Player({ client, socket, tableState, curPlayer,
-  playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer, keyPressed }) {
+export default function Player({
+  key,
+  client, socket, tableState, curPlayer,
+  playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer, keyPressed
+}) {
   const [name, setName] = useState(client.Name);
   const [curAction, setCurAction] = useState(client.Player?.Action || {});
   const [chipCount, setChipCount] = useState(BigInt(client.Player?.ChipCount));
@@ -268,7 +270,7 @@ export default function Player({ client, socket, tableState, curPlayer,
   if (client._ID) {
     return (
       <div
-        key={'vacant'}
+        key={String(Math.random())}
         className={styles.player}
         style={style}
       >
@@ -292,7 +294,7 @@ export default function Player({ client, socket, tableState, curPlayer,
 
   return (
     <div
-      key={client?.ID || String(Math.random())}
+      key={key}
       className={styles.player}
       style={style}
     >

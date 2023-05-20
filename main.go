@@ -185,7 +185,8 @@ func runGame(opts options) (err error) {
   if opts.serverPort != "" {
     deck := NewDeck()
 
-    table, tableErr := NewTable(deck, opts.numSeats, make([]bool, opts.numSeats))
+    table, tableErr := NewTable(deck, opts.numSeats, TableLockNone, "",
+                                make([]bool, opts.numSeats))
     if tableErr != nil {
       return tableErr
     }
@@ -193,7 +194,7 @@ func runGame(opts options) (err error) {
     randSeed()
     deck.Shuffle()
 
-    server := NewServer(table, "0.0.0.0:" + opts.serverPort)
+    server := NewServer("0.0.0.0:" + opts.serverPort)
 
     if err := server.run(); err != nil {
       return err

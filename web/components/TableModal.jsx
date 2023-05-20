@@ -1,6 +1,9 @@
+import React, { useState, useEffect } from 'react';
+
 import Modal from 'react-modal';
 
 import Image from 'next/image';
+import { useRouter } from 'next/router';
 
 import NewGameForm from '@/components/NewGameForm';
 
@@ -13,16 +16,21 @@ const literata = Literata({ subsets: ['latin'], weight: '500' });
 import cx from 'classnames';
 
 const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData }) => {
+  const router = useRouter();
+
+  const [pageIdx, setPageIdx] = useState(0);
+
   switch (modalType) {
   case 'preGame':
     return (
       <>
-        <p className={styles.modalTxt}>{ modalTxt }</p>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
         <button
           className={styles.modalBtn}
           onClick={() => {
-            setShowGame(false);
-            setModalOpen(false);
+            //setShowGame(false);
+            //setModalOpen(false);
+            router.push('/');
           }}
         >
           go home
@@ -52,14 +60,15 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
           />
           <h2>quit game</h2>
         </div>
-        <p className={styles.modalTxt}>{ modalTxt }</p>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
         <div style={{ display: 'flex', paddingTop: '7px' }}>
           <button
             className={styles.modalBtn}
             style={{ marginRight: '3px' }}
             onClick={() => {
-              setShowGame(false);
-              setModalOpen(false);
+              //setShowGame(false);
+              //setModalOpen(false);
+              router.push('/');
             }}
           >
             quit
@@ -99,26 +108,53 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
         <NewGameForm
           isVisible={true}
           isSettings={true}
+          setModalOpen={setModalOpen}
           setFormData={setFormData}
         />
       </>
     );
   default:
+    if (!modalTxt.length) {
+      setModalOpen(false);
+      return;
+    }
+
     return (
       <>
-        <p className={styles.modalTxt}>{ modalTxt }</p>
-        <button
-          className={styles.modalBtn}
-          onClick={() => setModalOpen(false)}
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+        <div
+          style={{ display: 'flex', paddingTop: '7px' }}
         >
-          close
-        </button>
+          {
+            modalTxt.length > 1 &&
+            <button
+              className={styles.modalBtn}
+              onClick={() => setPageIdx(idx => (idx + 1) % modalTxt.length)}
+            >
+              { pageIdx === (modalTxt.length - 1) ? 'first page' : 'next page' }
+            </button>
+          }
+          <button
+            className={styles.modalBtn}
+            onClick={() => setModalOpen(false)}
+          >
+            close
+          </button>
+      </div>
       </>
     );
   }
 };
 
-export default function TableModal({ modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData }) {
+export default function TableModal({
+  modalType, modalTxt, setModalTxt,
+  modalOpen, setModalOpen, setShowGame, setFormData
+}) {
+  useEffect(() => {
+    if (!modalOpen)
+      setModalTxt([]);
+  }, [modalOpen]);
+
   return (
     <Modal
       ariaHideApp={false}

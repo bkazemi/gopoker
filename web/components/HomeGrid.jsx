@@ -1,16 +1,21 @@
 import Image from 'next/image';
 
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, useContext} from 'react';
 
 import { Exo } from 'next/font/google';
 
 import styles from '@/styles/Home.module.css'; // XXX tmp until i move stuff
 
+import { GameContext } from '@/GameContext';
+import RoomList from '@/components/RoomList';
 import NewGameForm from '@/components/NewGameForm';
 
 const exo = Exo({ subsets: ['latin'] });
 
-export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisible, setShowGrid}) {
+export default function HomeGrid({ isVisible, setShowGrid }) {
+  const {gameOpts, setGameOpts} = useContext(GameContext);
+
+  const [showRoomList, setShowRoomList] = useState(false);
   const [showNewGameForm, setShowNewGameForm] = useState(false);
 
   const gridRef = useRef();
@@ -19,7 +24,6 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
   const toggleGrid = useCallback((isOn) => {
     let visibleCard;
     if (showNewGameForm) {
-      //visibleCard = document.getElementById('newGame');
       visibleCard = newGameRef.current;
     }
 
@@ -47,29 +51,31 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
     console.log(`showNewGameForm: ${showNewGameForm}`);
   }, [showNewGameForm]);
 
-  useEffect(() => {
-    if (newGameFormData) {
+  /*useEffect(() => {
+    console.log('HomeGrid: gameOpts.websocketOpts useEffect');
+
+    if (gameOpts.websocketOpts)
       setShowGrid(false);
-    }
-  }, [newGameFormData]);
+  }, [gameOpts.showGame]);*/
 
   // unmount cleanup to ensure grid items are not open
   // when user returns to grid from deeper components
-  useEffect(() => {
+  /*useEffect(() => {
     return () => {
       setShowNewGameForm(false);
     };
-  }, []);
+  }, []);*/
 
   if (!isVisible)
     return;
 
   return <div className={styles.grid} ref={gridRef}>
-    <a
-      href="/a"
+    <div
       className={styles.card}
-      target="_blank"
-      rel="noopener noreferrer"
+      onClick={() => setShowRoomList(!showRoomList)}
+      onKeyDown={(e) => {
+        e.key === 'Enter' && e.target.click()
+      }}
       tabIndex={0}
     >
       <h2 className={exo.className}>
@@ -83,15 +89,13 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
           />
         </span>
       </h2>
-      <p className={exo.className}>
-        current games: 7
-      </p>
-    </a>
+      <RoomList isVisible={showRoomList} />
+    </div>
 
     <div
       ref={newGameRef}
       className={styles.card}
-      onClick={() => {setShowNewGameForm(!showNewGameForm)}}
+      onClick={() => setShowNewGameForm(!showNewGameForm)}
       onKeyDown={(e) => {
         e.key === 'Enter' && e.target.click()
       }}
@@ -110,7 +114,6 @@ export default function HomeGrid({ newGameFormData, setNewGameFormData, isVisibl
       </h2>
       <NewGameForm
         isVisible={showNewGameForm}
-        setFormData={setNewGameFormData}
       />
     </div>
 

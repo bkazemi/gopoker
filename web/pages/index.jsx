@@ -1,5 +1,3 @@
-import Head from 'next/head'
-import Image from 'next/image'
 import { Exo } from 'next/font/google'
 import styles from '@/styles/Home.module.css'
 
@@ -7,33 +5,45 @@ import React, { useCallback, useContext, useEffect, useState, useRef } from 'rea
 
 import { CSSTransition } from 'react-transition-group';
 
+import { GameContext } from '@/GameContext';
+
 import HomeGrid from '@/components/HomeGrid';
 import Game from '@/components/Game';
 
 const exo = Exo({ subsets: ['latin'] });
 
 export default function Home() {
+  const { gameOpts, setGameOpts } = useContext(GameContext);
+
   const [newGameFormData, setNewGameFormData] = useState(null);
   const [showGame, setShowGame] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
 
-  const logoImgRef = useRef(null);
+  useEffect(() => {
+    console.log(`Home: showGame: ${showGame} showGrid: ${showGrid}`);
 
-  const toggleSpin = useCallback(() => {
-    if (logoImgRef.current.classList.contains(styles.pauseAnimation))
-      logoImgRef.current.classList.remove(styles.pauseAnimation);
-    else
-      logoImgRef.current.classList.add(styles.pauseAnimation);
-  }, [logoImgRef]);
+    setGameOpts(gameOpts => {{
+      return {...gameOpts, setShowGame}
+    }})
+  }, []);
+
+  useEffect(() => {
+    if (showGame && showGrid)
+      setShowGrid(false);
+    else if (!showGame && !showGrid)
+      setShowGrid(true);
+  }, [showGame]);
 
   return (
     <>
-      <Head>
-        <title>gopoker - shirkadeh.org</title>
-        <meta name="header" content="gopoker webclient" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+      <Game isVisible={showGame} setShowGame={setShowGame} />
+      <HomeGrid
+        {...{setShowGrid}}
+        isVisible={showGrid}
+      />
+    </>
+  );
+    {/*<>
       <main className={styles.main}>
         <div className={styles.header}>
           <div className={`${styles.logo} ${styles.unselectable}`}>
@@ -54,7 +64,7 @@ export default function Home() {
         </div>
 
         <div className={styles.center} id='center'>
-          <CSSTransition
+          {/*<CSSTransition
             in={showGame}
             timeout={500}
             classNames={{
@@ -70,11 +80,16 @@ export default function Home() {
             }}
           >
             <Game
-              websocketOpts={newGameFormData}
+              isVisible={showGame}
               setShowGame={setShowGame}
             />
-          </CSSTransition>
-          <CSSTransition
+          </CSSTransition>*}
+          <Game isVisible={showGame} setShowGame={setShowGame} />
+          <HomeGrid
+            {...{setShowGrid}}
+            isVisible={showGrid}
+          />
+          {/*<CSSTransition
             in={showGrid}
             timeout={500}
             classNames={{
@@ -89,12 +104,12 @@ export default function Home() {
             }}
           >
             <HomeGrid
-              {...{newGameFormData, setNewGameFormData, setShowGrid}}
+              {...{setShowGrid}}
               isVisible={showGrid}
             />
-          </CSSTransition>
+          </CSSTransition>*}
         </div>
       </main>
     </>
-  )
+  )*/}
 }

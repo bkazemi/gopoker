@@ -97,8 +97,10 @@ const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
   ['bigBlind', '/BB.png']
 ]);*/
 
-export default function PlayerTableItems({ client, isYourPlayer, dealerAndBlinds,
-  side, gridRow, gridCol, tableState }) {
+export default function PlayerTableItems({
+  key, client, isYourPlayer, dealerAndBlinds,
+  side, gridRow, gridCol, tableState
+}) {
   if (client._ID === 'vacant')
     return;
 
@@ -137,6 +139,7 @@ export default function PlayerTableItems({ client, isYourPlayer, dealerAndBlinds
 
   return (
     <div
+      key={key}
       className={styles.playerItems}
       style={{ justifyContent, gridRow: gridRow, gridColumn: gridCol }}
     >

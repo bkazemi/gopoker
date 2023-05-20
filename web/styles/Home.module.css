@@ -115,6 +115,7 @@
 .card h2 {
   font-weight: 600;
   margin-right: 2rem;
+  min-width: 217px;
 }
 
 .card p {

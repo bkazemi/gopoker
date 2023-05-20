@@ -804,9 +804,9 @@ type Table struct {
   mtx sync.Mutex
 }
 
-func NewTable(deck *Deck, numSeats uint8, CPUPlayers []bool) (*Table, error) {
-  if numSeats < 2 {
-    return nil, errors.New("need at least two players")
+func NewTable(deck *Deck, numSeats uint8, lock TableLock, password string, CPUPlayers []bool) (*Table, error) {
+  if numSeats < 2 || numSeats > 7 {
+    return nil, errors.New("numPlayers must be between 2 and 7")
   }
 
   players := make([]*Player, 0, numSeats)
@@ -824,6 +824,9 @@ func NewTable(deck *Deck, numSeats uint8, CPUPlayers []bool) (*Table, error) {
     players:        players,
     activePlayers: *NewPlayerList("activePlayers", nil),
     curPlayers:    *NewPlayerList("curPlayers", nil),
+
+    Lock: lock,
+    Password: password,
 
     NumSeats: numSeats,
   }

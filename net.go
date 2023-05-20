@@ -66,7 +66,9 @@ const (
 
   NetDataServerMsg
   NetDataBadRequest
-) // 41 flags, 23 left
+
+  NetDataRoomSettings
+) // 42 flags, 22 left
 
 const NetActionNeedsTableBitMask = (NetDataNewConn | NetDataClientExited | NetDataUpdateTable | NetDataDeal)
 
@@ -201,6 +203,8 @@ func (netData *NetData) NetActionToString() string {
 
     NetDataServerMsg:  "NetDataServerMsg",
     NetDataBadRequest: "NetDataBadRequest",
+
+    NetDataRoomSettings: "NetDataRoomSettings",
   }
 
   // XXX remove me

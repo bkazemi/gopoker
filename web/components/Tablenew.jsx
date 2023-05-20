@@ -1,11 +1,13 @@
-import React, {useEffect, useState, useRef, useCallback} from 'react';
+import React, { useEffect, useState, useRef, useCallback, useContext } from 'react';
 
+import { useRouter } from 'next/router';
 import Image from 'next/image';
 
 import cx from 'classnames';
 
 import { NETDATA, NetData, NetDataToString, TABLE_LOCK, TABLE_STATE } from '@/lib/libgopoker';
 
+import { GameContext } from '@/GameContext';
 import TableModal from '@/components/TableModal';
 import TableCenter from '@/components/TableCenter';
 import PlayerTableItems from '@/components/PlayerTableItems';
@@ -44,9 +46,11 @@ const PlayerList = ({
 
           return innerTableItem
             ? <PlayerTableItems
+                key={idx}
                 {...{client, isYourPlayer, dealerAndBlinds, side, gridRow, gridCol, tableState}}
               />
             : <Player
+                key={idx}
                 {...{client, side, tableState, curPlayer, playerHead, gridRow, gridCol,
                      isYourPlayer, dealerAndBlinds, keyPressed, socket}}
               />
@@ -73,6 +77,10 @@ const nullPot = {
 
 export default function Tablenew({ socket, netData, setShowGame }) {
   //const [isPaused, setIsPaused] = useState(false);
+
+  const {gameOpts, setGameOpts} = useContext(GameContext);
+
+  const router = useRouter();
 
   const [yourClient, setYourClient] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -104,7 +112,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   // modal state
   const [modalType, setModalType] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalTxt, setModalTxt] = useState('');
+  const [modalTxt, setModalTxt] = useState([]);
 
   const chatInputRef = useRef(null);
 
@@ -137,6 +145,14 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [chatInputRef, modalOpen]);
+
+  const updateRoom = useCallback((client) => {
+    if (client.Settings?.Admin?.RoomName) {
+      const newPath = `/room/${client.Settings.Admin.RoomName}`;
+      console.log('replacing URL with:', newPath);
+      router.replace(newPath);
+    }
+  }, [router, netData]);
 
   const updateTable = useCallback(() => {
     setMainPot(netData.Table.MainPot);
@@ -198,6 +214,9 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     case NETDATA.CHAT_MSG:
       console.log(`chatmsg: ${netData.Msg}`);
       setChatMsgs(msgs => [...msgs, netData.Msg]);
+      break;
+    case NETDATA.ROOM_SETTINGS:
+      updateRoom(netData.Client);
       break;
     case NETDATA.CLIENT_SETTINGS:
       setYourClient(netData.Client);
@@ -281,7 +300,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     case NETDATA.ROUND_OVER:
       updateTable();
       setModalType('');
-      setModalTxt(netData.Msg);
+      setModalTxt(arr => [...arr, netData.Msg]);
       setModalOpen(true);
       break;
     case NETDATA.RESET:
@@ -296,7 +315,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         if (isAdmin)
           setIsAdmin(false);
         setModalType('');
-        setModalTxt('you have been eliminated');
+        setModalTxt(arr => [...arr, 'you have been eliminated']);
         setModalOpen(true);
         updatePlayer(netData.Client, nullClient)
       }
@@ -320,27 +339,27 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     case NETDATA.BAD_REQUEST:
     case NETDATA.SERVER_MSG:
       setModalType('');
-      setModalTxt(netData.Msg);
+      setModalTxt(arr => [...arr, netData.Msg]);
       setModalOpen(true);
       break;
     case NETDATA.TABLE_LOCKED:
         setModalType('preGame');
-        setModalTxt('this table is locked');
+        setModalTxt(arr => [...arr, 'this table is locked']);
         setModalOpen(true);
         break;
     case NETDATA.BAD_AUTH:
       setModalType('preGame');
-      setModalTxt('your password was incorrect');
+      setModalTxt(arr => [...arr, 'your password was incorrect']);
       setModalOpen(true);
       break;
     case NETDATA.SERVER_CLOSED:
       setModalType('preGame');
-      setModalTxt('server closed');
+      setModalTxt(arr => [...arr, 'server closed']);
       setModalOpen(true);
       break;
     default:
       setModalType('preGame');
-      setModalTxt(`bad response: ${netData.Response}`);
+      setModalTxt(arr => [...arr, `bad response: ${netData.Response}`]);
       setModalOpen(true);
       break;
     }
@@ -354,18 +373,26 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       console.log(`modalType set to ${modalType}`);
   }, [modalType]);
 
-  useEffect(() => {
+  /*useEffect(() => {
     if (settingsFormData) {
       console.log('settingsFormData', settingsFormData);
       socket.send(settingsFormData.toMsgPack());
     }
-  }, [settingsFormData]);
+  }, [settingsFormData]);*/
+
+  useEffect(() => {
+    if (gameOpts.settingsChange) {
+      console.log('Tablenew gameOpts.websocketOpts ue:', gameOpts.websocketOpts);
+      socket.send(gameOpts.websocketOpts.toMsgPack());
+    }
+    setGameOpts(opts => ({...opts, settingsChange: false}));
+  }, [gameOpts.settingsChange]);
 
   return (
     //!isPaused &&
     <>
     <TableModal
-      {...{modalType, modalTxt, modalOpen, setModalOpen, setShowGame}}
+      {...{modalType, modalTxt, setModalTxt, modalOpen, setModalOpen, setShowGame}}
       setFormData={setSettingsFormData}
     />
     <div className={styles.tableGrid} id='tableGrid'>
@@ -534,7 +561,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
           width={35}
           alt={'<quit game>'}
           onClick={() => {
-            setModalTxt('are you sure?');
+            setModalTxt(arr => [...arr, 'are you sure?']);
             setModalType('quit');
             setModalOpen(true);
           }}

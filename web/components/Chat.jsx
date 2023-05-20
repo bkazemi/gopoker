@@ -5,7 +5,7 @@ import { NETDATA, NetData } from '@/lib/libgopoker';
 import styles from '@/styles/Chat.module.css';
 
 export default function Chat({ socket, yourClient, msgs, chatInputRef }) {
-  const [msg, setMsg] = useState(''); 
+  const [msg, setMsg] = useState('');
   const [netData, setNetData] = useState(new NetData(yourClient, NETDATA.CHAT_MSG, msg));
   const [chatMsgsStyle, setChatMsgsStyle] = useState({borderColor: 'black', borderWidth: '1px'});
 

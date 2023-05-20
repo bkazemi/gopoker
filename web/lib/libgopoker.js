@@ -50,6 +50,8 @@ export const NETDATA = {
 
   SERVER_MSG:         1n << 38n,
   BAD_REQUEST:        1n << 39n,
+
+  ROOM_SETTINGS:      1n << 40n,
 };
 
 export const NetDataToString = (netDataReqOrRes) => {
@@ -147,7 +149,7 @@ const TABLE_STATE_NAME = [
   "NOT_STARTED",
   "PREFLOP",
   "FLOP", "TURN", "RIVER",
-  
+
   "ROUNDS", "PLAYER_RAISED", "DONE_BETTING",
 
   "SHOW_HANDS",
@@ -161,14 +163,19 @@ TABLE_STATE.toString = (state) => {
 };
 
 export function NewClient(settings) {
-  const { Name, Password, TableLock, TablePass } = settings;
-  
+  const { RoomName, Name, Password, TableLock, TablePass } = settings;
+
+  const haveAdminSettings = (
+    RoomName !== undefined || TableLock !== undefined || TablePass !== undefined
+  );
+
   return {
     Settings: {
       Name,
       Password,
 
-      Admin: (TableLock !== undefined || TablePass !== undefined) ? ({
+      Admin: haveAdminSettings ? ({
+        RoomName,
         Lock: TableLock,
         Password: TablePass
       }) : null,
@@ -206,7 +213,6 @@ export function cardToImagePath(card) {
   const nameAndSuit = card.FullName.split(" of ");
   const name = nameAndSuit[0];
   const suit = nameAndSuit[1].charAt(0).toUpperCase() + nameAndSuit[1].slice(1);
-  //console.log(`card2Img: n: ${name} s: ${suit}`);
-  
+
   return `/cards/card${suit}${name}.png`;
 }
