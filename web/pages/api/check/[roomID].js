@@ -1,5 +1,7 @@
 import fetch from 'node-fetch';
 
+const srvURL = 'https://gopoker-server.onrender.com';
+
 export default async function handler(req, res) {
   const { roomID } = req.query;
 
@@ -10,7 +12,7 @@ export default async function handler(req, res) {
 
   try {
     console.log(`/api/check: roomID: ${roomID}`);
-    const srvRes = await fetch(`http://10.0.1.2:7755/room/${roomID}`);
+    const srvRes = await fetch(`${srvURL}/room/${roomID}`);
 
     if (!srvRes.ok) {
       console.log('status', srvRes.status, typeof(srvRes.status));
