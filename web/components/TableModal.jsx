@@ -11,7 +11,7 @@ import styles from '@/styles/TableModal.module.css';
 
 import { Literata } from 'next/font/google';
 
-const literata = Literata({ subsets: ['latin'], weight: '500' });
+const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
 
 import cx from 'classnames';
 

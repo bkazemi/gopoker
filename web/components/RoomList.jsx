@@ -4,8 +4,10 @@ import { useRouter } from 'next/router';
 import { Exo } from 'next/font/google';
 import { Literata } from 'next/font/google';
 
-const exo = Exo({ subsets: ['latin'] });
-const literata = Literata({ subsets: ['latin'], weight: '500' });
+const exo = Exo({ subsets: ['latin', 'latin-ext'], });
+const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
+
+import { TABLE_LOCK } from '@/lib/libgopoker';
 
 import styles from '@/styles/RoomList.module.css';
 
@@ -25,7 +27,7 @@ const RoomInfo = ({ isVisible, room }) => {
   );
 };
 
-const RoomListItem = ({ room }) => {
+const RoomListItem = ({ room, searchRegex }) => {
   const [clicked, setClicked] = useState(false);
 
   const router = useRouter();
@@ -46,7 +48,30 @@ const RoomListItem = ({ room }) => {
         style={{ opacity: '0.9' }}
         className={literata.className}
       >
-        { room.roomName }
+      {
+        searchRegex &&
+        room.roomName
+          .split(searchRegex)
+          .reduce((acc, char) => {
+            if (acc.length === 0 || acc[acc.length - 1] !== char)
+              acc.push(char);
+            else
+              acc[acc.length - 1] += char;
+
+            return acc;
+          }, [])
+          .map((part, idx) => {
+            return (
+              searchRegex.test(part) ?
+              <span key={idx} className={styles.searchHighlight}>
+                { part }
+              </span>
+              : part
+            );
+          })
+        ||
+        room.roomName
+      }
       </p>
       <button
         style={{
@@ -74,13 +99,23 @@ export default function RoomList({ isVisible }) {
   const [roomList, setRoomList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+  const [searchRegex, setSearchRegex] = useState(null);
 
   useEffect(() => {
     const fetchRoomList = async () => {
       try {
         const listRes = await fetch('/api/roomList');
         if (listRes.ok) {
-          setRoomList(await listRes.json());
+          const roomList = (await listRes.json())
+            .sort((a, b) => a.roomName.localeCompare(b.roomName))
+            .map(room => {
+              return {
+                ...room,
+                tableLock: TABLE_LOCK.toString(room.tableLock),
+              }
+          });
+          setRoomList(roomList);
         } else {
           throw new Error();
         }
@@ -101,7 +136,7 @@ export default function RoomList({ isVisible }) {
           throw new Error();
         }
       } catch (e) {
-        setCurRoomCnt('unknown');
+        setCurRoomCnt('N/A');
       }
     };
 
@@ -110,6 +145,10 @@ export default function RoomList({ isVisible }) {
     else
       fetchCurRoomCnt();
   }, [isVisible]);
+
+  useEffect(() => {
+    setSearchRegex(searchValue ? new RegExp(`(${searchValue})`, 'gi') : null);
+  }, [searchValue]);
 
   if (!isVisible) {
     return (
@@ -132,18 +171,37 @@ export default function RoomList({ isVisible }) {
   }
 
   return (
-    <div
-      className={isVisible ? styles.roomList : 'hidden'}
-      onClick={(e) => { e.stopPropagation() }}
-    >
-    {
-      roomList.length &&
-      roomList
-        .map((room, idx) => {
-          return <RoomListItem key={idx} room={room} />
-        }) ||
-      <p className={exo.className}>there are no rooms presently</p>
-    }
-    </div>
+    <>
+      <div
+        className={styles.search}
+        onClick={e => e.stopPropagation()}
+      >
+        <label
+          className={exo.className}
+        >
+          search
+        </label>
+        <input
+          onChange={(e) => setSearchValue(e.target.value)}
+        />
+      </div>
+      <div
+        className={isVisible ? styles.roomList : 'hidden'}
+        onClick={(e) => { e.stopPropagation() }}
+      >
+      {
+        roomList.length &&
+        roomList
+          .filter(room => !searchRegex || searchRegex.test(room.roomName))
+          .map((room, idx) => {
+            return <RoomListItem
+                     key={idx}
+                     {...{room, searchRegex}}
+                   />
+          }) ||
+        <p className={exo.className}>there are no rooms presently</p>
+      }
+      </div>
+    </>
   );
 }

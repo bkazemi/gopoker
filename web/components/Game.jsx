@@ -17,7 +17,7 @@ import {GameContext} from '@/GameContext';
 import styles from '@/styles/Game.module.css';
 
 const literata = Literata({
-  subsets: ['latin'],
+  subsets: ['latin', 'latin-ext'],
   weight: '500',
 });
 

@@ -10,7 +10,7 @@ import { GameContext } from '@/GameContext';
 import RoomList from '@/components/RoomList';
 import NewGameForm from '@/components/NewGameForm';
 
-const exo = Exo({ subsets: ['latin'] });
+const exo = Exo({ subsets: ['latin', 'latin-ext'] });
 
 export default function HomeGrid({ isVisible, setShowGrid }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);

@@ -1017,7 +1017,7 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
     return "", errors.New("Server.handleClientSettings(): BUG: settings == nil")
   }
 
-  fmt.Printf("Server.handleClientSettings(): <%s> settings: %v\n", client.Name, *settings)
+  fmt.Printf("Server.handleClientSettings(): <%s> settings: %v\n", client.Name, settings)
 
   settings.Name = strings.TrimSpace(settings.Name)
   if settings.Name != "" {
@@ -1041,8 +1041,7 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
                 break
               }
             }
-          }
-          if found {
+          } else {
             fmt.Printf("%p requested the name `%s` which is reserved or already taken\n",
                        client.conn, settings.Name)
             msg += fmt.Sprintf("Name '%s' already in use. Current name unchanged.\n\n",
@@ -1301,8 +1300,6 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
   w.Header().Set("Content-Type", "application/json")
   w.WriteHeader(http.StatusOK)
   w.Write(jsonBody)
-
-  //w.Write([]byte(fmt.Sprintf("/room/%s", roomOpts.roomName)))
 }
 
 func (server *Server) removeRoom(room *Room) {
@@ -1359,7 +1356,7 @@ func (server *Server) handleNewConn(
       room.playerClientMap[player] = client
 
       room.applyClientSettings(client, netData.Client.Settings)
-      fmt.Printf("Server.WSClient(): adding <%s> (%p) (%s) as player '%s'\n",
+      fmt.Printf("Server.handleNewConn(): adding <%s> (%p) (%s) as player '%s'\n",
                  client.ID, &conn, client.Name, player.Name)
 
       player.Action.Action = NetDataFirstAction
@@ -1388,10 +1385,13 @@ func (server *Server) handleNewConn(
       netData.Response = NetDataYourPlayer
       netData.Send()
     } else { // sanity check
-      panic("getOpenSeats() failed for a room creator")
+      panic("Server.handleNewConn(): getOpenSeats() failed for a room creator")
     }
 
     room.makeAdmin(client)
+
+    fmt.Printf("Server.handleNewConn(): %v (%v) used creatorToken (%v), removing token\n",
+               client.Name, client.ID, room.creatorToken)
 
     room.creatorToken = "" // token gets invalidated after first use
 
@@ -1469,7 +1469,7 @@ func (server *Server) handleNewConn(
     room.playerClientMap[player] = client
 
     room.applyClientSettings(client, netData.Client.Settings)
-    fmt.Printf("Server.WSClient(): adding <%s> (%p) (%s) as player '%s'\n",
+    fmt.Printf("Server.handleNewConn(): adding <%s> (%p) (%s) as player '%s'\n",
                client.ID, &conn, client.Name, player.Name)
 
     if room.table.State == TableStateNotStarted {
@@ -1518,9 +1518,9 @@ func (server *Server) handleNewConn(
     room.sendPlayerTurn(client)
   }
 
-  if room.tableAdminID == "" {
-    room.makeAdmin(client)
-  }
+  //if room.tableAdminID == "" {
+  //  room.makeAdmin(client)
+  //}
 }
 
 func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *Room, connType string) {
@@ -1662,7 +1662,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
         room.sendTable()
 
-        // TODO: combine room msg with prev response
+        // TODO: combine server msg with prev response
         netData.Response = NetDataServerMsg
         netData.Msg = msg
         netData.Send()

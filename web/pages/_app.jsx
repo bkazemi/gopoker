@@ -13,6 +13,7 @@ export default function App({ Component, pageProps, router }) {
   const logoImgRef = useRef(null);
 
   const [headerInfo, setHeaderInfo] = useState('fetching...');
+  const [headerError, setHeaderError] = useState(false);
 
   const isHomePage = router.pathname === '/';
 
@@ -29,6 +30,7 @@ export default function App({ Component, pageProps, router }) {
       }
     } catch (e) {
       setHeaderInfo(isHomePage ? 'down' : 'error');
+      setHeaderError(true);
     }
   }, [router.pathname]);
 
@@ -72,7 +74,6 @@ export default function App({ Component, pageProps, router }) {
               <h1>g</h1>
               <Image
                 ref={logoImgRef}
-                className={homeStyles.logoImgSpin}
                 priority
                 src={'/pokerchip3.png'}
                 width={75}
@@ -84,11 +85,14 @@ export default function App({ Component, pageProps, router }) {
             </div>
             {
               <p>
-                { isHomePage ?
-                  'server status: ' + headerInfo
-                  :
-                  'current games: ' + headerInfo
-                }
+                { isHomePage ? 'server status: ' : 'current games: ' }
+                <span
+                  style={{
+                    color: headerError ? 'red' : isHomePage ? 'green' : 'inherit'
+                  }}
+                >
+                  { headerInfo }
+                </span>
               </p>
             }
           </div>

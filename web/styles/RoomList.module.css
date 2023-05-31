@@ -10,6 +10,16 @@
   overflow-y: scroll;
 }
 
+.search {
+  display: flex;
+  gap: 7px;
+  padding: 7px;
+}
+
+.searchHighlight {
+  color: red;
+}
+
 .roomListItem {
   padding: 7px;
   border-radius: 3px;

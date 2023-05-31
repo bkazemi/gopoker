@@ -149,8 +149,10 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   const updateRoom = useCallback((client) => {
     if (client.Settings?.Admin?.RoomName) {
       const newPath = `/room/${client.Settings.Admin.RoomName}`;
-      console.log('replacing URL with:', newPath);
-      router.replace(newPath);
+      if (newPath !== router.pathname) {
+        console.log('replacing URL with:', newPath);
+        router.replace(newPath);
+      }
     }
   }, [router, netData]);
 

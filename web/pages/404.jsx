@@ -30,13 +30,27 @@ export default function NotFoundPage() {
           opacity: 0;
           animation: fadeInAnimation 700ms ease-in 1900ms forwards;
         }
-        
+
+        .spinChipImg {
+          animation: spin 40s linear infinite;
+          transform: translateZ(0);
+        }
+
         @keyframes fadeInAnimation {
           0% {
             opacity: 0;
           }
           100% {
             opacity: 1;
+          }
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(360deg);
+          }
+          to {
+            transform: rotate(0deg);
           }
         }
       `}</style>
@@ -69,24 +83,26 @@ export default function NotFoundPage() {
             className="fade-in-1sdelay"
             style={{
               alignSelf: 'flex-start',
-              paddingLeft: '15px', 
+              paddingLeft: '15px',
             }}
           >
             4
           </h1>
           <div className="fade-in-3sdelay">
-            <Image
-              src='/pokerchip.png'
-              width={100}
-              height={100}
-              alt='0'
-            />
+            <div className="spinChipImg">
+              <Image
+                src='/pokerchip.png'
+                width={100}
+                height={100}
+                alt='0'
+              />
+            </div>
           </div>
           <h1
             className="fade-in-5sdelay"
             style={{
               alignSelf: 'flex-end',
-              paddingRight: '15px', 
+              paddingRight: '15px',
             }}
           >
             4

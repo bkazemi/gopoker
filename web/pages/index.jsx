@@ -10,7 +10,7 @@ import { GameContext } from '@/GameContext';
 import HomeGrid from '@/components/HomeGrid';
 import Game from '@/components/Game';
 
-const exo = Exo({ subsets: ['latin'] });
+const exo = Exo({ subsets: ['latin', 'latin-ext'] });
 
 export default function Home() {
   const { gameOpts, setGameOpts } = useContext(GameContext);
