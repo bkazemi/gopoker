@@ -33,7 +33,7 @@ func runClient(opts options) (err error) {
      opts.addr = opts.addr[8:]
     }
 
-    opts.addr = "ws://" + opts.addr
+    opts.addr = "wss://" + opts.addr
   }
 
   fmt.Fprintf(os.Stderr, "connecting to %s ...\n", opts.addr)
@@ -183,7 +183,7 @@ func runClient(opts options) (err error) {
 
 func runGame(opts options) (err error) {
   if opts.serverPort != "" {
-    deck := NewDeck()
+    /*deck := NewDeck()
 
     table, tableErr := NewTable(deck, opts.numSeats, TableLockNone, "",
                                 make([]bool, opts.numSeats))
@@ -192,7 +192,7 @@ func runGame(opts options) (err error) {
     }
 
     randSeed()
-    deck.Shuffle()
+    deck.Shuffle()*/
 
     server := NewServer("0.0.0.0:" + opts.serverPort)
 
@@ -200,7 +200,7 @@ func runGame(opts options) (err error) {
       return err
     }
 
-    if false { // TODO: implement CLI only mode
+    /*if false { // TODO: implement CLI only mode
       deck.Shuffle()
       table.Deal()
       table.DoFlop()
@@ -208,7 +208,7 @@ func runGame(opts options) (err error) {
       table.DoRiver()
       table.PrintSortedCommunity()
       //table.BestHand()
-    }
+    }*/
   } else if opts.addr != "" { // client mode
     if err := runClient(opts); err != nil {
       return err

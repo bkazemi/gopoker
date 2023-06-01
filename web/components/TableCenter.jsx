@@ -14,8 +14,9 @@ export default function TableCenter({ isAdmin, tableState, community, yourClient
         <div className={styles.community}>
           {
             community
-              .map((c) => {
+              .map((c, idx) => {
                 return <Image
+                  key={idx}
                   src={cardToImagePath(c)}
                   height={100}
                   width={66.6666667}

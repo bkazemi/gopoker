@@ -41,8 +41,9 @@ const Cards = ({ client, isYourPlayer, side, tableState }) => {
     return <div className={styles.playerCards}>
       {
         client?.Player?.Hole?.Cards
-          .map(c => {
+          .map((c, idx) => {
             return <Image
+              key={idx}
               src={cardToImagePath(c)}
               height={90}
               width={65}

@@ -80,7 +80,7 @@ export default function Game({ isVisible, setShowGame }) {
 
           const data = await res.json();
           const { creatorToken } = data;
-          const roomURL = `ws://gopoker-server.onrender.com:80${data.URL}/web`;
+          const roomURL = `wss://gopoker-server.onrender.com${data.URL}/web`;
 
           setFetchCalled(true);
           setGameOpts(gameOpts => {

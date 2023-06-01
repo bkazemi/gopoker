@@ -256,7 +256,7 @@ export default function Room() {
 
   if (websocketOpts && !roomURL)
     setGameOpts(gameOpts => {
-      return {...gameOpts, roomURL: `ws://10.0.1.2:7755/room/${roomID}/web`}
+      return {...gameOpts, roomURL: `wss://gopoker-server.onrender.com/room/${roomID}/web`}
     });
 
   return (

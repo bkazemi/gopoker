@@ -1529,7 +1529,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
   }
 
   if connType != "cli" && connType != "web" {
-    fmt.Printf("Server.WSClient: connType '%s' is invalid.\n", connType)
+    fmt.Printf("Server.WSClient(): connType '%s' is invalid.\n", connType)
 
     return
   }

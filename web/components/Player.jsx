@@ -10,9 +10,6 @@ import { TABLE_STATE, NETDATA, NetData, PlayerActionToString } from '@/lib/libgo
 import styles from '@/styles/Player.module.css';
 
 const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
-  if (!isYourPlayer)
-    return;
-
   const betInputRef = useRef(null);
   const checkBtnRef = useRef(null);
   const callBtnRef = useRef(null);
@@ -96,6 +93,9 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
         focusedKey.current.focus();
     }
   }, [keyPressed]);
+
+  if (!isYourPlayer)
+    return;
 
   return (
     <div className={styles.yourPlayerActions}>
