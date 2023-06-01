@@ -199,7 +199,7 @@ export default function RoomList({ isVisible }) {
                      {...{room, searchRegex}}
                    />
           }) ||
-        <p className={exo.className}>there are no rooms presently</p>
+        <p className={exo.className}>there are currently no rooms</p>
       }
       </div>
     </>

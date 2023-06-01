@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 
-const srvURL = 'https://gopoker-server.onrender.com';
+import config from '@/serverConfig';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const srvRes = await fetch(`${srvURL}/roomCount`);
+    const srvRes = await fetch(`${config.gopokerServerHTTPURL}/roomCount`);
 
     if (!srvRes.ok)
       throw new Error('request failed');

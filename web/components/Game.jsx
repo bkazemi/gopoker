@@ -12,6 +12,8 @@ import { Literata } from 'next/font/google';
 import {GameContext} from '@/GameContext';
 //import Tablenew from '@/components/Tablenew';
 
+import config from '@/serverConfig';
+
 //import { NETDATA, NetData } from '@/lib/libgopoker';
 
 import styles from '@/styles/Game.module.css';
@@ -80,7 +82,7 @@ export default function Game({ isVisible, setShowGame }) {
 
           const data = await res.json();
           const { creatorToken } = data;
-          const roomURL = `wss://gopoker-server.onrender.com${data.URL}/web`;
+          const roomURL = `${config.gopokerServerWSURL}${data.URL}/web`;
 
           setFetchCalled(true);
           setGameOpts(gameOpts => {

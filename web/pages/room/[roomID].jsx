@@ -15,6 +15,8 @@ import { GameContext } from '@/GameContext';
 import NewGameForm from '@/components/NewGameForm';
 import Tablenew from '@/components/Tablenew';
 
+import config from '@/serverConfig';
+
 import { NETDATA, NetData } from '@/lib/libgopoker';
 
 import homeStyles from '@/styles/Home.module.css';
@@ -256,7 +258,7 @@ export default function Room() {
 
   if (websocketOpts && !roomURL)
     setGameOpts(gameOpts => {
-      return {...gameOpts, roomURL: `wss://gopoker-server.onrender.com/room/${roomID}/web`}
+      return {...gameOpts, roomURL: `${config.gopokerServerWSURL}/room/${roomID}/web`}
     });
 
   return (

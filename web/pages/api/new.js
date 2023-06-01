@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 
-const srvURL = 'https://gopoker-server.onrender.com';
+import config from '@/serverConfig';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   try {
     console.log(`/api/new: req.body: ${JSON.stringify(req.body)}`);
-    const srvRes = await fetch(`${srvURL}/new`, {
+    const srvRes = await fetch(`${config.gopokerServerHTTPURL}/new`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(req.body),
