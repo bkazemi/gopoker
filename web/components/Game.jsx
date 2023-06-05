@@ -47,7 +47,7 @@ export default function Game({ isVisible, setShowGame }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   const [fetchCalled, setFetchCalled] = useState(false);
-  const [roomURL, setRoomUrl] = useState('');
+  //const [roomURL, setRoomUrl] = useState('');
   const [error, setError] = useState('');
 
   const router = useRouter();
@@ -85,12 +85,10 @@ export default function Game({ isVisible, setShowGame }) {
           const roomURL = `${config.gopokerServerWSURL}${data.URL}/web`;
 
           setFetchCalled(true);
-          setGameOpts(gameOpts => {
-            return {
-              ...gameOpts,
-              roomURL, creatorToken, setShowGame
-            };
-          });
+          setGameOpts(gameOpts => ({
+            ...gameOpts,
+            roomURL, creatorToken, setShowGame
+          }));
 
           router.push(data.URL);
         } catch (err) {
@@ -131,89 +129,9 @@ export default function Game({ isVisible, setShowGame }) {
       </div>
     );
 
-  if (roomURL === '')
-    return (
-      <div className={styles.spinner}>
-        <p className={literata.className}>creating new room...</p>
-        <Image
-          src='/pokerchip3.png'
-          width={100} height={100}
-          alt='spinner'
-        />
-      </div>
-    );
-}
-
-/*function GameTmp({ roomURL, websocketOpts, setShowGame }) {
-  const [socket, setSocket] = useState(null);
-
-  const { data, error } = useSWRSubscription(roomURL, (key, { next }) => {
-    let socket;
-    try {
-      next(null); // need to reset error on Game remounts
-
-      socket = new WebSocket(key);
-      socket.addEventListener('open', (event) => {
-        socket.send(websocketOpts.toMsgPack());
-      });
-      socket.addEventListener('message',
-        async (event) => {
-          try {
-            //const msg = JSON.parse(event.data.toString());
-            //const msg = await decodeFromBlob(event.data);
-            const msg = decode(await event.data.arrayBuffer(), { useBigInt64: true });
-            console.warn('Game: recv msg:', msg);
-
-            msg.ShallowThis = Math.random();
-            next(null, msg);
-          } catch(e) {
-            console.error(`msgpack decode(): err: ${e}`);
-            next(e);
-          }
-      });
-      socket.addEventListener('error', (event) => {
-        console.error('websocket err', event.error);
-        next(event.error ?? new Error('unspecified'));
-      });
-      setSocket(socket);
-    } catch (e) {
-      next(e);
-    }
-
-    return () => {
-      socket.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
-      socket.close(1000, 'web client exited');
-    }
-  });
-
-  if (error)
-    return (
-      <div
-        className={literata.className}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          fontSize: '1.5rem',
-          fontWeight: 'bold'
-        }}
-      >
-        <p>failed to connect to server - error: { error.message }</p>
-        <button style={{
-            width: '100px',
-            alignSelf: 'center',
-            padding: '5px',
-            marginTop: '1rem',
-          }}
-          onClick={() => setShowGame(false)}
-        >
-          go back
-        </button>
-      </div>
-    );
-
-  if (!data) return (
+  return (
     <div className={styles.spinner}>
-      <p className={literata.className}>connecting to server...</p>
+      <p className={literata.className}>creating new room...</p>
       <Image
         src='/pokerchip3.png'
         width={100} height={100}
@@ -221,12 +139,4 @@ export default function Game({ isVisible, setShowGame }) {
       />
     </div>
   );
-
-  return (
-    <Tablenew
-      {...{socket, websocketOpts, setShowGame}}
-      netData={data}
-    />
-  );
-
-}*/
+}

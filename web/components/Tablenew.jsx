@@ -149,7 +149,8 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   const updateRoom = useCallback((client) => {
     if (client.Settings?.Admin?.RoomName) {
       const newPath = `/room/${client.Settings.Admin.RoomName}`;
-      if (newPath !== router.pathname) {
+      if (newPath !== router.asPath) {
+        console.log(`newPath: ${newPath} router.asPath: ${router.asPath}`);
         console.log('replacing URL with:', newPath);
         router.replace(newPath);
       }
@@ -272,6 +273,8 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     }
     case NETDATA.MAKE_ADMIN:
       setIsAdmin(true);
+      if (gameOpts.creatorToken)
+        setGameOpts(opts => ({...opts, creatorToken: ''}));
       break;
     case NETDATA.DEAL:
       //setTableState(netData.Table.State);

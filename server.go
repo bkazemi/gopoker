@@ -964,7 +964,7 @@ func (server *Server) handleRoomSettings(room *Room, client *Client, settings *C
   } else if settings == nil {
     fmt.Println("Server.handleRoomSettings(): called with a nil parameter")
 
-    return "", errors.New("Server.handleClientSettings(): BUG: settings == nil")
+    return "", errors.New("Server.handleRoomSettings(): BUG: settings == nil")
   }
 
   server.mtx.Lock()
@@ -1017,7 +1017,7 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
     return "", errors.New("Server.handleClientSettings(): BUG: settings == nil")
   }
 
-  fmt.Printf("Server.handleClientSettings(): <%s> settings: %v\n", client.Name, settings)
+  //fmt.Printf("Server.handleClientSettings(): <%s> settings: %v\n", client.Name, settings)
 
   settings.Name = strings.TrimSpace(settings.Name)
   if settings.Name != "" {
@@ -1099,8 +1099,6 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
   }
 
   msg = "server response: settings changes:\n\n" + msg
-
-  fmt.Println(msg)
 
   return msg, nil
 }
@@ -1624,6 +1622,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         return
       }
 
+      settings := *netData.Client.Settings
+
       if client.ID == room.tableAdminID {
         msg, err := server.handleRoomSettings(room, client, netData.Client.Settings)
         if err == nil {
@@ -1643,6 +1643,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           netData.Send()
         }
       }
+
+      netData.Client.Settings = &settings
 
       msg, err := room.handleClientSettings(client, netData.Client.Settings)
       if err == nil {

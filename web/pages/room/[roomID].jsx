@@ -29,50 +29,6 @@ const literata = Literata({
 
 import { decode } from '@msgpack/msgpack';
 
-/*const Template = ({ children }) => {
-  const logoImgRef = useRef(null);
-
-  const toggleSpin = useCallback(() => {
-    if (logoImgRef.current.classList.contains(homeStyles.pauseAnimation))
-      logoImgRef.current.classList.remove(homeStyles.pauseAnimation);
-    else
-      logoImgRef.current.classList.add(homeStyles.pauseAnimation);
-  }, [logoImgRef]);
-
-  return (
-    <>
-      <Head>
-        <title>gopoker - shirkadeh.org</title>
-        <meta name="header" content="gopoker webclient" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-      <main className={homeStyles.main}>
-        <div className={homeStyles.header}>
-          <div className={`${homeStyles.logo} ${homeStyles.unselectable}`}>
-            <h1>g</h1>
-            <Image
-              ref={logoImgRef}
-              className={homeStyles.logoImgSpin}
-              priority
-              src={'/pokerchip3.png'}
-              width={75}
-              height={75}
-              alt='o'
-              onClick={toggleSpin}
-            />
-            <h1>poker</h1>
-          </div>
-          <p>current games: {'...'}</p>
-        </div>
-        <div className={homeStyles.center} id='center'>
-          { children }
-        </div>
-      </main>
-    </>
-  );
-}*/
-
 const Connect = () => {
   const {gameOpts, setGameOpts} = useContext(GameContext);
   const [socket, setSocket] = useState(null);
@@ -206,7 +162,15 @@ const RoomNotFound = ({ errMsg, router }) => (
       }}
     >
       {
-        <p>{errMsg && `error: ${errMsg}` || 'room not found'}</p>
+        <p
+          style={{
+            maxWidth: '33vw',
+            maxHeight: '50vh',
+            wordWrap: 'break-word',
+          }}
+        >
+          {errMsg && `error: ${errMsg}` || 'room not found'}
+        </p>
       }
       <button
         style={{
@@ -228,7 +192,7 @@ export default function Room() {
 
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
-  const { roomURL, websocketOpts, setShowGame } = gameOpts;
+  const { roomURL, websocketOpts, reset, setShowGame } = gameOpts;
 
   const [roomNotFound, setRoomNotFound] = useState(undefined);
   const [checkRoomErr, setCheckRoomErr] = useState('');
@@ -256,10 +220,13 @@ export default function Room() {
     roomID && checkRoom();
   }, [roomID]);
 
-  if (websocketOpts && !roomURL)
-    setGameOpts(gameOpts => {
-      return {...gameOpts, roomURL: `${config.gopokerServerWSURL}/room/${roomID}/web`}
-    });
+  useEffect(() => {
+    if (!reset && websocketOpts && !roomURL)
+      setGameOpts(gameOpts => ({
+        ...gameOpts,
+        roomURL: `${config.gopokerServerWSURL}/room/${roomID}/web`
+      }));
+  }, [websocketOpts, roomURL, reset]);
 
   return (
       <CSSTransition

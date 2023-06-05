@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 
 import Modal from 'react-modal';
 
@@ -14,11 +14,22 @@ import { Literata } from 'next/font/google';
 const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
 
 import cx from 'classnames';
+import { GameContext } from '@/GameContext';
+import { NewClient } from '@/lib/libgopoker';
 
-const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData }) => {
+const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData, setGameOpts }) => {
   const router = useRouter();
 
   const [pageIdx, setPageIdx] = useState(0);
+
+  const goHome = () => {
+    setGameOpts(opts => ({
+      ...opts,
+      client: NewClient({}),
+      roomURL: '', reset: true,
+    }));
+    router.push('/');
+  };
 
   switch (modalType) {
   case 'preGame':
@@ -27,11 +38,7 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
         <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
         <button
           className={styles.modalBtn}
-          onClick={() => {
-            //setShowGame(false);
-            //setModalOpen(false);
-            router.push('/');
-          }}
+          onClick={goHome}
         >
           go home
         </button>
@@ -61,15 +68,17 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
           <h2>quit game</h2>
         </div>
         <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
-        <div style={{ display: 'flex', paddingTop: '7px' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: '3px',
+            paddingTop: '7px',
+          }}
+        >
           <button
             className={styles.modalBtn}
             style={{ marginRight: '3px' }}
-            onClick={() => {
-              //setShowGame(false);
-              //setModalOpen(false);
-              router.push('/');
-            }}
+            onClick={goHome}
           >
             quit
           </button>
@@ -123,7 +132,11 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
       <>
         <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
         <div
-          style={{ display: 'flex', paddingTop: '7px' }}
+          style={{
+            display: 'flex',
+            gap: '3px',
+            paddingTop: '7px',
+          }}
         >
           {
             modalTxt.length > 1 &&
@@ -150,6 +163,8 @@ export default function TableModal({
   modalType, modalTxt, setModalTxt,
   modalOpen, setModalOpen, setShowGame, setFormData
 }) {
+  const {gameOpts, setGameOpts} = useContext(GameContext);
+
   useEffect(() => {
     if (!modalOpen)
       setModalTxt([]);
@@ -165,7 +180,7 @@ export default function TableModal({
       contentLabel='label'
       style={{
         overlay: {
-          backgroundColor: modalType === 'preGame' ? 'white' : 'transparent',
+          backgroundColor: modalType === 'preGame' ? '#d7d7d7' : 'transparent',
           zIndex: 2,
         },
         content: {
@@ -190,7 +205,8 @@ export default function TableModal({
         )}
       >
         <ModalContent
-          {...{modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData}}
+          {...{modalType, modalTxt, modalOpen, setModalOpen, setShowGame,
+               setFormData, setGameOpts}}
         />
       </div>
     </Modal>

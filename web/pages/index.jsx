@@ -15,7 +15,7 @@ const exo = Exo({ subsets: ['latin', 'latin-ext'] });
 export default function Home() {
   const { gameOpts, setGameOpts } = useContext(GameContext);
 
-  const [newGameFormData, setNewGameFormData] = useState(null);
+  //const [newGameFormData, setNewGameFormData] = useState(null);
   const [showGame, setShowGame] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
 

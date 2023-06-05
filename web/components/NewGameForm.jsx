@@ -91,7 +91,8 @@ const RequiredFields = ({
         alt='[show password]'
         onClick={() => {
           if (tablePwdRef.current)
-            tablePwdRef.current.type = tablePwdRef.current.type === 'password' ? 'text' : 'password';
+            tablePwdRef.current.type = tablePwdRef.current.type === 'password'
+              ? 'text' : 'password';
         }}
       />
     </div>
@@ -166,7 +167,7 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
     );
 
     setGameOpts(opts => {
-      const newOpts = {...opts, websocketOpts: data};
+      const newOpts = {...opts, websocketOpts: data, reset: false};
 
       return isSettings ? {...newOpts, settingsChange: true} : newOpts;
     });
@@ -177,6 +178,16 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
       gameOpts.setShowGame(true);
     }
   };
+
+  useEffect(() => {
+    if (gameOpts.reset) {
+      setRoomName('');
+      setName('');
+      setTablePwd('');
+      setTableLock(lockOpts[0]);
+      setMaxPlayers(7);
+    }
+  }, [gameOpts.reset]);
 
   return (
     <div
