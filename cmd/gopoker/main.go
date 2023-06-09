@@ -11,14 +11,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bkazemi/gopoker/internal/cli"
+	"github.com/bkazemi/gopoker/internal/net"
+	"github.com/bkazemi/gopoker/internal/poker"
+
 	"github.com/gorilla/websocket"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
 
 type FrontEnd interface {
-  InputChan() chan *NetData
-  OutputChan() chan *NetData
+  InputChan() chan *net.NetData
+  OutputChan() chan *net.NetData
   Init() error
   Run() error
   Finish() chan error
@@ -72,9 +76,11 @@ func runClient(opts options) (err error) {
   defer func() {
     fmt.Fprintf(os.Stderr, "closing connection\n")
 
-    (&NetData{
-      Request: NetDataClientExited,
-      Client: &Client{conn: conn, connType: "cli"},
+    (&net.NetData{
+      Request: net.NetDataClientExited,
+			Client: net.NewClient(nil).
+								  SetConn(conn).
+									SetConnType("cli"),
     }).Send()
 
     err := conn.WriteMessage(websocket.CloseMessage,
@@ -95,7 +101,7 @@ func runClient(opts options) (err error) {
   if opts.GUI {
     //frontEnd := runGUI()
   } else { // CLI mode
-    frontEnd = &CLI{}
+    frontEnd = &cli.CLI{}
 
     if err := frontEnd.Init(); err != nil {
       return err
@@ -105,7 +111,7 @@ func runClient(opts options) (err error) {
   recoverFunc := func() {
     if err := recover(); err != nil {
       if frontEnd != nil {
-        frontEnd.Finish() <- panicRetToError(err)
+        frontEnd.Finish() <- poker.PanicRetToError(err)
       }
       fmt.Printf("recover() done\n")
     }
@@ -117,13 +123,14 @@ func runClient(opts options) (err error) {
   go func() {
     defer recoverFunc()
 
-    (&NetData{
-      Request: NetDataNewConn,
-      Client: &Client{
-        Settings: &ClientSettings{Name: opts.name, Password: opts.pass},
-        conn: conn,
-        connType: "cli",
-      },
+    (&net.NetData{
+      Request: net.NetDataNewConn,
+			Client: net.NewClient(&net.ClientSettings{
+				Name: opts.name,
+				Password: opts.pass,
+			}).
+			SetConn(conn).
+			SetConnType("cli"),
     }).Send()
 
     for {
@@ -139,7 +146,7 @@ func runClient(opts options) (err error) {
         return
       }
 
-      netData := &NetData{}
+      netData := &net.NetData{}
       dec := gob.NewDecoder(bytes.NewReader(data))
       if err := dec.Decode(&netData); err != nil {
         fmt.Printf("runClient(): problem decoding gob stream %s\n", err.Error())
@@ -194,9 +201,9 @@ func runGame(opts options) (err error) {
     randSeed()
     deck.Shuffle()*/
 
-    server := NewServer("0.0.0.0:" + opts.serverPort)
+    server := net.NewServer("0.0.0.0:" + opts.serverPort)
 
-    if err := server.run(); err != nil {
+    if err := server.Run(); err != nil {
       return err
     }
 

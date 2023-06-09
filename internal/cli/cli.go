@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"errors"
@@ -9,9 +9,19 @@ import (
 
 	//"os"
 
+	"github.com/bkazemi/gopoker/internal/net"
+	"github.com/bkazemi/gopoker/internal/poker"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+var printer *message.Printer
+func init() {
+  printer = message.NewPrinter(language.English)
+}
 
 type CLIFocusList struct {
   prev, next *CLIFocusList
@@ -28,9 +38,9 @@ type CLI struct {
   lastKey            rune
 
   isTableAdmin       bool
-  yourClient         Client
+  yourClient         net.Client
 
-  bet                 Chips
+  bet                 poker.Chips
   betAddedCommas      bool
   betMultiplier       uint64
   betInputReplacer   *strings.Replacer
@@ -49,7 +59,7 @@ type CLI struct {
 
   settingsForm       *tview.Form
   settingsFlex       *tview.Flex
-  settings           ClientSettings
+  settings           net.ClientSettings
 
   betInputField      *tview.InputField
   actionsFlex        *tview.Flex
@@ -68,8 +78,8 @@ type CLI struct {
 
   focusList          *CLIFocusList
 
-  inputChan           chan *NetData
-  outputChan          chan *NetData // will route CLI input to server
+  inputChan           chan *net.NetData
+  outputChan          chan *net.NetData // will route CLI input to server
 
   finish              chan error
   err                 chan error
@@ -130,42 +140,42 @@ func (cli *CLI) handleButton(btn string) {
     return
   }
 
-  buttonLabelRequestMap := map[string]NetAction{
-    "all-in":     NetDataAllIn,
-    "call":       NetDataCall,
-    "check":      NetDataCheck,
-    "fold":       NetDataFold,
-    "raise":      NetDataBet,
-    "msg":        NetDataChatMsg,
-    "start game": NetDataStartGame,
-    "settings":   NetDataClientSettings,
+  buttonLabelRequestMap := map[string]net.NetAction{
+    "all-in":     net.NetDataAllIn,
+    "call":       net.NetDataCall,
+    "check":      net.NetDataCheck,
+    "fold":       net.NetDataFold,
+    "raise":      net.NetDataBet,
+    "msg":        net.NetDataChatMsg,
+    "start game": net.NetDataStartGame,
+    "settings":   net.NetDataClientSettings,
   }
 
-  netData := &NetData{
+  netData := &net.NetData{
     Client: &cli.yourClient,
   }
 
   if req, ok := buttonLabelRequestMap[btn]; ok {
-    if req & NetActionNeedsActionBitMask != 0 && cli.yourClient.Player != nil {
-      cli.yourClient.Player.Action.Action = req
+    if req & net.NetActionNeedsActionBitMask != 0 && cli.yourClient.Player != nil {
+      cli.yourClient.Player.Action.Action = net.NetActionToPlayerState(req)
       cli.yourClient.Player.Action.Amount = cli.bet
     }
 
     netData.Request = req
     netData.Msg = msg
 
-    if req == NetDataClientSettings { // requested settings update
+    if req == net.NetDataClientSettings { // requested settings update
       netData.Client.Settings = &cli.settings
     }
 
     cli.outputChan <- netData
   } else {
-    netData.Request = NetDataBadRequest
+    netData.Request = net.NetDataBadRequest
     cli.outputChan <- netData
   }
 }
 
-func (cli *CLI) updateInfoList(item string, table *Table) {
+func (cli *CLI) updateInfoList(item string, table *poker.Table) {
   switch item {
   case "all":
     fallthrough
@@ -186,7 +196,7 @@ func (cli *CLI) updateInfoList(item string, table *Table) {
   }
 }
 
-func (cli *CLI) addNewPlayer(client *Client) {
+func (cli *CLI) addNewPlayer(client *net.Client) {
   if client.ID == cli.yourClient.ID {
     return
   }
@@ -202,7 +212,7 @@ func (cli *CLI) addNewPlayer(client *Client) {
   cli.otherPlayersFlex.AddItem(textView, 0, 1, false)
 }
 
-func (cli *CLI) removePlayer(client *Client) {
+func (cli *CLI) removePlayer(client *net.Client) {
   if client.ID == cli.yourClient.ID {
     return
   }
@@ -214,13 +224,13 @@ func (cli *CLI) removePlayer(client *Client) {
 
 //var postOut string
 
-func (cli *CLI) updatePlayer(client *Client, table *Table) {
+func (cli *CLI) updatePlayer(client *net.Client, table *poker.Table) {
   textView := cli.playersTextViewMap[client.ID]
   //postOut += fmt.Sprintf("updatePlayer(): %s ID is %s tvTitle %s\n", player.Name, clientID, textView.GetTitle())
 
   if client.ID == cli.yourClient.ID {
     if table != nil {
-      assembleBestHand(true, table, client.Player)
+      poker.AssembleBestHand(true, table, client.Player)
 
       preHand := client.Player.PreHand.RankName()
       textViewSetLine(textView, 4, "current hand: " + preHand)
@@ -280,7 +290,7 @@ func (cli *CLI) unmakeAdmin() {
   }
 }
 
-func (cli *CLI) updateChat(client *Client, msg string) {
+func (cli *CLI) updateChat(client *net.Client, msg string) {
   if msg == "" {
     return
   }
@@ -311,7 +321,7 @@ func textViewSetLine(textView *tview.TextView, lineNum int, txt string) {
     return // no update
   } else {
     if lineCnt > 1 {
-      for i, _ := range tv[lineNum:minUInt64(uint64(lineNum+lineCnt-1),
+      for i, _ := range tv[lineNum:poker.MinUInt64(uint64(lineNum+lineCnt-1),
                            uint64(len(tv)))] {
         tv[i] = ""
       }
@@ -328,8 +338,8 @@ func (cli *CLI) Init() error {
   cli.exitModal  = tview.NewModal()
   cli.errorModal = tview.NewModal()
 
-  cli.inputChan  = make(chan *NetData)
-  cli.outputChan = make(chan *NetData)
+  cli.inputChan  = make(chan *net.NetData)
+  cli.outputChan = make(chan *net.NetData)
   cli.finish     = make(chan error, 1)
   cli.err        = make(chan error, 1)
 
@@ -422,7 +432,7 @@ func (cli *CLI) Init() error {
       if err != nil {
         cli.bet = 0
       } else {
-        cli.bet = Chips(n * cli.betMultiplier)
+        cli.bet = poker.Chips(n * cli.betMultiplier)
       }
 
       if !cli.betAddedCommas || cli.betMultiplier != 1 {
@@ -735,11 +745,11 @@ func (cli *CLI) Init() error {
   return nil
 }
 
-func (cli *CLI) InputChan() chan *NetData {
+func (cli *CLI) InputChan() chan *net.NetData {
   return cli.inputChan
 }
 
-func (cli *CLI) OutputChan() chan *NetData {
+func (cli *CLI) OutputChan() chan *net.NetData {
   return cli.outputChan
 }
 
@@ -751,7 +761,7 @@ func (cli *CLI) Error() chan error {
   return cli.err
 }
 
-func (cli *CLI) cards2String(cards Cards) string {
+func (cli *CLI) cards2String(cards poker.Cards) string {
   if len(cards) == 0 {
     return ""
   }
@@ -788,30 +798,30 @@ func cliInputLoop(cli *CLI) {
     select {
     case netData := <-cli.inputChan:
       if netData.NeedsTable() {
-        assert(netData.Table != nil,
+        poker.Assert(netData.Table != nil,
           fmt.Sprintf("%s: netData.Table == nil", netData.NetActionToString()))
       }
       if netData.NeedsPlayer() {
-        assert(netData.Client.Player != nil,
+        poker.Assert(netData.Client.Player != nil,
           fmt.Sprintf("%s: Client.Player == nil", netData.NetActionToString()))
         // players always have an ID as well
-        assert(netData.Client.ID != "",
+        poker.Assert(netData.Client.ID != "",
           fmt.Sprintf("%v %s: ID empty", netData.Response,
                       netData.NetActionToString()))
       }
 
       switch netData.Response {
-      case NetDataNewConn:
+      case net.NetDataNewConn:
         if cli.yourClient.ID == "" {
           cli.yourClient = *netData.Client
           cli.settings = *netData.Client.Settings
         }
         cli.updateInfoList("# connected", netData.Table)
-      case NetDataClientExited:
+      case net.NetDataClientExited:
         cli.updateInfoList("# connected", netData.Table)
-      case NetDataChatMsg:
+      case net.NetDataChatMsg:
         cli.updateChat(netData.Client, netData.Msg)
-      case NetDataClientSettings:
+      case net.NetDataClientSettings:
         cli.yourClient = *netData.Client
         cli.settings = *netData.Client.Settings
 
@@ -823,7 +833,7 @@ func cliInputLoop(cli *CLI) {
           cli.playersTextViewMap[cli.yourClient.ID] = cli.yourInfoView
           cli.updatePlayer(&cli.yourClient, nil)
         }
-      case NetDataYourPlayer:
+      case net.NetDataYourPlayer:
         if netData.Table != nil {
           cli.updateInfoList("# players", netData.Table)
         }
@@ -837,35 +847,35 @@ func cliInputLoop(cli *CLI) {
         cli.playersTextViewMap[cli.yourClient.ID] = cli.yourInfoView
 
         cli.updatePlayer(&cli.yourClient, nil)
-      case NetDataNewPlayer, NetDataCurPlayers:
+      case net.NetDataNewPlayer, net.NetDataCurPlayers:
         cli.updateInfoList("# players", netData.Table)
 
         cli.addNewPlayer(netData.Client)
-      case NetDataPlayerLeft:
+      case net.NetDataPlayerLeft:
         cli.removePlayer(netData.Client)
         cli.updateInfoList("# players", netData.Table)
         cli.updateChat(nil, fmt.Sprintf("<server-msg> %s left the table",
                                        netData.Client.Player.Name))
-      case NetDataMakeAdmin:
+      case net.NetDataMakeAdmin:
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start game")
         })
 
         tableLockKeys := make([]int, 0)
-        for k := range TableLockNameMap {
+        for k := range poker.TableLockNameMap {
           tableLockKeys = append(tableLockKeys, int(k))
         }
         sort.Ints(tableLockKeys)
         tableLockOpts := make([]string, 0)
         for _, lock := range tableLockKeys {
-          tableLockOpts = append(tableLockOpts, TableLockNameMap[TableLock(lock)])
+          tableLockOpts = append(tableLockOpts, poker.TableLockNameMap[poker.TableLock(lock)])
         }
 
         cli.settingsForm.AddTextView("admin options", "", 0, 1, false, false).
         AddDropDown("table lock", tableLockOpts, int(netData.Table.Lock),
           func(opt string, optIdx int) {
-            lock := TableLock(optIdx)
-            if _, ok := TableLockNameMap[lock]; ok {
+            lock := poker.TableLock(optIdx)
+            if _, ok := poker.TableLockNameMap[lock]; ok {
               cli.settings.Admin.Lock = lock
             }
         }).
@@ -881,7 +891,7 @@ func cliInputLoop(cli *CLI) {
         cli.updateChat(nil, fmt.Sprintf("<server-msg> you are now the table admin"))
 
         cli.isTableAdmin = true
-      case NetDataDeal:
+      case net.NetDataDeal:
         cli.commView.Clear()
         cli.clearPlayerScreens()
 
@@ -890,10 +900,10 @@ func cliInputLoop(cli *CLI) {
         txt := cli.cards2String(netData.Client.Player.Hole.Cards)
 
         cli.holeView.SetText(txt)
-      case NetDataPlayerAction:
+      case net.NetDataPlayerAction:
         cli.updatePlayer(netData.Client, netData.Table)
         cli.updateInfoList("status", netData.Table)
-      case NetDataPlayerHead:
+      case net.NetDataPlayerHead:
         if cli.playerHeadTextView != nil {
           if cli.playerHeadTextView == cli.curPlayerTextView {
             cli.playerHeadTextView.SetBorderColor(tcell.ColorRed)
@@ -909,7 +919,7 @@ func cliInputLoop(cli *CLI) {
           playerHeadTextView.SetBorderColor(tcell.ColorOrange)
           cli.playerHeadTextView = playerHeadTextView
         }
-      case NetDataPlayerTurn:
+      case net.NetDataPlayerTurn:
         curPlayerTextView := cli.playersTextViewMap[netData.Client.ID]
 
         if curPlayerTextView == nil {
@@ -934,15 +944,15 @@ func cliInputLoop(cli *CLI) {
             cli.app.SetFocus(cli.actionsForm)
           }
         }
-      case NetDataUpdatePlayer:
+      case net.NetDataUpdatePlayer:
         cli.updatePlayer(netData.Client, netData.Table)
-      case NetDataUpdateTable:
+      case net.NetDataUpdateTable:
         cli.updateInfoList("status", netData.Table)
-      case NetDataCurHand:
+      case net.NetDataCurHand:
         cli.updatePlayer(netData.Client, netData.Table)
-      case NetDataShowHand:
+      case net.NetDataShowHand:
         cli.updatePlayer(netData.Client, nil)
-      case NetDataRoundOver:
+      case net.NetDataRoundOver:
         cli.updateInfoList("status", netData.Table)
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
@@ -950,7 +960,7 @@ func cliInputLoop(cli *CLI) {
         //for _, player := range netData.Table.Winners {
         //  cli.updatePlayer(netData.Client, nil)
         //}
-      case NetDataReset:
+      case net.NetDataReset:
         if netData.Client != nil && netData.Client.Player != nil {
           for name, textView := range cli.playersTextViewMap {
             if name != netData.Client.Name {
@@ -964,7 +974,7 @@ func cliInputLoop(cli *CLI) {
         }
         cli.holeView.Clear()
         cli.updateInfoList("all", netData.Table)
-      case NetDataEliminated:
+      case net.NetDataEliminated:
         if netData.Client.ID == cli.yourClient.ID {
           cli.unmakeAdmin()
           cli.errorModal.SetText("you were eliminated")
@@ -977,14 +987,14 @@ func cliInputLoop(cli *CLI) {
         }
 
         cli.updateChat(netData.Client, netData.Msg)
-      case NetDataFlop, NetDataTurn, NetDataRiver:
+      case net.NetDataFlop, net.NetDataTurn, net.NetDataRiver:
         txt := cli.cards2String(netData.Table.Community)
 
         cli.commView.SetText(txt)
         cli.updateInfoList("status", netData.Table)
-      case NetDataBadRequest, NetDataServerMsg:
+      case net.NetDataBadRequest, net.NetDataServerMsg:
         if netData.Msg == "" {
-          if netData.Response == NetDataBadRequest {
+          if netData.Response == net.NetDataBadRequest {
             netData.Msg = "unspecified server error"
           } else {
             netData.Msg = "BUG: empty server message"
@@ -993,9 +1003,9 @@ func cliInputLoop(cli *CLI) {
 
         cli.errorModal.SetText(netData.Msg)
         cli.switchToPage("error")
-      case NetDataTableLocked, NetDataBadAuth:
+      case net.NetDataTableLocked, net.NetDataBadAuth:
         cli.finish <- errors.New(netData.Msg)
-      case NetDataServerClosed:
+      case net.NetDataServerClosed:
         cli.finish <- errors.New("server closed")
       default:
         cli.finish <- errors.New(fmt.Sprintf("bad response %v", netData.Response))

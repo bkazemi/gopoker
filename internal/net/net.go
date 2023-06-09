@@ -1,10 +1,12 @@
-package main
+package net
 
 import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
 	"os"
+
+	"github.com/bkazemi/gopoker/internal/poker"
 
 	"github.com/gorilla/websocket"
 	"github.com/vmihailenco/msgpack/v5"
@@ -87,7 +89,8 @@ type NetData struct {
   Response NetAction
   Msg      string // server msg or client chat msg
 
-  Table    *Table
+  room     *Room // used for roomname prefix in logs
+  Table    *poker.Table
 }
 
 /*func NewNewData() *NetData {
@@ -277,7 +280,9 @@ func (netData *NetData) unwrappedSender(conn *websocket.Conn, connType string) {
     var gobBuf bytes.Buffer
     enc := gob.NewEncoder(&gobBuf)
 
-    enc.Encode(netData)
+    if err := enc.Encode(netData); err != nil {
+      panic(err)
+    }
 
     //fmt.Fprintf(os.Stderr, "NETDATA: cli: sending %v to %p\n", netData.NetActionToString(), conn)
 
@@ -289,7 +294,12 @@ func (netData *NetData) unwrappedSender(conn *websocket.Conn, connType string) {
       panic(err)
     }
 
-    fmt.Fprintf(os.Stderr, "NETDATA: web: sending: %v to %p\n", netData.NetActionToString(), conn)
+    roomPrefix := ""
+    if netData.room != nil {
+      roomPrefix = "{" + netData.room.name + "}: "
+    }
+
+    fmt.Fprintf(os.Stderr, "NETDATA: %sweb: sending: %v to %p\n", roomPrefix, netData.NetActionToString(), conn)
 
     conn.WriteMessage(websocket.BinaryMessage, b)
   } else {

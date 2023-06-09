@@ -1,4 +1,4 @@
-package main
+package poker
 
 import (
 	"encoding/binary"
@@ -10,13 +10,13 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-func assert(cond bool, msg string) {
+func Assert(cond bool, msg string) {
   if !cond {
     panic(msg)
   }
 }
 
-func absUInt64(x, y uint64) uint64 {
+func AbsUInt64(x, y uint64) uint64 {
   if x > y {
     return x - y
   }
@@ -24,7 +24,7 @@ func absUInt64(x, y uint64) uint64 {
   return y - x
 }
 
-func absChips(x, y Chips) Chips {
+func AbsChips(x, y Chips) Chips {
   if x > y {
     return x - y
   }
@@ -32,7 +32,7 @@ func absChips(x, y Chips) Chips {
   return y - x
 }
 
-func minUInt64(x, y uint64) uint64 {
+func MinUInt64(x, y uint64) uint64 {
   if x < y {
     return x
   }
@@ -40,7 +40,7 @@ func minUInt64(x, y uint64) uint64 {
   return y
 }
 
-func minChips(x, y Chips) Chips {
+func MinChips(x, y Chips) Chips {
   if x < y {
     return x
   }
@@ -48,7 +48,7 @@ func minChips(x, y Chips) Chips {
   return y
 }
 
-func maxUInt64(x, y uint64) uint64 {
+func MaxUInt64(x, y uint64) uint64 {
   if (x > y) {
     return x
   }
@@ -56,7 +56,7 @@ func maxUInt64(x, y uint64) uint64 {
   return y
 }
 
-func maxChips(x, y Chips) Chips {
+func MaxChips(x, y Chips) Chips {
   if (x > y) {
     return x
   }
@@ -64,7 +64,7 @@ func maxChips(x, y Chips) Chips {
   return y
 }
 
-func maxInt(x, y int) int {
+func MaxInt(x, y int) int {
   if (x > y) {
     return x
   }
@@ -72,7 +72,7 @@ func maxInt(x, y int) int {
   return y
 }
 
-func playerMapToArr(playerMap map[string]*Player) []*Player {
+func PlayerMapToArr(playerMap map[string]*Player) []*Player {
   if playerMap == nil || len(playerMap) == 0 {
     return []*Player{}
   }
@@ -96,13 +96,13 @@ func (p *Panic) panic(msg string) {
   panic(msg)
 }
 
-func (p *Panic) ifNoPanic(deferredFunc func()) {
+func (p *Panic) IfNoPanic(deferredFunc func()) {
   if !p.panicked {
     deferredFunc()
   }
 }
 
-func panicRetToError(err interface{}) error {
+func PanicRetToError(err interface{}) error {
   var typedErr error
 
   switch errType := err.(type) {
@@ -117,7 +117,7 @@ func panicRetToError(err interface{}) error {
   return typedErr
 }
 
-func randSeed() {
+func RandSeed() {
   var b [8]byte
 
   _, err := crypto_rand.Read(b[:])
@@ -130,14 +130,14 @@ func randSeed() {
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
-func randString(n int) string {
+func RandString(n int) string {
   b := make([]rune, n)
 
   for i := range b {
     b[i] = letters[math_rand.Intn(len(letters))]
   }
 
-  randSeed() // re-seed just in case
+  RandSeed() // re-seed just in case
 
   return string(b)
 }
@@ -145,7 +145,7 @@ func randString(n int) string {
 // FillLeft return string filled in left by spaces in w cells
 //
 // taken from github.com/go-runewidth
-func fillLeft(s string, w int) string {
+func FillLeft(s string, w int) string {
   width := uniseg.StringWidth(s)
   count := w - width
 
@@ -163,7 +163,7 @@ func fillLeft(s string, w int) string {
 // FillRight return string filled in right by spaces in w cells
 //
 // taken from github.com/go-runewidth
-func fillRight(s string, w int) string {
+func FillRight(s string, w int) string {
   width := uniseg.StringWidth(s)
   count := w - width
 

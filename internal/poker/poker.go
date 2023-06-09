@@ -1,4 +1,4 @@
-package main
+package poker
 
 import (
 	"fmt"
@@ -8,467 +8,24 @@ import (
 	//"io"
 
 	"errors"
-	"sort"
 	"sync"
 
 	//_ "net/http/pprof"
 
-	math_rand "math/rand"
+	"github.com/bkazemi/gopoker/internal/playerState"
+
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 
 	"github.com/rivo/uniseg"
 )
 
-// ranks
-type Rank int8
-const (
-  RankMuck  Rank = iota - 1
-  RankHighCard
-  RankPair
-  RankTwoPair
-  RankTrips
-  RankStraight
-  RankFlush
-  RankFullHouse
-  RankQuads
-  RankStraightFlush
-  RankRoyalFlush
-)
-
-// cards
-const (
-  CardAceLow = iota + 1
-  CardTwo
-  CardThree
-  CardFour
-  CardFive
-  CardSix
-  CardSeven
-  CardEight
-  CardNine
-  CardTen
-  CardJack
-  CardQueen
-  CardKing
-  CardAce
-)
-
-// suits
-type Suit uint8
-const (
-  SuitClub Suit = 1 << iota
-  SuitDiamond
-  SuitHeart
-  SuitSpade
-)
-
-type CardVal uint8
-type Card struct {
-  Name     string
-  FullName string
-  Suit     Suit
-  NumValue CardVal // numeric value of card
-}
-
-type Cards []*Card
-
-type Hole struct {
-  IsSuited         bool
-  IsPair           bool
-  Suit             Suit
-  CombinedNumValue uint16
-  Cards            Cards
-}
-
-func (hole *Hole) FillHoleInfo() {
-  var (
-    cardOne = hole.Cards[0]
-    cardTwo = hole.Cards[1]
-  )
-
-  if cardOne.NumValue == cardTwo.NumValue {
-    hole.IsPair = true
-  }
-
-  if cardOne.Suit == cardTwo.Suit {
-    hole.IsSuited = true
-    hole.Suit = cardOne.Suit | cardTwo.Suit
-  }
-
-  hole.CombinedNumValue = uint16(cardOne.NumValue + cardTwo.NumValue)
-}
-
-type Hand struct {
-  Rank   Rank
-  Kicker uint8
-  Cards  Cards
-}
-
-func (hand *Hand) RankName() string {
-  rankNameMap := map[Rank]string{
-    RankMuck:          "muck",
-    RankHighCard:      "high card",
-    RankPair:          "pair",
-    RankTwoPair:       "two pair",
-    RankTrips:         "three of a kind",
-    RankStraight:      "straight",
-    RankFlush:         "flush",
-    RankFullHouse:     "full house",
-    RankQuads:         "four of a kind",
-    RankStraightFlush: "straight flush",
-  }
-
-  if rankName, ok := rankNameMap[hand.Rank]; ok {
-    return rankName
-  }
-
-  panic("Hand.RankName(): BUG")
-}
-
-type Action struct {
-  Action NetAction
-  Amount Chips
-}
-
-func (action *Action) Clear() {
-  action.Action = NetDataFirstAction
-  action.Amount = 0
+var printer *message.Printer
+func init() {
+  printer = message.NewPrinter(language.English)
 }
 
 type Chips uint64
-type Player struct {
-  defaultName string
-  Name        string // NOTE: must have unique names
-  IsCPU       bool
-
-  IsVacant bool
-
-  ChipCount Chips
-  Hole      *Hole
-  Hand      *Hand
-  PreHand   Hand // XXX tmp
-  Action    Action
-}
-
-func (p *Player) setName(name string) {
-  oldName := p.Name
-  if name == "" {
-    p.Name = p.defaultName
-  } else {
-    p.Name = name
-  }
-  fmt.Printf("Player.setName(): <%s> '%s' => '%s'\n", p.defaultName, oldName, p.Name)
-}
-
-func (p *Player) canBet() bool {
-  return !p.IsVacant && p.Action.Action != NetDataMidroundAddition &&
-         p.Action.Action != NetDataFold && p.Action.Action != NetDataAllIn
-}
-
-// XXX: should consider adding an ~IsBlind field to Player struct
-func (p *Player) isABlind(table *Table) bool {
-  if table == nil {
-    panic("Player.isABlind(): table == nil")
-  }
-
-  return ((table.BigBlind   != nil && table.BigBlind.Player.Name   == p.Name) ||
-          (table.SmallBlind != nil && table.SmallBlind.Player.Name == p.Name))
-}
-
-type PlayerNode struct {
-  /*prev,*/ next *PlayerNode // XXX don't think i need this to be a pointer. check back
-  Player *Player
-}
-
-// circular list of players at the poker table
-type playerList struct {
-  len int
-  name string
-  head *PlayerNode // XXX don't think i need this to be a pointer. check back
-}
-
-func NewPlayerList(name string, players []*Player) *playerList {
-  list := &playerList{
-    name: name,
-  }
-
-  if players == nil || len(players) == 0 {
-    fmt.Printf("NewPlayerList(): <%s> called with empty player list\n", name)
-
-    return list
-  }
-
-  list.head = &PlayerNode{Player: players[0]}
-  head := list.head
-  if len(players) > 1 {
-    for _, p := range players[1:] {
-      list.head.next = &PlayerNode{Player: p}
-      list.head = list.head.next
-    }
-  } else {
-    fmt.Printf("NewPlayerList(): <%s> called with len(players) == 1\n", name)
-  }
-  list.head.next = head
-  list.head = head
-  list.len = len(players)
-
-  return list
-}
-
-func (list *playerList) Print() {
-  fmt.Printf("<%s> len==%v [ ", list.name, list.len)
-  for i, n := 0, list.head; i < list.len; i++ {
-    fmt.Printf("%s n=> %s ", n.Player.Name, n.next.Player.Name)
-    n=n.next
-    if i == list.len-1 {
-      fmt.Printf("| n=> %s ", n.next.Player.Name)
-    }
-  }
-  fmt.Println("]")
-}
-
-func (list *playerList) Clone(newName string) *playerList {
-  return NewPlayerList(newName, list.ToPlayerArray())
-}
-
-func (list *playerList) AddPlayer(player *Player) {
-  if list.len == 0 {
-    list.head = &PlayerNode{Player: player}
-    list.head.next = list.head
-  } else {
-    newNode := &PlayerNode{Player: player, next: list.head}
-
-    node := list.head
-    for i := 0; i < list.len - 1; i++ {
-      node = node.next
-    }
-    node.next = newNode
-  }
-
-  list.len++
-}
-
-func (list *playerList) RemovePlayer(player *Player) *PlayerNode {
-  if list.len == 0 || player == nil {
-    return nil
-  }
-
-  fmt.Printf("playerList.RemovePlayer(): <%s> called for %s\n", list.name, player.Name)
-  fmt.Printf("playerList.RemovePlayer(): was ") ; list.Print()
-
-  foundPlayer := true
-
-  defer func() {
-    if foundPlayer {
-      list.len--
-    }
-    fmt.Printf("playerList.RemovePlayer(): now ") ; list.Print()
-  }()
-
-  node, prevNode := list.head, list.head
-  for i := 0; i < list.len; i++ {
-    if node.Player.Name == player.Name {
-      if i == 0 {
-        if list.len == 1 {
-          list.head = nil
-          return nil
-        }
-
-        list.head = list.head.next
-
-        tailNode := list.head
-        for j := 0; j < list.len-2; j++ {
-          tailNode = tailNode.next
-        }
-        tailNode.next = list.head
-
-        return list.head
-      } else {
-        prevNode.next = node.next
-
-        return prevNode.next
-      }
-    }
-
-    prevNode = node
-    node = node.next
-  }
-
-  fmt.Printf("playerList.RemovePlayer(): <%s> %s not found in list\n", list.name, player.Name)
-
-  foundPlayer = false
-  return nil // player not found
-}
-
-func (list *playerList) GetPlayerNode(player *Player) *PlayerNode {
-  node := list.head
-
-  //fmt.Printf("playerList.GetPlayerNode(): called for %s\n", player.Name)
-  //list.ToNodeArray()
-
-  for i := 0; i < list.len; i++ {
-    if node.Player.Name == player.Name {
-      return node
-    }
-    node = node.next
-  }
-
-  return nil
-}
-
-func (list *playerList) SetHead(node *PlayerNode) {
-  if node == nil {
-    fmt.Printf("%s.SetHead(): setting parameter is nil\n", list.name)
-    if list.len != 0 {
-      fmt.Printf(" with a nonempty list\n")
-    } else {
-      fmt.Println()
-    }
-  }
-
-  list.head = node
-}
-
-func (list *playerList) ToNodeArray() []*PlayerNode {
-  nodes := make([]*PlayerNode, 0)
-
-  for i, node := 0, list.head; i < list.len; i++ {
-    nodes = append(nodes, node)
-    node = node.next
-  }
-
-  //fmt.Printf("playerList.ToNodeArray(): ") ; list.Print()
-
-  return nodes
-}
-
-func (list *playerList) ToPlayerArray() []*Player {
-  if list.len == 0 {
-    return nil
-  }
-
-  players := make([]*Player, 0)
-
-  for i, node := 0, list.head; i < list.len; i++ {
-    players = append(players, node.Player)
-    node = node.next
-  }
-
-  //fmt.Printf("playerList.ToPlayerArray(): ") ; list.Print()
-
-  return players
-}
-
-func NewPlayer(name string, isCPU bool) *Player {
-  player := &Player{
-    defaultName: name,
-    Name: name,
-    IsCPU: isCPU,
-
-    IsVacant: true,
-
-    ChipCount: 1e5, // TODO: add knob
-
-    Action: Action{Action: NetDataVacantSeat},
-  }
-
-  player.NewCards()
-
-  return player
-}
-
-func (player *Player) NewCards() {
-  player.Hole = &Hole{Cards: make(Cards, 0, 2)}
-  player.Hand = &Hand{Rank: RankMuck, Cards: make(Cards, 0, 5)}
-}
-
-func (player *Player) Clear() {
-  player.Name = player.defaultName
-  player.IsVacant = true
-
-  player.ChipCount = 1e5 // XXX
-  player.NewCards()
-
-  player.Action.Amount = 0
-  player.Action.Action = NetDataVacantSeat
-}
-
-func (player *Player) ChipCountToString() string {
-  return printer.Sprintf("%d", player.ChipCount)
-}
-
-func (player *Player) ActionToString() string {
-  switch player.Action.Action {
-  case NetDataAllIn:
-    return printer.Sprintf("all in (%d chips)", player.Action.Amount)
-  case NetDataBet:
-    return printer.Sprintf("raise (bet %d chips)", player.Action.Amount)
-  case NetDataCall:
-    return printer.Sprintf("call (%d chips)", player.Action.Amount)
-  case NetDataCheck:
-    return "check"
-  case NetDataFold:
-    return "fold"
-
-  case NetDataVacantSeat:
-    return "seat is open" // XXX
-  case NetDataPlayerTurn:
-    return "(player's turn) waiting for action"
-  case NetDataFirstAction:
-    return "waiting for first action"
-  case NetDataMidroundAddition:
-    return "waiting to add to next round"
-
-  default:
-    return "bad player state"
-  }
-}
-
-type Deck struct {
-  pos   uint
-  cards Cards
-  size  int
-}
-
-func NewDeck() *Deck {
-  deck := &Deck{
-    size: 52, // 52 cards in a poker deck
-  }
-  deck.cards = make(Cards, deck.size, deck.size)
-
-  for suit := SuitClub; suit <= SuitSpade; suit <<= 1 {
-    for c_num := CardTwo; c_num <= CardAce; c_num++ {
-      curCard := &Card{Suit: suit, NumValue: CardVal(c_num)}
-      if err := cardNumToString(curCard); err != nil {
-        panic(err)
-      }
-
-      deck.cards[deck.pos] = curCard
-      deck.pos++
-    }
-  }
-
-  deck.pos = 0
-
-  return deck
-}
-
-func (deck *Deck) Shuffle() {
-  for i := math_rand.Intn(4) + 1; i > 0; i-- {
-    for i := 0; i < deck.size; i++ {
-      randIdx := math_rand.Intn(deck.size)
-      // swap
-      deck.cards[randIdx], deck.cards[i] = deck.cards[i], deck.cards[randIdx]
-    }
-  }
-
-  deck.pos = 0
-}
-
-// "remove" card from deck (functionally)
-func (deck *Deck) Pop() *Card {
-  deck.pos++
-  return deck.cards[deck.pos-1]
-}
 
 type TableState int
 
@@ -491,263 +48,6 @@ const (
   TableStateGameOver
   TableStateReset
 )
-
-type Pot struct {
-  Name     string // XXX tmp for debugging
-  Bet      Chips
-  Total    Chips
-  Players  map[string]*Player
-  IsClosed bool
-  WinInfo  string
-}
-
-func NewPot(name string, bet Chips) *Pot {
-  if name == "" {
-    name = "unnamed pot"
-  }
-
-  pot := &Pot{
-    Name: name,
-    Bet: bet,
-    Players: make(map[string]*Player),
-  }
-
-  return pot
-}
-
-func (pot *Pot) WithPlayers(players map[string]*Player) *Pot {
-  for name, p := range players {
-    pot.Players[name] = p
-  }
-
-  return pot
-}
-
-func (pot *Pot) HasPlayer(player *Player) bool {
-  return pot.Players[player.Name] != nil
-}
-
-func (pot *Pot) AddPlayer(player *Player) {
-  printer.Printf("Pot.AddPlayer(): <%s> (%v bet) adding %s\n", pot.Name, pot.Bet, player.Name)
-  pot.Players[player.Name] = player
-}
-
-func (pot *Pot) AddPlayers(playerMap map[string]*Player) {
-  for name, player := range playerMap {
-    printer.Printf("Pot.AddPlayers(): <%s> (%v bet) adding %s\n", pot.Name, pot.Bet, name)
-    pot.Players[name] = player
-  }
-}
-
-func (pot *Pot) RemovePlayer(player *Player) {
-  if player == nil {
-    printer.Printf("Pot.RemovePlayer(): <%s> (%v bet) clearing pot\n", pot.Name, pot.Bet)
-    pot.Players = make(map[string]*Player)
-  } else {
-    printer.Printf("Pot.RemovePlayer(): <%s> (%v bet) removing %s\n", pot.Name, pot.Bet, player.Name)
-    delete(pot.Players, player.Name)
-  }
-}
-
-func (pot *Pot) PlayerInfo() string {
-  numPlayers := len(pot.Players)
-
-  if numPlayers == 0 {
-    return "#p 0"
-  }
-
-  playerNames := "["
-  for playerName := range pot.Players {
-    playerNames += playerName + ", "
-  }
-  playerNames += "]"
-
-  return printer.Sprintf("#p %d %s", numPlayers, playerNames)
-}
-
-func (pot *Pot) Clear() {
-  defer func() {
-    fmt.Printf("Pot.Clear(): cleared %s\n", pot.Name)
-  }()
-
-  pot.Players = make(map[string]*Player)
-  pot.Bet = 0
-  pot.Total = 0
-  pot.IsClosed = false
-  pot.WinInfo = ""
-}
-
-type SidePot struct {
-  *Pot // XXX
-  MustCall *Pot
-}
-
-// XXX: mixed init constructs
-func NewSidePot(bet Chips) *SidePot {
-  name := "unknown sidepot"
-
-  sidePot := &SidePot{
-    Pot: NewPot(name, bet),
-  }
-
-  return sidePot
-}
-
-func (sidePot *SidePot) WithName(name string) *SidePot {
-  sidePot.Name = name
-
-  return sidePot
-}
-
-func (sidePot *SidePot) WithPlayers(players map[string]*Player) *SidePot {
-  for name, p := range players {
-    sidePot.Players[name] = p
-  }
-
-  return sidePot
-}
-
-func (sidePot *SidePot) WithPlayer(player *Player) *SidePot {
-  sidePot.Name = player.Name + " sidePot"
-  sidePot.Players[player.Name] = player
-
-  return sidePot
-}
-
-func (sidePot *SidePot) WithMustCall(mustCall *Pot) *SidePot {
-  sidePot.MustCall = mustCall
-
-  return sidePot
-}
-
-func (sidePot *SidePot) Calculate(prevBet Chips) {
-  printer.Printf("SidePot.Calculate(): %s prevBet: %v\n", sidePot.Name, prevBet)
-
-  defer func() {
-    printer.Printf("SidePot.Calculate(): %s total => %v\n", sidePot.Name, sidePot.Total)
-  }()
-
-  // MustCall struct contains players who folded on
-  // an allin re-raise
-  if sidePot.MustCall != nil {
-    printer.Printf("SidePot.Calculate(): %s playerInfo: %s\n", sidePot.MustCall.Name, sidePot.MustCall.PlayerInfo())
-    mustCallChips := sidePot.MustCall.Bet * Chips(len(sidePot.MustCall.Players))
-    printer.Printf("SidePot.Calculate(): %s total => %v, adding to attached sidePot\n", sidePot.MustCall.Name, mustCallChips)
-    sidePot.Total += mustCallChips
-  }
-
-  sidePot.Total += (sidePot.Bet - prevBet) * Chips(len(sidePot.Players))
-}
-
-type SidePotArray struct {
-  Pots []*SidePot
-}
-
-func (arr *SidePotArray) Add(sidePot *SidePot) {
-  arr.Pots = append(arr.Pots, sidePot)
-}
-
-func (arr *SidePotArray) Insert(sidePot *SidePot, idx int) {
-  if idx < 0 || len(arr.Pots) != 0 && idx > len(arr.Pots) - 1 {
-    panic(fmt.Sprintf("SidePotArray.Insert(): invalid index '%v'\n", idx))
-  }
-
-  if idx == 0 {
-    arr.Pots = append([]*SidePot{sidePot}, arr.Pots...)
-  } else {
-    arr.Pots = append(append(arr.Pots[:idx], sidePot), arr.Pots[idx:]...)
-  }
-}
-
-func (arr *SidePotArray) GetOpenPots() []*SidePot {
-  openSidePots := make([]*SidePot, 0)
-
-  for _, sidePot := range arr.Pots {
-    if !sidePot.IsClosed {
-      openSidePots = append(openSidePots, sidePot)
-    }
-  }
-
-  return openSidePots
-}
-
-func (arr *SidePotArray) GetPotsStartingAt(idx int) []*SidePot {
-  if idx < 0 || idx > len(arr.Pots)-1 {
-    return []*SidePot{}
-  }
-
-  return arr.Pots[idx:]
-}
-
-func (arr *SidePotArray) GetLargest() *SidePot {
-  openSidePots := arr.GetOpenPots()
-
-  if len(openSidePots) == 0 {
-    return nil
-  }
-
-  return openSidePots[len(openSidePots)-1]
-}
-
-func (arr *SidePotArray) CloseAll() {
-  for _, sidePot := range arr.GetOpenPots() {
-    fmt.Printf("SidePotArray.CloseAll(): closing %s\n", sidePot.Name)
-    sidePot.IsClosed = true
-  }
-}
-
-func (arr *SidePotArray) IsEmpty() bool {
-  return len(arr.Pots) == 0
-}
-
-type SidePots struct {
-  AllInPots  SidePotArray
-  BettingPot *SidePot
-}
-
-func NewSidePots() *SidePots {
-  return &SidePots{
-    AllInPots: SidePotArray{
-      Pots: make([]*SidePot, 0),
-    },
-  }
-}
-
-func (sidePots *SidePots) GetAllPots() []*SidePot {
-  pots := make([]*SidePot, 0)
-
-  for _, sidePot := range sidePots.AllInPots.Pots {
-    pots = append(pots, sidePot)
-  }
-  if sidePots.BettingPot != nil {
-    pots = append(pots, sidePots.BettingPot)
-  }
-
-  return pots
-}
-
-func (sidePots *SidePots) IsEmpty() bool {
-  return sidePots.AllInPots.IsEmpty() && sidePots.BettingPot == nil
-}
-
-func (sidePots *SidePots) Clear() {
-  sidePots.AllInPots = SidePotArray{
-    Pots: make([]*SidePot, 0),
-  }
-  sidePots.BettingPot = nil
-}
-
-func (sidePots *SidePots) Print() {
-  for _, sidePot := range sidePots.AllInPots.Pots {
-    printer.Printf("%s - bet: %v pot: %v closed: %v %s\n", sidePot.Name, sidePot.Bet,
-                   sidePot.Total, sidePot.IsClosed, sidePot.PlayerInfo())
-  }
-
-  if sidePot := sidePots.BettingPot; sidePot != nil {
-    printer.Printf("%s - bet: %v pot: %v closed: %v %s\n", sidePot.Name, sidePot.Bet,
-                   sidePot.Total, sidePot.IsClosed, sidePot.PlayerInfo())
-  }
-}
 
 const (
   TableLockNone = iota
@@ -783,8 +83,8 @@ type Table struct {
   BigBlind   *PlayerNode // current big blind
 
   players       []*Player   // array of all seats at table
-  activePlayers playerList  // list of all active players
-  curPlayers    playerList  // list of actively betting players (no folders or all-ins)
+  activePlayers PlayerList  // list of all active players
+  curPlayers    PlayerList  // list of actively betting players (no folders or all-ins)
   Winners       []*Player   // array of round winners
   curPlayer     *PlayerNode // keeps track of whose turn it is
   better        *Player     // last player to (re-)raise XXX currently unused
@@ -802,6 +102,49 @@ type Table struct {
   Password     string     // table password (optional)
 
   mtx sync.Mutex
+}
+
+// NOTE: the methods defined below are necessary so that
+// other internal packages can access/modify private fields. said private fields
+// cannot be simply made public because we send a Table struct to clients.
+
+
+func (table *Table) SidePots() *SidePots {
+  return &table.sidePots
+}
+
+func (table *Table) Players() *[]*Player {
+  return &table.players
+}
+
+func (table *Table) ActivePlayers() *PlayerList {
+  return &table.activePlayers
+}
+
+func (table *Table) CurPlayers() *PlayerList {
+  return &table.curPlayers
+}
+
+func (table *Table) CurPlayer() *PlayerNode {
+  return table.curPlayer
+}
+
+func (table *Table) SetCurPlayer(player *PlayerNode) {
+  table.curPlayer = player
+}
+
+func (table *Table) Better() *Player {
+  return table.better
+}
+
+func (table *Table) SetBetter(player *Player) {
+  table.better = player
+}
+
+// XXX we should probably only have the poker package
+// accessing the table lock, but for now i'm leaving it.
+func (table *Table) Mtx() *sync.Mutex {
+  return &table.mtx
 }
 
 func NewTable(deck *Deck, numSeats uint8, lock TableLock, password string, CPUPlayers []bool) (*Table, error) {
@@ -838,11 +181,11 @@ func NewTable(deck *Deck, numSeats uint8, lock TableLock, password string, CPUPl
   return table, nil
 }
 
-func (table *Table) reset(player *Player) {
+func (table *Table) Reset(player *Player) {
   table.mtx.Lock()
   defer table.mtx.Unlock()
 
-  fmt.Println("Table.reset(): resetting table")
+  fmt.Println("Table.Reset(): resetting table")
 
   table.Ante = 10
 
@@ -850,31 +193,31 @@ func (table *Table) reset(player *Player) {
 
   for _, node := range table.curPlayers.ToNodeArray() {
     if player == nil || player.Name != node.Player.Name {
-      fmt.Printf("Table.reset(): cleared %s\n", node.Player.Name)
+      fmt.Printf("Table.Reset(): cleared %s\n", node.Player.Name)
       node.Player.Clear()
       table.curPlayers.RemovePlayer(node.Player)
     } else { // XXX: not being found sometimes
-      fmt.Printf("Table.reset(): skipped %s\n", node.Player.Name)
+      fmt.Printf("Table.Reset(): skipped %s\n", node.Player.Name)
       table.curPlayers.SetHead(node)
 
       //player.NewCards()
-      //player.Action.Action, player.Action.Amount = NetDataFirstAction, 0
+      //player.Action.Action, player.Action.Amount = playerState.FirstAction, 0
     }
   }
 
   table.Winners, table.better = nil, nil
 
-  if table.curPlayers.len == 0 && player != nil {
-    fmt.Printf("Table.reset(): curPlayers was empty, adding winner %s\n", player.Name)
+  if table.curPlayers.Len == 0 && player != nil {
+    fmt.Printf("Table.Reset(): curPlayers was empty, adding winner %s\n", player.Name)
     table.curPlayers.AddPlayer(player)
   } else {
-    table.curPlayer = table.curPlayers.head
+    table.curPlayer = table.curPlayers.Head
   }
 
   // XXX
   for _, p := range table.players {
     if player == nil || p.Name != player.Name {
-      fmt.Printf("Table.reset(): XXX: second clear() <%s>\n", p.Name)
+      fmt.Printf("Table.Reset(): XXX: second clear() <%s>\n", p.Name)
       p.Clear()
     }
   }
@@ -884,7 +227,7 @@ func (table *Table) reset(player *Player) {
   table.Bet, table.NumPlayers, table.roundCount = 0, 0, 0
 
   if player != nil {
-    fmt.Printf("Table.reset(): clearing winner's (%s) action and cards\n", player.Name)
+    fmt.Printf("Table.Reset(): clearing winner's (%s) action and cards\n", player.Name)
     player.Action.Clear()
     player.NewCards()
 
@@ -897,7 +240,7 @@ func (table *Table) reset(player *Player) {
   table.Lock = TableLockNone
   table.Password = ""
 
-  table.Dealer = table.activePlayers.head
+  table.Dealer = table.activePlayers.Head
 
   table.SmallBlind = nil
   table.BigBlind = nil
@@ -959,21 +302,6 @@ func (table *Table) TableStateToString() string {
   return "BUG: bad table state"
 }
 
-func (table *Table) commState2NetDataResponse() NetAction {
-  commStateNetDataMap := map[TableState]NetAction{
-    TableStateFlop:  NetDataFlop,
-    TableStateTurn:  NetDataTurn,
-    TableStateRiver: NetDataRiver,
-  }
-
-  if netDataResponse, ok := commStateNetDataMap[table.CommState]; ok {
-    return netDataResponse
-  }
-
-  fmt.Printf("Table.commState2NetDataResponse(): bad state `%v`\n", table.CommState)
-  return NetDataBadRequest
-}
-
 func (table *Table) DefaultPlayerNames() []string {
   names := make([]string, 0, len(table.players))
 
@@ -1029,7 +357,7 @@ func (table *Table) allInCount() int {
 
   for _, p := range table.activePlayers.ToPlayerArray() {
     fmt.Printf("Table.allInCount(): <%s> action: %v\n", p.Name, p.ActionToString())
-    if p.Action.Action == NetDataAllIn {
+    if p.Action.Action == playerState.AllIn {
       allIns++
     }
   }
@@ -1037,9 +365,9 @@ func (table *Table) allInCount() int {
   return allIns
 }
 
-func (table *Table) bettingIsImpossible() bool {
+func (table *Table) BettingIsImpossible() bool {
   // only <= 1 player(s) has any chips left to bet
-  return table.curPlayers.len < 2
+  return table.curPlayers.Len < 2
 }
 
 func (table *Table) closeSidePots() {
@@ -1097,7 +425,7 @@ func (table *Table) calculateSidePotTotals() {
 }
 
 func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
-  if table.curPlayers.len < 2 {
+  if table.curPlayers.Len < 2 {
     panic("BUG: Table.getChipLeaders() called with < 2 non-folded/allin players")
   }
 
@@ -1162,7 +490,7 @@ func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
   return chipLeader, secondChipLeader
 }
 
-func (table *Table) getOpenSeat() *Player {
+func (table *Table) GetOpenSeat() *Player {
   table.mtx.Lock()
   defer table.mtx.Unlock()
 
@@ -1211,7 +539,7 @@ func (table *Table) getActiveSeats() []*Player {
 
   for _, seat := range table.players {
     if !seat.IsVacant &&
-      seat.Action.Action != NetDataMidroundAddition {
+      seat.Action.Action != playerState.MidroundAddition {
       seats = append(seats, seat)
     }
   }
@@ -1225,14 +553,14 @@ func (table *Table) GetNumOpenSeats() uint8 {
 
 func (table *Table) addNewPlayers() {
   for _, player := range table.activePlayers.ToPlayerArray() {
-    if player.Action.Action == NetDataMidroundAddition {
+    if player.Action.Action == playerState.MidroundAddition {
       fmt.Printf("Table.addNewPlayers(): adding new player: %s\n", player.Name)
-      player.Action.Action = NetDataFirstAction
+      player.Action.Action = playerState.FirstAction
     }
   }
 }
 
-func (table *Table) getEliminatedPlayers() []*Player {
+func (table *Table) GetEliminatedPlayers() []*Player {
   table.mtx.Lock()
   defer table.mtx.Unlock()
 
@@ -1247,11 +575,11 @@ func (table *Table) getEliminatedPlayers() []*Player {
   if uint8(len(ret)) == table.NumPlayers-1 {
     table.State = TableStateGameOver
   } else {
-    fmt.Printf("Table.getEliminatedPlayers(): len ret: %v NP-1: %v\n",
+    fmt.Printf("Table.GetEliminatedPlayers(): len ret: %v NP-1: %v\n",
                uint(len(ret)), table.NumPlayers-1)
   }
 
-  fmt.Printf("Table.getEliminatedPlayers(): [")
+  fmt.Printf("Table.GetEliminatedPlayers(): [")
   for _, p := range ret {
     fmt.Printf(" %s ", p.Name)
   }; fmt.Println("]")
@@ -1262,54 +590,54 @@ func (table *Table) getEliminatedPlayers() []*Player {
 // resets the active players list head to
 // Bb+1 pre-flop
 // Sb post-flop
-func (table *Table) reorderPlayers() {
+func (table *Table) ReorderPlayers() {
   if table.State == TableStateNewRound ||
     table.State == TableStatePreFlop {
-    table.activePlayers.SetHead(table.BigBlind.next)
-    table.curPlayers.SetHead(table.curPlayers.GetPlayerNode(table.BigBlind.next.Player))
-    assert(table.curPlayers.head != nil,
-           "Table.reorderPlayers(): couldn't find Bb+1 player node")
-    fmt.Printf("Table.reorderPlayers(): curPlayers head now: %s\n",
-               table.curPlayers.head.Player.Name)
+    table.activePlayers.SetHead(table.BigBlind.Next())
+    table.curPlayers.SetHead(table.curPlayers.GetPlayerNode(table.BigBlind.Next().Player))
+    Assert(table.curPlayers.Head != nil,
+           "Table.ReorderPlayers(): couldn't find Bb+1 player node")
+    fmt.Printf("Table.ReorderPlayers(): curPlayers head now: %s\n",
+               table.curPlayers.Head.Player.Name)
   } else { // post-flop
     smallBlindNode := table.SmallBlind
     if smallBlindNode == nil { // smallblind left mid game
       if table.Dealer != nil {
-        smallBlindNode = table.Dealer.next
+        smallBlindNode = table.Dealer.Next()
       } else if table.BigBlind != nil {
-        smallBlindNode = table.activePlayers.head
+        smallBlindNode = table.activePlayers.Head
         // definitely considering doubly linked lists now *sigh*
-        for smallBlindNode.next.Player.Name != table.BigBlind.Player.Name {
-          smallBlindNode = smallBlindNode.next
+        for smallBlindNode.Next().Player.Name != table.BigBlind.Player.Name {
+          smallBlindNode = smallBlindNode.Next()
         }
       } else {
-        fmt.Println("Table.reorderPlayers(): dealer, Sb & Bb all left mid round")
+        fmt.Println("Table.ReorderPlayers(): dealer, Sb & Bb all left mid round")
         table.handleOrphanedSeats()
         smallBlindNode = table.SmallBlind
       }
-      fmt.Printf("Table.reorderPlayers(): smallblind left mid round, setting curPlayer to %s\n",
+      fmt.Printf("Table.ReorderPlayers(): smallblind left mid round, setting curPlayer to %s\n",
                  smallBlindNode.Player.Name)
     }
     smallBlindNode = table.curPlayers.GetPlayerNode(smallBlindNode.Player);
     if smallBlindNode == nil {
     // small-blind folded or is all in so we need to search activePlayers for next actively betting player
-      smallBlindNode = table.SmallBlind.next
+      smallBlindNode = table.SmallBlind.Next()
       for !smallBlindNode.Player.canBet() {
-        smallBlindNode = smallBlindNode.next
+        smallBlindNode = smallBlindNode.Next()
       }
 
       smallBlindNode = table.curPlayers.GetPlayerNode(smallBlindNode.Player)
 
-      assert(smallBlindNode != nil, "Table.reorderPlayers(): couldn't find a nonfolded player after Sb")
+      Assert(smallBlindNode != nil, "Table.ReorderPlayers(): couldn't find a nonfolded player after Sb")
 
-      fmt.Printf("Table.reorderPlayers(): smallBlind (%s) not active, setting curPlayer to %s\n", table.SmallBlind.Player.Name,
+      fmt.Printf("Table.ReorderPlayers(): smallBlind (%s) not active, setting curPlayer to %s\n", table.SmallBlind.Player.Name,
                  smallBlindNode.Player.Name)
     }
     table.curPlayers.SetHead(smallBlindNode) // small blind (or next active player)
                                              // is always first better after pre-flop
   }
 
-  table.curPlayer = table.curPlayers.head
+  table.curPlayer = table.curPlayers.Head
 }
 
 
@@ -1320,40 +648,40 @@ func (table *Table) handleOrphanedSeats() {
   //       considering making lists doubly linked.
   if table.Dealer == nil && table.SmallBlind == nil && table.BigBlind == nil {
     fmt.Println("Table.handleOrphanedSeats(): D, Sb & Bb all nil, resetting to activePlayers head")
-    table.Dealer = table.activePlayers.head
-    table.SmallBlind = table.Dealer.next
-    table.BigBlind = table.SmallBlind.next
+    table.Dealer = table.activePlayers.Head
+    table.SmallBlind = table.Dealer.Next()
+    table.BigBlind = table.SmallBlind.Next()
   }
   if table.Dealer == nil && table.SmallBlind == nil { // (bigBlind != nil)
     var newDealerNode *PlayerNode
-    for i, n := 0, table.activePlayers.head; i < table.activePlayers.len; i++ {
-      if n.next.next.Player.Name == table.BigBlind.Player.Name {
+    for i, n := 0, table.activePlayers.Head; i < table.activePlayers.Len; i++ {
+      if n.Next().Next().Player.Name == table.BigBlind.Player.Name {
         newDealerNode = n
         break
       }
-      n = n.next
+      n = n.Next()
     }
 
-    assert(newDealerNode != nil, "Table.handleOrphanedSeats(): newDealerNode == nil")
+    Assert(newDealerNode != nil, "Table.handleOrphanedSeats(): newDealerNode == nil")
 
     fmt.Printf("Table.handleOrphanedSeats(): setting dealer to %s\n", newDealerNode.Player.Name)
 
     table.Dealer = newDealerNode
-    table.SmallBlind = table.Dealer.next
-    table.BigBlind = table.SmallBlind.next
+    table.SmallBlind = table.Dealer.Next()
+    table.BigBlind = table.SmallBlind.Next()
   }
 
   if table.Dealer == nil {
     var newDealerNode *PlayerNode
-    for i, n := 0, table.activePlayers.head; i < table.activePlayers.len; i++ {
-      if n.next.Player.Name == table.SmallBlind.Player.Name {
+    for i, n := 0, table.activePlayers.Head; i < table.activePlayers.Len; i++ {
+      if n.Next().Player.Name == table.SmallBlind.Player.Name {
         newDealerNode = n
         break
       }
-      n = n.next
+      n = n.Next()
     }
 
-    assert(newDealerNode != nil, "Table.handleOrphanedSeats(): newDealerNode == nil")
+    Assert(newDealerNode != nil, "Table.handleOrphanedSeats(): newDealerNode == nil")
 
     fmt.Printf("Table.handleOrphanedSeats(): setting dealer to %s\n", newDealerNode.Player.Name)
 
@@ -1361,19 +689,19 @@ func (table *Table) handleOrphanedSeats() {
   }
 
   if table.SmallBlind == nil {
-    table.SmallBlind = table.Dealer.next
+    table.SmallBlind = table.Dealer.Next()
     fmt.Printf("Table.handleOrphanedSeats(): setting smallblind to %s\n", table.SmallBlind.Player.Name)
   }
 
   if table.BigBlind == nil {
-    table.BigBlind = table.SmallBlind.next
+    table.BigBlind = table.SmallBlind.Next()
     fmt.Printf("Table.handleOrphanedSeats(): setting bigblind to %s\n", table.BigBlind.Player.Name)
   }
 }
 
 // rotates the dealer and blinds
 func (table *Table) rotatePlayers() {
-  if table.State == TableStateNotStarted || table.activePlayers.len < 2 {
+  if table.State == TableStateNotStarted || table.activePlayers.Len < 2 {
     return
   }
 
@@ -1388,26 +716,26 @@ func (table *Table) rotatePlayers() {
 
   Panic := &Panic{}
 
-  defer Panic.ifNoPanic(func() {
+  defer Panic.IfNoPanic(func() {
     fmt.Printf("D=%s S=%s B=%s\n",
       table.Dealer.Player.Name,
       table.SmallBlind.Player.Name,
       table.BigBlind.Player.Name)
 
-    table.reorderPlayers()
+    table.ReorderPlayers()
   })
 
-  if table.BigBlind.next.Player.Name == table.Dealer.Player.Name {
+  if table.BigBlind.Next().Player.Name == table.Dealer.Player.Name {
     table.Dealer = table.BigBlind
   } else {
-    table.Dealer = table.Dealer.next
+    table.Dealer = table.Dealer.Next()
   }
-  table.SmallBlind = table.Dealer.next
-  table.BigBlind = table.SmallBlind.next
+  table.SmallBlind = table.Dealer.Next()
+  table.BigBlind = table.SmallBlind.Next()
 }
 
-func (table *Table) setNextPlayerTurn() {
-  fmt.Printf("Table.setNextPlayerTurn(): curPlayer: %s\n", table.curPlayer.Player.Name)
+func (table *Table) SetNextPlayerTurn() {
+  fmt.Printf("Table.SetNextPlayerTurn(): curPlayer: %s\n", table.curPlayer.Player.Name)
   if table.State == TableStateNotStarted {
     return
   }
@@ -1419,32 +747,32 @@ func (table *Table) setNextPlayerTurn() {
 
   thisPlayer := table.curPlayer // save in case we need to remove from curPlayers list
 
-  defer Panic.ifNoPanic(func() {
+  defer Panic.IfNoPanic(func() {
     if table.State == TableStateDoneBetting {
       table.better = nil
       table.calculateSidePotTotals() // TODO: move me
       table.closeSidePots()
     }
 
-    if thisPlayer.Player.Action.Action == NetDataAllIn {
+    if thisPlayer.Player.Action.Action == playerState.AllIn {
       nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
       if nextNode != nil {
-        fmt.Printf("Table.setNextPlayerTurn(): removing %s, curPlayers head was %s\n",
-                   thisPlayer.Player.Name, table.curPlayers.head.Player.Name)
+        fmt.Printf("Table.SetNextPlayerTurn(): removing %s, curPlayers head was %s\n",
+                   thisPlayer.Player.Name, table.curPlayers.Head.Player.Name)
         table.curPlayer = nextNode
-        fmt.Printf("Table.setNextPlayerTurn(): curPlayers head now %s\n", table.curPlayers.head.Player.Name)
+        fmt.Printf("Table.SetNextPlayerTurn(): curPlayers head now %s\n", table.curPlayers.Head.Player.Name)
       }
     }
 
-    fmt.Printf("Table.setNextPlayerTurn(): new curPlayer: %v\n",
+    fmt.Printf("Table.SetNextPlayerTurn(): new curPlayer: %v\n",
                table.curPlayer.Player.Name)
     table.curPlayers.ToPlayerArray()
   })
 
-  if table.curPlayers.len == 1 {
-    fmt.Println("Table.setNextPlayerTurn(): table.curPlayers.len == 1")
+  if table.curPlayers.Len == 1 {
+    fmt.Println("Table.SetNextPlayerTurn(): table.curPlayers.Len == 1")
     if table.allInCount() == 0 { // win by folds
-      fmt.Println("Table.setNextPlayerTurn(): allInCount == 0")
+      fmt.Println("Table.SetNextPlayerTurn(): allInCount == 0")
       table.State = TableStateRoundOver // XXX
     } else {
       table.State = TableStateDoneBetting
@@ -1453,40 +781,40 @@ func (table *Table) setNextPlayerTurn() {
     return
   }
 
-  if thisPlayer.Player.Action.Action == NetDataFold {
+  if thisPlayer.Player.Action.Action == playerState.Fold {
     nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
     if nextNode != nil {
-      fmt.Printf("Table.setNextPlayerTurn(): removing %s, curPlayers head was %s\n",
-                 thisPlayer.Player.Name, table.curPlayers.head.Player.Name)
+      fmt.Printf("Table.SetNextPlayerTurn(): removing %s, curPlayers head was %s\n",
+                 thisPlayer.Player.Name, table.curPlayers.Head.Player.Name)
       table.curPlayer = nextNode
-      fmt.Printf("Table.setNextPlayerTurn(): curPlayers head now %s\n", table.curPlayers.head.Player.Name)
+      fmt.Printf("Table.SetNextPlayerTurn(): curPlayers head now %s\n", table.curPlayers.Head.Player.Name)
     }
   } else {
-    table.curPlayer = thisPlayer.next
+    table.curPlayer = thisPlayer.Next()
   }
 
-  if table.curPlayers.len == 1 && table.allInCount() == 0 {
-    fmt.Println("Table.setNextPlayerTurn(): table.curPlayers.len == 1 with allInCount of 0 after fold")
+  if table.curPlayers.Len == 1 && table.allInCount() == 0 {
+    fmt.Println("Table.SetNextPlayerTurn(): table.curPlayers.Len == 1 with allInCount of 0 after fold")
     table.State = TableStateRoundOver // XXX
 
     return
-  } else if thisPlayer.next == table.curPlayers.head &&
-            thisPlayer.next.Player.Action.Action != NetDataFirstAction {
+  } else if thisPlayer.Next() == table.curPlayers.Head &&
+            thisPlayer.Next().Player.Action.Action != playerState.FirstAction {
             /*((table.State == TableStatePlayerRaised &&
-             table.better.Name == table.curPlayers.head.Player.Name)
+             table.better.Name == table.curPlayers.Head.Player.Name)
              (table.State != TableStatePlayerRaised &&
-              table.curPlayers.head.Player.Action.Action != NetDataFirstAction)) {*/
+              table.curPlayers.Head.Player.Action.Action != playerAction.FirstAction)) {*/
     // NOTE: curPlayers head gets shifted with allins / folds so we check for
     //       firstaction, /*however this doesn't work post-flop so we check
     //       the table better as well*/ <- I've opted to reset the action before each round for now
-    fmt.Printf("Table.setNextPlayerTurn(): last player (%s) didn't raise\n",
+    fmt.Printf("Table.SetNextPlayerTurn(): last player (%s) didn't raise\n",
                thisPlayer.Player.Name)
-    fmt.Printf("Table.setNextPlayerTurn(): curPlayers == %s curPlayers.next == %s\n",
-               table.curPlayers.head.Player.Name, table.curPlayer.next.Player.Name)
+    fmt.Printf("Table.SetNextPlayerTurn(): curPlayers == %s curPlayers.Next() == %s\n",
+               table.curPlayers.Head.Player.Name, table.curPlayer.Next().Player.Name)
 
     table.State = TableStateDoneBetting
   } else {
-    //table.curPlayer = table.curPlayer.next
+    //table.curPlayer = table.curPlayer.Next()
   }
 }
 
@@ -1521,9 +849,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
      table.State != TableStatePlayerRaised { // XXX mixed states...
     if table.SmallBlind != nil && player.Name == table.SmallBlind.Player.Name {
       isSmallBlindPreFlop = true
-      blindRequiredBet = minChips(table.SmallBlind.Player.ChipCount, table.Ante / 2)
+      blindRequiredBet = MinChips(table.SmallBlind.Player.ChipCount, table.Ante / 2)
     } else if table.BigBlind!= nil && player.Name == table.BigBlind.Player.Name {
-      blindRequiredBet = minChips(table.BigBlind.Player.ChipCount, table.Ante)
+      blindRequiredBet = MinChips(table.BigBlind.Player.ChipCount, table.Ante)
     }
   }
 
@@ -1545,9 +873,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
         // get players who already called the last bet,
         // sub the delta of the last bet and this players
         // chipcount in mainpot, then add them to the mainpot & sidepot.
-        for playerNode := table.curPlayers.head;
+        for playerNode := table.curPlayers.Head;
             playerNode.Player.Name != player.Name;
-            playerNode = playerNode.next {
+            playerNode = playerNode.Next() {
           p := playerNode.Player
           if p.Name == player.Name {
             break
@@ -1573,7 +901,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
     mainPot, bettingPot := table.MainPot, table.sidePots.BettingPot
 
-    if player.Action.Action == NetDataAllIn {
+    if player.Action.Action == playerState.AllIn {
       if !mainPot.IsClosed {
         if mainPot.Bet > player.Action.Amount {
           printer.Printf("Table.PlayerAction(): handleSidePots(): <%s> moving previous " +
@@ -1814,14 +1142,14 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       }
     } else { // not an allin
       if !mainPot.IsClosed && !mainPot.HasPlayer(player) {
-        assert(player.ChipCount >= mainPot.Bet,
+        Assert(player.ChipCount >= mainPot.Bet,
         printer.Sprintf("Table.PlayerAction(): handleSidePots(): <%v> cc: %v cant match mainpot bet %v",
                         player.Name, player.ChipCount, mainPot.Bet))
-        //assert(mainPot.Bet > betDiff,
+        //Assert(mainPot.Bet > betDiff,
         //       printer.Sprintf("Table.PlayerAction(): handleSidePots(): <%s> betDiff %v > mainPot bet: %v",
         //                      player.Name, betDiff, mainPot.Bet))
 
-        if player.Action.Action != NetDataFirstAction && table.MainPot.Bet > prevBet {
+        if player.Action.Action != playerState.FirstAction && table.MainPot.Bet > prevBet {
           printer.Printf("Table.PlayerAction(): handleSidePots(): <%s> called an allin reraise, " +
                          "adding (mainPot.Bet - prevBet) to mainPot. mainPot bet: %v prevBet %v\n",
                          player.Name, mainPot.Bet, prevBet)
@@ -1843,7 +1171,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       // add current player to open sidepots. this happens when multiple
       // players go all-in.
       for _, sidePot := range table.sidePots.AllInPots.GetOpenPots() {
-        assert(player.ChipCount >= sidePot.Bet, "player cant match a sidePot bet")
+        Assert(player.ChipCount >= sidePot.Bet, "player cant match a sidePot bet")
 
         // if a sidePot has a MustCall struct, then the sidePot raise
         // will include the MustCall bet so this player does not need
@@ -1862,7 +1190,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       }
 
       switch player.Action.Action {
-      case NetDataBet:
+      case playerState.Bet:
         lastBettingPotBet := bettingPot.Bet
         if table.State == TableStatePlayerRaised &&
           player.Action.Amount > bettingPot.Bet {
@@ -1883,7 +1211,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
           if bettingPot.Bet == 0 {
             fmt.Printf("Table.PlayerAction(): handleSidePots(): bettingpot: %s re-raised an all-in\n", player.Name)
           }
-          assert(sidePotDiff <= player.Action.Amount,
+          Assert(sidePotDiff <= player.Action.Amount,
           printer.Sprintf("Table.PlayerAction(): handleSidePots(): bettingpot: sidePotDiff %v is greater than %s action.amt (%v)\n",
                           sidePotDiff, player.Name, player.Action.Amount))
           bettingPot.Total += player.Action.Amount - sidePotDiff
@@ -1897,7 +1225,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
           printer.Printf("Table.PlayerAction(): handleSidePots(): bettingpot: %s changed betting pot bet from %d to %d\n", player.Name,
                          lastBettingPotBet, bettingPot.Bet)
         }
-      case NetDataCall:
+      case playerState.Call:
         if bettingPot.Bet == 0 {
           fmt.Printf("Table.PlayerAction(): handleSidePots(): bettingpot: %s called, but pot is empty. no bettingpot change\n", player.Name)
         } else {
@@ -1910,19 +1238,19 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     }
   }
 
-  if table.curPlayers.len == 1 &&
-     (action.Action == NetDataAllIn || action.Action == NetDataBet) {
+  if table.curPlayers.Len == 1 &&
+     (action.Action == playerState.AllIn || action.Action == playerState.Bet) {
     return errors.New(printer.Sprintf("you must call the raise (%d chips) or fold", table.Bet))
   }
 
-  if player.ChipCount == 0 && action.Action != NetDataAllIn {
+  if player.ChipCount == 0 && action.Action != playerState.AllIn {
     fmt.Printf("Table.PlayerAction(): <%s> changing all-in bet to an allin action\n", player.Name)
-    action.Action = NetDataAllIn
+    action.Action = playerState.AllIn
   }
 
   switch action.Action {
-  case NetDataAllIn:
-    player.Action.Action = NetDataAllIn
+  case playerState.AllIn:
+    player.Action.Action = playerState.AllIn
 
     prevChips := player.Action.Amount
     printer.Printf("Table.PlayerAction(): <%s> allin: prevChips == %v\n", player.Name, prevChips)
@@ -1930,9 +1258,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     player.Action.Amount += prevChips
     player.ChipCount += prevChips
 
-    if table.bettingIsImpossible() {
+    if table.BettingIsImpossible() {
       fmt.Printf("Table.PlayerAction(): <%s> allin: last player went all-in\n", player.Name)
-      player.Action.Amount = minChips(table.Bet, player.ChipCount)
+      player.Action.Amount = MinChips(table.Bet, player.ChipCount)
     } else {
       chipLeaderCount, secondChipLeaderCount := table.getChipLeaders(true)
       printer.Printf("Table.PlayerAction(): <%s> allin: chipLeaderCount: %v 2ndChipLeaderCount: %v\n", player.Name, chipLeaderCount, secondChipLeaderCount)
@@ -1948,7 +1276,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
         table.Bet = player.Action.Amount
         table.State = TableStatePlayerRaised
         table.better = player
-        if table.curPlayers.head.Player.Name != table.curPlayer.Player.Name {
+        if table.curPlayers.Head.Player.Name != table.curPlayer.Player.Name {
           fmt.Printf("Table.PlayerAction(): <%s> allin: setting curPlayers head to %s\n",
                      player.Name, table.curPlayer.Player.Name)
           table.curPlayers.SetHead(table.curPlayer) // NOTE: the new better always
@@ -1966,7 +1294,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     handleSidePots(prevChips, 0)
 
     player.ChipCount -= player.Action.Amount
-  case NetDataBet:
+  case playerState.Bet:
     prevChips := player.Action.Amount
     printer.Printf("Table.PlayerAction(): <%s> bet: prevChips == %v\n", player.Name, prevChips)
 
@@ -1986,18 +1314,18 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
     // NOTE: A chipleader can only bet what at least one other player can match.
     if player.ChipCount == chipLeaderCount {
-      player.Action.Amount = minChips(action.Amount, secondChipLeaderCount)
+      player.Action.Amount = MinChips(action.Amount, secondChipLeaderCount)
     } else {
       player.Action.Amount = action.Amount
     }
 
     if action.Amount == player.ChipCount {
-      player.Action.Action = NetDataAllIn
+      player.Action.Action = playerState.AllIn
     } else {
-      player.Action.Action = NetDataBet
+      player.Action.Action = playerState.Bet
     }
 
-    if player.Action.Action == NetDataAllIn || !table.sidePots.IsEmpty() {
+    if player.Action.Action == playerState.AllIn || !table.sidePots.IsEmpty() {
       handleSidePots(prevChips, 0)
     } else {
       table.MainPot.Total += player.Action.Amount - prevChips
@@ -2011,7 +1339,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     table.curPlayers.SetHead(table.curPlayer)
     table.better = player
     table.State = TableStatePlayerRaised
-  case NetDataCall:
+  case playerState.Call:
     if table.State != TableStatePlayerRaised && !isSmallBlindPreFlop {
       return errors.New("nothing to call")
     }
@@ -2032,14 +1360,14 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     fmt.Printf("Table.PlayerAction(): <%s> call: betDiff: %v\n", player.Name, betDiff)
 
     if table.Bet >= player.ChipCount {
-      player.Action.Action = NetDataAllIn
+      player.Action.Action = playerState.AllIn
       player.Action.Amount = player.ChipCount
 
       handleSidePots(prevChips, 0)
 
       player.ChipCount = 0
     } else {
-      player.Action.Action = NetDataCall
+      player.Action.Action = playerState.Call
       player.Action.Amount = table.Bet
 
       if !table.sidePots.IsEmpty() {
@@ -2049,7 +1377,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
       }
       player.ChipCount -= player.Action.Amount
     }
-  case NetDataCheck:
+  case playerState.Check:
     if table.State == TableStatePlayerRaised {
       return errors.New(printer.Sprintf("you must call the raise (%d chips)", table.Bet))
     }
@@ -2059,17 +1387,17 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
     }
 
     if player.ChipCount == 0 { // big blind had a chipcount <= ante
-      player.Action.Action = NetDataAllIn
+      player.Action.Action = playerState.AllIn
     } else {
-      player.Action.Action = NetDataCheck
+      player.Action.Action = playerState.Check
     }
-  case NetDataFold:
-    player.Action.Action = NetDataFold
+  case playerState.Fold:
+    player.Action.Action = playerState.Fold
   default:
     return errors.New(fmt.Sprintf("BUG: invalid player action: %b", action.Action))
   }
 
-  table.setNextPlayerTurn()
+  table.SetNextPlayerTurn()
 
   return nil
 }
@@ -2112,15 +1440,15 @@ func (table *Table) SortCommunity() {
   cardsSort(&table._comsorted)
 }
 
-func (table *Table) nextCommunityAction() {
+func (table *Table) NextCommunityAction() {
   switch table.CommState {
   case TableStatePreFlop:
     table.DoFlop()
 
     table.CommState = TableStateFlop
-    if !table.bettingIsImpossible() { // else all players went all in preflop
+    if !table.BettingIsImpossible() { // else all players went all in preflop
                                       // and we are in the all-in loop
-      table.reorderPlayers()
+      table.ReorderPlayers()
     }
   case TableStateFlop:
     table.DoTurn()
@@ -2135,13 +1463,13 @@ func (table *Table) nextCommunityAction() {
 
     return
   default:
-    panic("BUG: Table.nextCommunityAction(): invalid community state")
+    panic("BUG: Table.NextCommunityAction(): invalid community state")
   }
 
   table.State = TableStateRounds
 }
 
-func (table *Table) nextTableAction() {
+func (table *Table) NextTableAction() {
   switch table.State {
   case TableStateNotStarted:
     if table.Dealer == nil || table.SmallBlind == nil || table.BigBlind == nil {
@@ -2150,9 +1478,9 @@ func (table *Table) nextTableAction() {
 
     table.Bet = table.Ante
 
-    table.SmallBlind.Player.Action.Amount = minChips(table.Ante/2,
+    table.SmallBlind.Player.Action.Amount = MinChips(table.Ante/2,
                                                     table.SmallBlind.Player.ChipCount)
-    table.BigBlind.Player.Action.Amount = minChips(table.Ante,
+    table.BigBlind.Player.Action.Amount = MinChips(table.Ante,
                                                   table.BigBlind.Player.ChipCount)
 
     table.SmallBlind.Player.ChipCount -= table.SmallBlind.Player.Action.Amount
@@ -2164,15 +1492,15 @@ func (table *Table) nextTableAction() {
 
     table.CommState = TableStatePreFlop
 
-    table.reorderPlayers() // NOTE: need to call this to properly set curPlayer
+    table.ReorderPlayers() // NOTE: need to call this to properly set curPlayer
   case TableStateNewRound:
     table.rotatePlayers()
 
     table.Bet = table.Ante
 
-    table.SmallBlind.Player.Action.Amount = minChips(table.Ante/2,
+    table.SmallBlind.Player.Action.Amount = MinChips(table.Ante/2,
                                                     table.SmallBlind.Player.ChipCount)
-    table.BigBlind.Player.Action.Amount = minChips(table.Ante,
+    table.BigBlind.Player.Action.Amount = MinChips(table.Ante,
                                                   table.BigBlind.Player.ChipCount)
 
     table.SmallBlind.Player.ChipCount -= table.SmallBlind.Player.Action.Amount
@@ -2181,10 +1509,10 @@ func (table *Table) nextTableAction() {
     table.MainPot.Total = table.SmallBlind.Player.Action.Amount + table.BigBlind.Player.Action.Amount
 
     if table.SmallBlind.Player.ChipCount == 0 {
-      table.SmallBlind.Player.Action.Action = NetDataAllIn
+      table.SmallBlind.Player.Action.Action = playerState.AllIn
     }
     if table.BigBlind.Player.ChipCount == 0 {
-      table.BigBlind.Player.Action.Action = NetDataAllIn
+      table.BigBlind.Player.Action.Action = playerState.AllIn
     }
 
     table.MainPot.Total = table.SmallBlind.Player.Action.Amount + table.BigBlind.Player.Action.Amount
@@ -2193,11 +1521,11 @@ func (table *Table) nextTableAction() {
 
     table.CommState = TableStatePreFlop
   case TableStateGameOver:
-    fmt.Printf("Table.nextTableAction(): game over!\n")
+    fmt.Printf("Table.NextTableAction(): game over!\n")
 
   default:
-    fmt.Printf("Table.nextTableAction(): BUG: called with improper state (" +
-      table.TableStateToString() + ")")
+    fmt.Printf("Table.NextTableAction(): BUG: called with improper state (" +
+               table.TableStateToString() + ")")
   }
 }
 
@@ -2248,17 +1576,17 @@ func (table *Table) getNonFoldedPlayers() []*Player {
   players := make([]*Player, 0)
 
   for _, player := range table.getActiveSeats() {
-    if player.Action.Action != NetDataFold {
+    if player.Action.Action != playerState.Fold {
       players = append(players, player)
     }
   }
 
-  assert(len(players) != 0, "Table.getNonFoldedPlayers(): BUG: len(players) == 0")
+  Assert(len(players) != 0, "Table.getNonFoldedPlayers(): BUG: len(players) == 0")
 
   return players
 }
 
-func (table *Table) newRound() {
+func (table *Table) NewRound() {
   table.deck.Shuffle()
 
   table.addNewPlayers()
@@ -2267,7 +1595,7 @@ func (table *Table) newRound() {
     player.NewCards()
 
     player.Action.Amount = 0
-    player.Action.Action = NetDataFirstAction // NOTE: set twice w/ new player
+    player.Action.Action = playerState.FirstAction // NOTE: set twice w/ new player
   }
 
   table.newCommunity()
@@ -2276,7 +1604,7 @@ func (table *Table) newRound() {
 
   if table.roundCount%10 == 0 {
     table.Ante *= 2 // TODO increase with time interval instead
-    fmt.Printf("Table.newRound(): ante increased to %v\n", table.Ante)
+    fmt.Printf("Table.NewRound(): ante increased to %v\n", table.Ante)
   }
 
   table.handleOrphanedSeats()
@@ -2290,32 +1618,32 @@ func (table *Table) newRound() {
   table.State = TableStateNewRound
 }
 
-func (table *Table) finishRound() {
+func (table *Table) FinishRound() {
   table.mtx.Lock()
   defer table.mtx.Unlock()
   // special case for when everyone except a folded player
   // leaves the table
-  if table.activePlayers.len == 1 &&
-     table.activePlayers.head.Player.Action.Action == NetDataFold {
-    fmt.Printf("Table.finishRound(): only one folded player (%s) left at table. " +
+  if table.activePlayers.Len == 1 &&
+     table.activePlayers.Head.Player.Action.Action == playerState.Fold {
+    fmt.Printf("Table.FinishRound(): only one folded player (%s) left at table. " +
                "abandoning all pots\n",
-               table.activePlayers.head.Player.Name)
+               table.activePlayers.Head.Player.Name)
 
     table.State = TableStateGameOver
-    table.Winners = []*Player{table.activePlayers.head.Player}
+    table.Winners = []*Player{table.activePlayers.Head.Player}
 
     return
   }
 
   players := table.getNonFoldedPlayers()
 
-  printer.Printf("Table.finishRound(): mainpot: last bet: %d pot: %d %s\n",
+  printer.Printf("Table.FinishRound(): mainpot: last bet: %d pot: %d %s\n",
                  table.MainPot.Bet, table.MainPot.Total, table.MainPot.PlayerInfo())
   table.calculateSidePotTotals()
   table.sidePots.Print()
   if table.sidePots.BettingPot != nil &&
      table.sidePots.BettingPot.Total == 0 {
-    fmt.Printf("Table.finishRound(): removing empty bettingpot\n")
+    fmt.Printf("Table.FinishRound(): removing empty bettingpot\n")
     table.sidePots.BettingPot = nil
   }
 
@@ -2324,8 +1652,8 @@ func (table *Table) finishRound() {
 
     player.ChipCount += table.MainPot.Total
 
-    assert(table.sidePots.IsEmpty(),
-      printer.Sprintf("BUG: Table.finishRound(): %s won by folds but there are sidepots", player.Name))
+    Assert(table.sidePots.IsEmpty(),
+      printer.Sprintf("BUG: Table.FinishRound(): %s won by folds but there are sidepots", player.Name))
 
     table.State = TableStateRoundOver
     table.Winners = players
@@ -2343,7 +1671,7 @@ func (table *Table) finishRound() {
   } else {
     splitChips := table.MainPot.Total / Chips(len(bestPlayers))
 
-    printer.Printf("Table.finishRound(): mainpot: split chips: %v\n", splitChips)
+    printer.Printf("Table.FinishRound(): mainpot: split chips: %v\n", splitChips)
 
     for _, player := range bestPlayers {
       player.ChipCount += splitChips
@@ -2363,14 +1691,14 @@ func (table *Table) finishRound() {
     // remove players that folded from sidePots
     // XXX: probably not the best place to do this.
     for _, player := range sidePot.Players {
-      if player.Action.Action == NetDataFold {
-        fmt.Printf("Table.finishRound(): removing %s from %s\n", player.Name, sidePot.Name)
+      if player.Action.Action == playerState.Fold {
+        fmt.Printf("Table.FinishRound(): removing %s from %s\n", player.Name, sidePot.Name)
         sidePot.RemovePlayer(player)
       }
     }
 
     if len(sidePot.Players) == 0 {
-      fmt.Printf("Table.finishRound(): %s has no players attached. skipping..\n", sidePot.Name)
+      fmt.Printf("Table.FinishRound(): %s has no players attached. skipping..\n", sidePot.Name)
       continue
     }
 
@@ -2381,7 +1709,7 @@ func (table *Table) finishRound() {
         player = p
       }
 
-      fmt.Printf("Table.finishRound(): %s won %s by folds\n", player.Name, sidePot.Name)
+      fmt.Printf("Table.FinishRound(): %s won %s by folds\n", player.Name, sidePot.Name)
 
       player.ChipCount += sidePot.Total
 
@@ -2394,12 +1722,12 @@ func (table *Table) finishRound() {
       bestPlayers := table.BestHand(sidePotPlayersArr, sidePot)
 
       if len(bestPlayers) == 1 {
-        fmt.Printf("Table.finishRound(): %s won %s\n", bestPlayers[0].Name, sidePot.Name)
+        fmt.Printf("Table.FinishRound(): %s won %s\n", bestPlayers[0].Name, sidePot.Name)
         bestPlayers[0].ChipCount += sidePot.Total
       } else {
         splitChips := sidePot.Total / Chips(len(bestPlayers))
 
-        printer.Printf("Table.finishRound(): %s: split chips: %v\n", sidePot.Name, splitChips)
+        printer.Printf("Table.FinishRound(): %s: split chips: %v\n", sidePot.Name, splitChips)
 
         for _, player := range bestPlayers {
           player.ChipCount += splitChips
@@ -2414,9 +1742,9 @@ func (table *Table) finishRound() {
     }
   }
 
-  table.Winners = playerMapToArr(playerMap)
+  table.Winners = PlayerMapToArr(playerMap)
   for _, winner := range table.Winners {
-    fmt.Printf("Table.finishRound(): %s chipcount => %v\n", winner.Name, winner.ChipCountToString())
+    fmt.Printf("Table.FinishRound(): %s chipcount => %v\n", winner.Name, winner.ChipCountToString())
   }
 }
 
@@ -2433,14 +1761,14 @@ func (table *Table) BestHand(players []*Player, sidePot *SidePot) []*Player {
   // XXX move me
   maxNameWidth := 0
   for _, player := range players {
-    maxNameWidth = maxInt(uniseg.StringWidth(player.Name), maxNameWidth)
+    maxNameWidth = MaxInt(uniseg.StringWidth(player.Name), maxNameWidth)
   }
 
   if sidePot == nil {
     for _, player := range players {
-      assembleBestHand(false, table, player)
+      AssembleBestHand(false, table, player)
 
-      nameField := fillRight(player.Name, maxNameWidth)
+      nameField := FillRight(player.Name, maxNameWidth)
 
       *winInfo += fmt.Sprintf("%s [%4s][%4s] => %-15s (rank %d)\n",
                               nameField,
@@ -2495,7 +1823,7 @@ func (table *Table) BestHand(players []*Player, sidePot *SidePot) []*Player {
 }
 
 // hand matching logic unoptimized
-func assembleBestHand(preshow bool, table *Table, player *Player) {
+func AssembleBestHand(preshow bool, table *Table, player *Player) {
   var restoreHand Hand
   if player.Hand != nil {
     restoreHand = *player.Hand
@@ -2576,7 +1904,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
   top_cards := func(cards Cards, num int, except []CardVal) Cards {
     ret := make(Cards, 0, 5)
 
-    assert(len(cards) <= 7, "too many cards in top_cards()")
+    Assert(len(cards) <= 7, "too many cards in top_cards()")
 
     for i := len(cards) - 1; i >= 0; i-- {
       skip := false
@@ -2684,7 +2012,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     } else {
       player.Hand.Cards = append(player.Hand.Cards, (*cards)[high-4:high+1]...)
     }
-    assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
+    Assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
     return true
   }
@@ -2728,7 +2056,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       cards[bestCard-2], cards[bestCard-3],
       cards[bestCard-4], cards[bestCard-5])
 
-    assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
+    Assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
     return
   }
@@ -2745,7 +2073,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       }
     }
 
-    assert(kicker != nil, "quads: kicker == nil")
+    Assert(kicker != nil, "quads: kicker == nil")
 
     player.Hand.Rank = RankQuads
     player.Hand.Cards = append(Cards{kicker}, cards[quadsIdx:quadsIdx+4]...)
@@ -2767,7 +2095,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     player.Hand.Cards = append(player.Hand.Cards, cards[pairIdx:pairIdx+2]...)
     player.Hand.Cards = append(player.Hand.Cards, cards[tripsIdx:tripsIdx+3]...)
 
-    assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
+    Assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
     return
   }
@@ -2789,7 +2117,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
       if found && mappedsuit != suit && card.Suit == suit {
         cardmap[card.NumValue] = card.Suit
-        assert(uniqueCards[len(uniqueCards)-1].NumValue == card.NumValue, "uniqueCards problem")
+        Assert(uniqueCards[len(uniqueCards)-1].NumValue == card.NumValue, "uniqueCards problem")
         uniqueCards[len(uniqueCards)-1] = card // should _always_ be last card
       } else if !found {
         cardmap[card.NumValue] = card.Suit
@@ -2797,7 +2125,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       }
     }
 
-    assert((len(uniqueCards) <= 7 && len(uniqueCards) >= 3),
+    Assert((len(uniqueCards) <= 7 && len(uniqueCards) >= 3),
       fmt.Sprintf("impossible number of unique cards (%v)", len(uniqueCards)))
   } else {
     cardmap := make(map[CardVal]bool)
@@ -2809,7 +2137,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
       }
     }
 
-    assert((len(uniqueCards) <= 7 && len(uniqueCards) >= 1),
+    Assert((len(uniqueCards) <= 7 && len(uniqueCards) >= 1),
       "impossible number of unique cards")
   }
 
@@ -2822,7 +2150,7 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
     for i := 1; i <= iter; i++ {
       if gotStraight(&uniqueCards, player, uniqueBestCard-i, false) {
-        assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
+        Assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
         isStraight = true
         break
       }
@@ -2835,14 +2163,14 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
 
     if !isStraight && uniqueCards[uniqueBestCard-1].NumValue == CardAce &&
       gotStraight(&uniqueCards, player, 4, true) {
-      assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
+      Assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
     }
   }
 
   if haveFlush {
     gotFlush(cards, player, true)
 
-    assert(player.Hand.Rank == RankFlush, "player should have a flush")
+    Assert(player.Hand.Rank == RankFlush, "player should have a flush")
 
     return
   }
@@ -2898,59 +2226,4 @@ func assembleBestHand(preshow bool, table *Table, player *Player) {
     cards[bestCard-4], cards[bestCard-5])
 
   return
-}
-
-func cardsSort(cards *Cards) error {
-  sort.Slice((*cards), func(i, j int) bool {
-    return (*cards)[i].NumValue < (*cards)[j].NumValue
-  })
-
-  return nil
-}
-
-func cardNumToString(card *Card) error {
-  cardNumStringMap := map[CardVal]string{
-    CardTwo:   "2",
-    CardThree: "3",
-    CardFour:  "4",
-    CardFive:  "5",
-    CardSix:   "6",
-    CardSeven: "7",
-    CardEight: "8",
-    CardNine:  "9",
-    CardTen:   "10",
-    CardJack:  "J",
-    CardQueen: "Q",
-    CardKing:  "K",
-    CardAce:   "A",
-  }
-
-  name := cardNumStringMap[card.NumValue]
-  if name == "" {
-    fmt.Println("cardNumToString(): BUG: couldn't find cardNum name")
-    fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
-    return errors.New("cardNumToString")
-  }
-
-  cardSuitStringMap := map[Suit][]string{
-    SuitClub:    {"♣", "clubs"},
-    SuitDiamond: {"♦", "diamonds"},
-    SuitHeart:   {"♥", "hearts"},
-    SuitSpade:   {"♠", "spades"},
-  }
-
-  suitName := cardSuitStringMap[card.Suit]
-  if suitName == nil {
-    // TODO: fix redundancy.
-    fmt.Println("cardNumToString(): BUG: couldn't find suitName")
-    fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
-    return errors.New("cardNumToString")
-  }
-
-  suit, suit_full := suitName[0], suitName[1]
-
-  card.Name = name + " " + suit
-  card.FullName = name + " of " + suit_full
-
-  return nil
 }
