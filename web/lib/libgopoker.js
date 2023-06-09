@@ -1,5 +1,17 @@
 import { encode } from '@msgpack/msgpack';
 
+export const PLAYERSTATE = {
+  FIRST_ACTION:      1n << 0n,
+  ALLIN:             1n << 1n,
+  BET:               1n << 2n,
+  CALL:              1n << 3n,
+  CHECK:             1n << 4n,
+  FOLD:              1n << 5n,
+  VACANT_SEAT:       1n << 6n,
+  PLAYER_TURN:       1n << 7n,
+  MIDROUND_ADDITION: 1n << 8n,
+}
+
 export const NETDATA = {
   CLOSE:           1n << 0n,
   NEWCONN:         1n << 1n,
@@ -54,30 +66,47 @@ export const NETDATA = {
   ROOM_SETTINGS:      1n << 40n,
 };
 
+const NetDataPlayerStateMap = new Map([
+  [NETDATA.FIRST_ACTION,      PLAYERSTATE.FIRST_ACTION],
+  [NETDATA.ALLIN,             PLAYERSTATE.ALLIN],
+  [NETDATA.BET,               PLAYERSTATE.BET],
+  [NETDATA.CALL,              PLAYERSTATE.CALL],
+  [NETDATA.CHECK,             PLAYERSTATE.CHECK],
+  [NETDATA.FOLD,              PLAYERSTATE.FOLD],
+  [NETDATA.VACANT_SEAT,       PLAYERSTATE.VACANT_SEAT],
+  [NETDATA.PLAYER_TURN,       PLAYERSTATE.PLAYER_TURN],
+  [NETDATA.MIDROUND_ADDITION, PLAYERSTATE.MIDROUND_ADDITION]
+]);
+
 export const NetDataToString = (netDataReqOrRes) => {
   return Object.keys(NETDATA).find(k => NETDATA[k] === netDataReqOrRes);
 };
 
-export const PlayerActionToString = (action) => {
+export const NetDataToPlayerState = (netDataReqOrRes) => {
+  console.log(`NetDataToPlayerState: req ${netDataReqOrRes} => ${NetDataPlayerStateMap.get(netDataReqOrRes)}`);
+  return NetDataPlayerStateMap.get(netDataReqOrRes);
+}
+
+export const PlayerStateToString = (action) => {
   switch (action.Action) {
-  case NETDATA.ALLIN:
+  case PLAYERSTATE.ALLIN:
     return `all in (${action.Amount.toLocaleString()} chips)`;
-  case NETDATA.BET:
+  case PLAYERSTATE.BET:
     return `raise (bet ${action.Amount.toLocaleString()} chips)`;
-  case NETDATA.CALL:
+  case PLAYERSTATE.CALL:
     return `call (${action.Amount.toLocaleString()} chips)`;
-  case NETDATA.CHECK:
+  case PLAYERSTATE.CHECK:
     return 'check';
-  case NETDATA.FOLD:
+  case PLAYERSTATE.FOLD:
     return 'fold';
 
-  case NETDATA.VACANT_SEAT:
+  case PLAYERSTATE.VACANT_SEAT:
     return 'N/A';
-  case NETDATA.PLAYER_TURN:
+  case PLAYERSTATE.PLAYER_TURN:
     return '(player\'s turn) waiting for action';
-  case NETDATA.FIRST_ACTION:
+  case PLAYERSTATE.FIRST_ACTION:
     return 'waiting for first action';
-  case NETDATA.MIDROUND_ADDITION:
+  case PLAYERSTATE.MIDROUND_ADDITION:
     return 'waiting to add to next round';
 
   default:

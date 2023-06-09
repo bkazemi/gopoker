@@ -5,7 +5,7 @@ import Image from 'next/image';
 import cx from 'classnames';
 import { cloneDeep } from 'lodash';
 
-import { TABLE_STATE, NETDATA, NetData, PlayerActionToString } from '@/lib/libgopoker';
+import { TABLE_STATE, NETDATA, NetData, NetDataToPlayerState, PlayerStateToString } from '@/lib/libgopoker';
 
 import styles from '@/styles/Player.module.css';
 
@@ -71,7 +71,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
     const newClient = {...client};
     newClient.Player = cloneDeep(client.Player);
 
-    newClient.Player.Action.Action = action;
+    newClient.Player.Action.Action = NetDataToPlayerState(action);
     newClient.Player.Action.Amount = raiseAmount;
 
     if (raiseAmount) {
@@ -302,7 +302,7 @@ export default function Player({
         <p className={styles.name}>{name}{isYourPlayer && <span style={{fontStyle: 'italic'}}> (You)</span>}</p>
         <Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />
       </div>
-      <p>current action: { PlayerActionToString(curAction) }</p>
+      <p>current action: { PlayerStateToString(curAction) }</p>
       <p>chip count: { chipCount.toLocaleString() }</p>
       <YourPlayerActions {...{isYourPlayer, client, keyPressed, socket}} />
     </div>
