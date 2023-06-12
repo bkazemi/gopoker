@@ -9,6 +9,7 @@
   justify-content: center;
   box-shadow: 0 3px 1px rgba(0, 0, 0, 0.2);
   background-color: #44362e12;
+  gap: 2px;
 }
 
 .nameContainer {
