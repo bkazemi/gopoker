@@ -78,9 +78,9 @@ func runClient(opts options) (err error) {
 
     (&net.NetData{
       Request: net.NetDataClientExited,
-			Client: net.NewClient(nil).
-								  SetConn(conn).
-									SetConnType("cli"),
+      Client: net.NewClient(nil).
+                  SetConn(conn).
+                  SetConnType("cli"),
     }).Send()
 
     err := conn.WriteMessage(websocket.CloseMessage,
@@ -125,12 +125,12 @@ func runClient(opts options) (err error) {
 
     (&net.NetData{
       Request: net.NetDataNewConn,
-			Client: net.NewClient(&net.ClientSettings{
-				Name: opts.name,
-				Password: opts.pass,
-			}).
-			SetConn(conn).
-			SetConnType("cli"),
+      Client: net.NewClient(&net.ClientSettings{
+        Name: opts.name,
+        Password: opts.pass,
+      }).
+      SetConn(conn).
+      SetConnType("cli"),
     }).Send()
 
     for {

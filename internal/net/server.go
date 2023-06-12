@@ -539,7 +539,7 @@ func (server *Server) handleNewConn(
     room.table.ActivePlayers().AddPlayer(player)
 
     if room.table.CurPlayer() == nil {
-			room.table.SetCurPlayer(room.table.CurPlayers().Head)
+      room.table.SetCurPlayer(room.table.CurPlayers().Head)
     }
 
     if room.table.Dealer == nil {

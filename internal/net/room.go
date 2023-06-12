@@ -671,13 +671,6 @@ func (room *Room) checkBlindsAutoAllIn() {
 }
 
 func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Client) {
-  if client != nil {
-    player := client.Player
-    defer func() {
-      client.Player = player
-    }()
-  }
-
   if player != nil {
     room.sendPlayerActionToAll(player, client)
     time.Sleep(2 * time.Second)
@@ -726,7 +719,7 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
     room.sendResponseToAll(netData, nil)
 
     room.table.Bet = 0
-		room.table.SetBetter(nil)
+    room.table.SetBetter(nil)
 
     for _, player := range room.table.CurPlayers().ToPlayerArray() {
       fmt.Printf("Server.postBetting(): clearing %v's action\n", player.Name)
@@ -744,14 +737,7 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
 }
 
 func (room *Room) postPlayerAction(client *Client, netData *NetData) {
-  var player *poker.Player = nil
-
-  if client != nil {
-    player = client.Player
-    defer func() {
-      client.Player = player
-    }()
-  }
+  player := client.Player
 
   if room.table.State == poker.TableStateDoneBetting {
     room.postBetting(player, netData, client)
