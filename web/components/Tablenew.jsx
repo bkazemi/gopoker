@@ -2,6 +2,9 @@ import React, { useEffect, useState, useRef, useCallback, useContext } from 'rea
 
 import { useRouter } from 'next/router';
 import Image from 'next/image';
+import { DM_Mono } from 'next/font/google';
+
+const DMMono = DM_Mono({ subsets: [ 'latin', 'latin-ext' ], weight: '500' });
 
 import cx from 'classnames';
 
@@ -400,7 +403,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       {...{modalType, modalTxt, setModalTxt, modalOpen, setModalOpen, setShowGame}}
       setFormData={setSettingsFormData}
     />
-    <div className={styles.tableGrid} id='tableGrid'>
+    <div className={cx(styles.tableGrid, DMMono.className)} id='tableGrid'>
       <div
         id='topPlayers'
         className={cx(
@@ -560,19 +563,26 @@ export default function Tablenew({ socket, netData, setShowGame }) {
               setModalOpen(true);
             }}
           />
-         <Image
-          src={'/quitGame.png'}
-          height={35}
-          width={35}
-          alt={'<quit game>'}
-          onClick={() => {
-            setModalTxt(arr => [...arr, 'are you sure?']);
-            setModalType('quit');
-            setModalOpen(true);
-          }}
-          style={{ marginRight: '5px' }}
-        />
+          <Image
+            src={'/quitGame.png'}
+            height={35}
+            width={35}
+            alt={'<quit game>'}
+            onClick={() => {
+              setModalTxt(arr => [...arr, 'are you sure?']);
+              setModalType('quit');
+              setModalOpen(true);
+            }}
+            style={{ marginRight: '5px' }}
+          />
         </div>
+        <p>
+          name: { yourClient?.Name }
+          <br></br>
+          <span style={{ fontStyle: 'italic' }}>
+            id: { yourClient?.ID }
+          </span>
+        </p>
         <p># players: { numPlayers }</p>
         <p># connected: { String(numConnected) }</p>
         <p># open seats: { numSeats - numPlayers }</p>

@@ -1,6 +1,7 @@
 import React, {useCallback, useContext, useEffect, useRef, useState} from 'react';
 
 import Image from 'next/image';
+import { Literata } from 'next/font/google';
 
 import cx from 'classnames';
 import { cloneDeep } from 'lodash';
@@ -8,6 +9,8 @@ import { cloneDeep } from 'lodash';
 import { TABLE_STATE, NETDATA, NetData, NetDataToPlayerState, PlayerStateToString } from '@/lib/libgopoker';
 
 import styles from '@/styles/Player.module.css';
+
+const literata = Literata({ subsets: ['latin'], weight: '500' });
 
 const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
   const betInputRef = useRef(null);
@@ -113,7 +116,7 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
       />
       <div
         className={cx(styles.yourPlayerActions,
-          styles.buttons
+          styles.buttons, literata.className
       )}>
         <button ref={checkBtnRef} onClick={() => handleButton('check')}>check</button>
         <button ref={callBtnRef}  onClick={() => handleButton('call')}>call</button>

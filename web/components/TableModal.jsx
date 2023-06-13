@@ -5,15 +5,17 @@ import Modal from 'react-modal';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 
+import cx from 'classnames';
+
 import NewGameForm from '@/components/NewGameForm';
 
 import styles from '@/styles/TableModal.module.css';
 
-import { Literata } from 'next/font/google';
+import { Literata, Overpass_Mono } from 'next/font/google';
 
 const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
+const OverpassMono = Overpass_Mono({ subsets: ['latin', 'latin-ext', 'cyrillic', 'cyrillic-ext', 'vietnamese'], weight: '600' });
 
-import cx from 'classnames';
 import { GameContext } from '@/GameContext';
 import { NewClient } from '@/lib/libgopoker';
 
@@ -130,7 +132,11 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
 
     return (
       <>
-        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+        <p
+          className={cx(styles.modalTxt, OverpassMono.className)}
+        >
+          { modalTxt[pageIdx] }
+        </p>
         <div
           style={{
             display: 'flex',
@@ -192,7 +198,7 @@ export default function TableModal({
           transform: 'translate(-50%, -50%)',
           minWidth: '350px', minHeight: '350px',
           borderRadius: '10px',
-          border: '5px double',
+          border: '5px solid #151515',
           zIndex: 2,
           overflow: 'auto',
         },

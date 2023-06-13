@@ -35,10 +35,12 @@
   justify-content: center;
   padding: 5px;
   text-align: center;
+  gap: 2px;
 }
 
 .yourPlayerActions.buttons button {
   padding: 5px;
+  font-family: inherit;
 }
 
 .yourPlayerActions label {

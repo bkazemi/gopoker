@@ -33,6 +33,10 @@
   opacity: 0.8;
 }
 
+.roomListItem button {
+  font-family: inherit;
+}
+
 .roomListInfo {
   display: flex;
   flex-direction: column;

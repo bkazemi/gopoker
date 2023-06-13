@@ -39,15 +39,15 @@ const RoomListItem = ({ room, searchRegex }) => {
     className={styles.roomListItem}
     onClick={() => setClicked(!clicked)}
   >
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between'
-    }}>
-      <p
-        style={{ opacity: '0.9' }}
-        className={literata.className}
-      >
+    <div
+      className={literata.className}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}
+    >
+      <p style={{ opacity: '0.9' }}>
       {
         searchRegex &&
         room.roomName

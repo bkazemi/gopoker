@@ -28,4 +28,5 @@
 
 .formBtns button {
   padding: 7px;
+  font-family: inherit;
 }

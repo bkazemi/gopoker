@@ -114,6 +114,7 @@ export default function NotFoundPage() {
             padding: '7px',
             marginTop: '10px',
             fontSize: '1.1rem',
+            fontFamily: 'inherit',
           }}
           onClick={() => {
             router.push('/');

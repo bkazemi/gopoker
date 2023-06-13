@@ -118,7 +118,9 @@ const RequiredFields = ({
     }
 
     <div className={styles.formBtns}>
-      <button type="submit">{ isDirectLink ? 'connect' : 'submit' }</button>
+      <button type="submit">
+        { isDirectLink ? 'connect' : 'submit' }
+      </button>
       <button
         onClick={() => {
           if (isSettings) setModalOpen(false)
