@@ -15,11 +15,9 @@
 }
 
 .chatMsgs {
-  display: flex;
-  flex-direction: column;
   min-width: 200px;
   min-height: 100px;
-  max-height: 100%;
+  max-height: 500px;
   resize: vertical;
   background: #1122;
   border: 1px solid;
@@ -27,11 +25,13 @@
   word-wrap: break-word;
   overflow-y: scroll;
   scroll-behavior: smooth;
+  font-size: 19px;
 }
 
 .chatMsgs > div {
   padding-left: 20px;
   text-indent: -20px;
+  line-height: 28px;
 }
 
 .chatSendMsgContainer {

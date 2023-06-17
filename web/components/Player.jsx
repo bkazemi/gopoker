@@ -167,7 +167,6 @@ const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
 };
 
 export default function Player({
-  key,
   client, socket, tableState, curPlayer,
   playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer, keyPressed
 }) {
@@ -270,7 +269,7 @@ export default function Player({
       });
   }, [dealerAndBlinds, client]);
 
-  if (client._ID) {
+  if (client._ID) { // vacant seat
     return (
       <div
         key={String(Math.random())}
@@ -278,7 +277,7 @@ export default function Player({
         style={style}
       >
         <div className={styles.nameContainer}>
-          <p className={styles.name}>{name}{isYourPlayer && <span style={{fontStyle: 'italic'}}> (You)</span>}</p>
+          <p className={styles.name}>{name}</p>
         </div>
         <Image
           src={'/seat.png'}
@@ -297,7 +296,6 @@ export default function Player({
 
   return (
     <div
-      key={key}
       className={styles.player}
       style={style}
     >

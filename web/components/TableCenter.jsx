@@ -22,7 +22,7 @@ export default function TableCenter({ isAdmin, tableState, community, yourClient
                   key={idx}
                   src={cardToImagePath(c)}
                   height={100}
-                  width={66.6666667}
+                  width={66.66666667}
                   alt={c.Name}
                 />
               })

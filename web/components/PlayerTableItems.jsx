@@ -4,13 +4,13 @@ import Image from 'next/image';
 
 import styles from '@/styles/PlayerTableItems.module.css';
 
-import { NETDATA, TABLE_STATE, cardToImagePath } from '@/lib/libgopoker';
+import { TABLE_STATE, cardToImagePath, PLAYERSTATE } from '@/lib/libgopoker';
 
 const Cards = ({ client, isYourPlayer, side, tableState }) => {
   if (
     tableState === TABLE_STATE.NOT_STARTED ||
-    client.Player.Action.Action === NETDATA.FOLD ||
-    client.Player.Action.Action === NETDATA.MIDROUND_ADDITION
+    client.Player.Action.Action === PLAYERSTATE.FOLD ||
+    client.Player.Action.Action === PLAYERSTATE.MIDROUND_ADDITION
   )
     return;
 
@@ -99,7 +99,7 @@ const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
 ]);*/
 
 export default function PlayerTableItems({
-  key, client, isYourPlayer, dealerAndBlinds,
+  client, isYourPlayer, dealerAndBlinds,
   side, gridRow, gridCol, tableState
 }) {
   if (client._ID === 'vacant')
@@ -140,7 +140,6 @@ export default function PlayerTableItems({
 
   return (
     <div
-      key={key}
       className={styles.playerItems}
       style={{ justifyContent, gridRow: gridRow, gridColumn: gridCol }}
     >

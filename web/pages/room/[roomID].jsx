@@ -10,6 +10,7 @@ import useSWRSubscription from 'swr/subscription';
 import {CSSTransition } from 'react-transition-group';
 
 import { cloneDeep } from 'lodash';
+import { v4 as uuidv4 } from 'uuid';
 
 import { GameContext } from '@/GameContext';
 import NewGameForm from '@/components/NewGameForm';
@@ -68,7 +69,7 @@ const Connect = () => {
             const msg = decode(await event.data.arrayBuffer(), { useBigInt64: true });
             console.warn('Game: recv msg:', msg);
 
-            msg.ShallowThis = Math.random();
+            msg._noShallowCompare = uuidv4();
             next(null, msg);
           } catch(e) {
             console.error(`msgpack decode(): err: ${e}`);

@@ -1,13 +1,23 @@
-import React, {useState, useCallback, useEffect} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
+
+import cx from 'classnames';
+
+import { VT323 } from 'next/font/google';
 
 import { NETDATA, NetData } from '@/lib/libgopoker';
 
 import styles from '@/styles/Chat.module.css';
 
+const vt323 = VT323({ subsets: ['latin', 'latin-ext', 'vietnamese'], weight: '400' });
+
 export default function Chat({ socket, yourClient, msgs, chatInputRef }) {
+  const chatMsgsRef = useRef(null);
+
   const [msg, setMsg] = useState('');
   const [netData, setNetData] = useState(new NetData(yourClient, NETDATA.CHAT_MSG, msg));
   const [chatMsgsStyle, setChatMsgsStyle] = useState({borderColor: 'black', borderWidth: '1px'});
+  const [chatMsgsUserScrolled, setChatMsgsUserScrolled] = useState(false);
+  const chatMsgsAtBottom = useRef(true);
 
   const sendMsg = useCallback(() => {
     if (msg) {
@@ -23,44 +33,86 @@ export default function Chat({ socket, yourClient, msgs, chatInputRef }) {
     setChatMsgsStyle({ borderColor: 'black', borderWidth: '1px' });
   };
 
+  const scrollToBottomOfChatMsgs = useCallback(() => {
+    if (chatMsgsRef.current)
+      chatMsgsRef.current.scrollTop = chatMsgsRef.current.scrollHeight;
+    if (!chatMsgsAtBottom.current)
+      chatMsgsAtBottom.current = true;
+  }, [chatMsgsRef, chatMsgsAtBottom]);
+
+  const handleChatMsgsScroll = useCallback(() => {
+    if (!chatMsgsUserScrolled) {
+      return;
+    }
+
+    const chatMsgs = chatMsgsRef.current;
+
+    const isScrollAtBottom =
+      chatMsgs.scrollTop + chatMsgs.clientHeight >=
+      chatMsgs.scrollHeight - 1;
+
+    chatMsgsAtBottom.current = isScrollAtBottom;
+    if (isScrollAtBottom) setChatMsgsUserScrolled(false);
+  }, [chatMsgsUserScrolled, scrollToBottomOfChatMsgs]);
+
+  const handleChatMsgsUserScroll = useCallback(() => {
+    setChatMsgsUserScrolled(true);
+  }, [setChatMsgsUserScrolled]);
+
   useEffect(() => {
-    yourClient && msg && setNetData(netData => {
+    yourClient && msg && setNetData(_ => {
       return new NetData(yourClient, NETDATA.CHAT_MSG, msg);
     });
   }, [yourClient, msg]);
 
   useEffect(() => {
-    if (msgs.length && chatMsgsStyle.borderColor === 'black')
-      setChatMsgsStyle({ borderColor: 'green', borderWidth: '2px' });
+    if (msgs.length) {
+      if (chatMsgsStyle.borderColor === 'black')
+        setChatMsgsStyle({ borderColor: 'green', borderWidth: '2px' });
+      chatMsgsAtBottom.current && setTimeout(scrollToBottomOfChatMsgs, 100);
+    }
   }, [msgs]);
 
   return (
     <div className={styles.chatContainer}>
       <label className={styles.chatLabel}>chat</label>
-      <div className={styles.chatMsgs} style={chatMsgsStyle} onMouseEnter={handleChatMsgsMouseEnter}>
+      <div
+        ref={chatMsgsRef}
+        className={cx(styles.chatMsgs, vt323.className)}
+        style={chatMsgsStyle}
+        onMouseEnter={handleChatMsgsMouseEnter}
+        onScroll={handleChatMsgsScroll}
+        onMouseDown={handleChatMsgsUserScroll}
+        onTouchStart={handleChatMsgsUserScroll}
+        onWheel={handleChatMsgsUserScroll}
+      >
         {
           msgs
             .map((msg, idx) => {
               return (
-                <div key={ idx } style={{
-                  fontWeight: msg.startsWith('<server-msg>') ? 'bold' : 'normal',
-                  whiteSpace: 'pre-wrap',
-                }}>
-                { msg }
-              </div>);
+                <div
+                  key={idx}
+                  style={{
+                    fontWeight: msg.startsWith('<') ? 'bold' : 'normal',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  { msg }
+                </div>
+              );
             })
         }
       </div>
-      <div className={ styles.chatSendMsgContainer }>
+      <div className={styles.chatSendMsgContainer}>
         <textarea
           ref={chatInputRef}
-          className={ styles.chatInput }
-          onChange={ e => setMsg(e.target.value) }
-          onSubmit={ sendMsg }
-          value={ msg }
+          className={styles.chatInput}
+          onChange={e => setMsg(e.target.value)}
+          onSubmit={sendMsg}
+          value={msg}
           placeholder='your chat message'
         />
-        <button className={ styles.chatSendBtn } onClick={ sendMsg }>send</button>
+        <button className={styles.chatSendBtn} onClick={sendMsg}>send</button>
       </div>
     </div>
   );

@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef, useCallback, useContext } from 'rea
 
 import { useRouter } from 'next/router';
 import Image from 'next/image';
-import { DM_Mono } from 'next/font/google';
+import { DM_Mono, VT323 } from 'next/font/google';
 
-const DMMono = DM_Mono({ subsets: [ 'latin', 'latin-ext' ], weight: '500' });
+const dmMono = DM_Mono({ subsets: [ 'latin', 'latin-ext' ], weight: '500' });
+const vt323 = VT323({ subsets: ['latin', 'latin-ext', 'vietnamese'], weight: '400' });
 
 import cx from 'classnames';
 
@@ -372,7 +373,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       break;
     }
   }
-  }, [netData.ShallowThis]);
+  }, [netData._noShallowCompare]);
 
   useEffect(() => {console.log(`players isArray: ${Array.isArray(players)}`); console.log(players); console.log(`pl len: ${players.length}`)}, [players]);
 
@@ -403,7 +404,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       {...{modalType, modalTxt, setModalTxt, modalOpen, setModalOpen, setShowGame}}
       setFormData={setSettingsFormData}
     />
-    <div className={cx(styles.tableGrid, DMMono.className)} id='tableGrid'>
+    <div className={cx(styles.tableGrid, dmMono.className)} id='tableGrid'>
       <div
         id='topPlayers'
         className={cx(
@@ -549,7 +550,9 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         </div>
       </div>
     </div>
-    <div className={styles.topContainer}>
+    <div
+      className={styles.topContainer}
+    >
       <div className={styles.tableInfo}>
         <div>
           <label>table info</label>
@@ -576,20 +579,22 @@ export default function Tablenew({ socket, netData, setShowGame }) {
             style={{ marginRight: '5px' }}
           />
         </div>
-        <p>
-          name: { yourClient?.Name }
-          <br></br>
-          <span style={{ fontStyle: 'italic' }}>
-            id: { yourClient?.ID }
-          </span>
-        </p>
-        <p># players: { numPlayers }</p>
-        <p># connected: { String(numConnected) }</p>
-        <p># open seats: { numSeats - numPlayers }</p>
-        <p>pot: { mainPot.Total.toLocaleString() }</p>
-        <p>password protected: { tablePass ? 'yes' : 'no' }</p>
-        <p>table lock: { TABLE_LOCK.toString(tableLock) }</p>
-        <p>status: { TABLE_STATE.toString(tableState) }</p>
+        <div className={cx(styles.tableInfoItems, vt323.className)}>
+          <p>
+            name: { yourClient?.Name }
+            <br></br>
+            <span style={{ fontStyle: 'italic' }}>
+              id: { yourClient?.ID }
+            </span>
+          </p>
+          <p># players: { numPlayers }</p>
+          <p># connected: { String(numConnected) }</p>
+          <p># open seats: { numSeats - numPlayers }</p>
+          <p>pot: { mainPot.Total.toLocaleString() }</p>
+          <p>password protected: { tablePass ? 'yes' : 'no' }</p>
+          <p>table lock: { TABLE_LOCK.toString(tableLock) }</p>
+          <p>status: { TABLE_STATE.toString(tableState) }</p>
+        </div>
       </div>
       <Chat
         {...{yourClient, socket, chatInputRef}}
