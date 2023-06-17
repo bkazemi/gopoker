@@ -771,8 +771,10 @@ func (table *Table) SetNextPlayerTurn() {
 
   if table.curPlayers.Len == 1 {
     fmt.Println("Table.SetNextPlayerTurn(): table.curPlayers.Len == 1")
-    if table.allInCount() == 0 { // win by folds
-      fmt.Println("Table.SetNextPlayerTurn(): allInCount == 0")
+    if table.allInCount() == 0 ||
+       (table.allInCount() == 1 &&
+        thisPlayer.Player.Action.Action == playerState.Fold) { // win by folds
+      fmt.Println("Table.SetNextPlayerTurn(): allInCount == 0 || (allInCount == 1 && curPlayer folded)")
       table.State = TableStateRoundOver // XXX
     } else {
       table.State = TableStateDoneBetting
