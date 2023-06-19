@@ -223,6 +223,8 @@ func (table *Table) Reset(player *Player) {
   }
 
   table.MainPot.Clear()
+  table.sidePots.Clear()
+  fmt.Println("Table.Reset(): all pots cleared")
 
   table.Bet, table.NumPlayers, table.roundCount = 0, 0, 0
 
@@ -237,8 +239,6 @@ func (table *Table) Reset(player *Player) {
   table.WinInfo = ""
 
   table.State = TableStateNotStarted
-  table.Lock = TableLockNone
-  table.Password = ""
 
   table.Dealer = table.activePlayers.Head
 

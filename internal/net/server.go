@@ -89,8 +89,12 @@ func NewServer(addr string) *Server {
 
     roomName := vars["roomName"]
 
-    if _, found := server.rooms[roomName]; found {
-      w.WriteHeader(http.StatusOK)
+    if room, found := server.rooms[roomName]; found {
+      if room.table.Lock == poker.TableLockAll {
+        w.WriteHeader(http.StatusForbidden)
+      } else {
+        w.WriteHeader(http.StatusOK)
+      }
     } else {
       http.NotFound(w, req)
     }
