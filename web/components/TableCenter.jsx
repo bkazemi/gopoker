@@ -1,15 +1,18 @@
 import React from 'react';
 
 import Image from 'next/image';
-import { Literata } from 'next/font/google';
+import { Literata, DM_Mono } from 'next/font/google';
+
+import cx from 'classnames';
 
 import {TABLE_STATE, NETDATA, NetData, cardToImagePath } from '@/lib/libgopoker';
 
 import styles from '@/styles/TableCenter.module.css';
 
 const literata = Literata({ subsets: ['latin'], weight: '500' });
+const dmMono = DM_Mono({ subsets: ['latin', 'latin-ext'], weight: '500' });
 
-export default function TableCenter({ isAdmin, tableState, community, yourClient, socket }) {
+export default function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, socket }) {
   return (
     <div>
       {
@@ -27,7 +30,19 @@ export default function TableCenter({ isAdmin, tableState, community, yourClient
                 />
               })
           }
-        </div> || ''
+        </div> || null
+      }
+      {
+        tableState !== TABLE_STATE.NOT_STARTED &&
+        <div className={styles.mainPotContainer} >
+          <Image
+            src={'/mainPotChips.png'}
+            height={50}
+            width={50}
+            alt={'mainPotChips logo'}
+          />
+          <p className={cx(styles.mainPot, dmMono.className)}>mainpot: { mainPot.Total.toLocaleString() }</p>
+        </div>
       }
       {
         (isAdmin && tableState === TABLE_STATE.NOT_STARTED) &&

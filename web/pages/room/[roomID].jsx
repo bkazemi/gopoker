@@ -206,19 +206,25 @@ export default function Room() {
         if (res.ok)
           setRoomNotFound(false);
         else {
-          if (res.status != 404) {
+          if (res.status === 403) {
+            setRoomNotFound(true);
+            setCheckRoomErr(`room "${roomID}" is locked.`);
+          } else if (res.status != 404) {
             const body = await res.json();
             setCheckRoomErr(body.error ?? 'not specified');
           }
           setRoomNotFound(true);
         }
       } catch (e) {
-        setRoomNotFound(false);
+        setRoomNotFound(true);
         setCheckRoomErr('/api/check fetch failed');
       }
     }
 
-    roomID && checkRoom();
+    if (gameOpts.creatorToken)
+      setRoomNotFound(false);
+    else
+      roomID && checkRoom();
   }, [roomID]);
 
   useEffect(() => {

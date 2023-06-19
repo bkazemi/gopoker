@@ -18,8 +18,10 @@ export default async function handler(req, res) {
       console.log('status', srvRes.status, typeof(srvRes.status));
       if (srvRes.status === 404)
         res.status(404).send();
+      else if (srvRes.status === 403)
+        res.status(403).send();
       else
-        throw new Error('request failed');
+        throw new Error(`request failed (HTTP status: ${srvRes.status})`);
     } else
       res.status(200).send(await srvRes.text());
   } catch (err) {

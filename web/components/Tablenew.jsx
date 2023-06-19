@@ -480,7 +480,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         >
           {/* DEAD-CENTER OF TABLE */}
           <TableCenter
-            {...{isAdmin, tableState, community, yourClient, socket}}
+            {...{isAdmin, tableState, community, mainPot, yourClient, socket}}
           />
         </div>
         <div
@@ -590,7 +590,6 @@ export default function Tablenew({ socket, netData, setShowGame }) {
           <p># players: { numPlayers }</p>
           <p># connected: { String(numConnected) }</p>
           <p># open seats: { numSeats - numPlayers }</p>
-          <p>pot: { mainPot.Total.toLocaleString() }</p>
           <p>password protected: { tablePass ? 'yes' : 'no' }</p>
           <p>table lock: { TABLE_LOCK.toString(tableLock) }</p>
           <p>status: { TABLE_STATE.toString(tableState) }</p>
