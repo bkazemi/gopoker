@@ -397,6 +397,13 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     setGameOpts(opts => ({...opts, settingsChange: false}));
   }, [gameOpts.settingsChange]);
 
+  useEffect(() => {
+    setGameOpts(opts => ({
+      ...opts,
+      isAdmin,
+    }));
+  }, [isAdmin]);
+
   return (
     //!isPaused &&
     <>

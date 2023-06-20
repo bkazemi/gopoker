@@ -207,35 +207,36 @@ export default function Player({
 
   useEffect(() => {
     if (!client?.ID) {
+      if (style.borderColor !== undefined && style.borderColor !== 'black')
+        setStyle(s => ({
+          ...s,
+          borderColor: 'black',
+          borderWidth: '1px',
+        }));
+
       return;
     }
 
     console.log(`Players: cid: ${client.ID} curP: ${curPlayer?.ID} pHead: ${playerHead?.ID}`);
 
     if (client.ID === curPlayer?.ID)
-      setStyle(s => {
-        return {
+      setStyle(s => ({
           ...s,
           borderColor: 'red',
           borderWidth: '2px',
-        }
-      });
+      }));
     else if (client.ID === playerHead?.ID)
-      setStyle(s => {
-        return {
+      setStyle(s => ({
           ...s,
           borderColor: '#eaa21f',
           borderWidth: '1px',
-        }
-      });
+      }));
     else if (style.borderColor !== undefined && style.borderColor !== 'black')
-      setStyle(s => {
-        return {
+      setStyle(s => ({
           ...s,
           borderColor: 'black',
           borderWidth: '1px',
-        }
-      });
+      }));
   }, [client, curPlayer, playerHead]);
 
   useEffect(() => {

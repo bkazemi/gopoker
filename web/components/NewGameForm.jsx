@@ -33,13 +33,13 @@ const maxPlayerOpts = [
 
 const RequiredFields = ({
   router,
-  isSettings, isDirectLink,
+  isSettings, isDirectLink, isAdmin,
   roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
   handleSubmit, setModalOpen, setRoomName, setName, setTablePwd, setTableLock, setMaxPlayers
 }) => (
   <>
     {
-      !isDirectLink &&
+      !isDirectLink && (!isSettings || (isSettings && isAdmin)) &&
       <>
         <label htmlFor="roomName">room name</label>
         <input
@@ -98,7 +98,7 @@ const RequiredFields = ({
     </div>
 
     {
-      !isDirectLink &&
+      !isDirectLink && (!isSettings || (isSettings && isAdmin)) &&
       <>
         <label>table lock</label>
         <Select
@@ -148,6 +148,8 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
   const [tablePwd , setTablePwd] = useState(Password);
   const [tableLock, setTableLock] = useState(lockOpts.find(opt => opt.value === Lock) || lockOpts[0]);
   const [maxPlayers, setMaxPlayers] = useState(maxPlayerOpts.find(opt => opt.value === Lock)); // TODO: implement
+
+  const isAdmin = !!gameOpts.isAdmin;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -205,7 +207,7 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
         <RequiredFields
           {...{
             router,
-            isSettings, isDirectLink, handleSubmit,
+            isSettings, isDirectLink, isAdmin, handleSubmit,
             roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
             setModalOpen, setRoomName, setName, setTablePwd, setTableLock, setMaxPlayers
           }}
