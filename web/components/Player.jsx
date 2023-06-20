@@ -37,6 +37,17 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
       if (raiseInputValue !== '') setRaiseInputValue('');
       if (raiseAmount !== 0n) setRaiseAmount(0n);
       return;
+    } else if (e.target.value === '+') {
+      if (raiseInputValue !== '+') setRaiseInputValue('+');
+      if (raiseAmount !== 0n) setRaiseAmount(0n);
+      return;
+    }
+
+    let betBase = 0n;
+    let betBaseChar = '';
+    if (e.target.value.charAt(0) === '+') {
+      betBase = client.Player.Action.Amount;
+      betBaseChar = '+';
     }
 
     let multiplier = 1n;
@@ -46,13 +57,15 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
       multiplier = 1000000n;
 
     const num = BigInt(e.target.value.replace(/[^0-9]/g, ''));
-    let numStr = (num * multiplier).toLocaleString() || '';
+    let numStr = betBaseChar + ((num * multiplier).toLocaleString() || '');
     if (numStr === '0')
       numStr = '';
+    else if (numStr === '+0')
+      numStr = '+';
 
     setRaiseInputValue(numStr);
-    setRaiseAmount(num * multiplier);
-  }, [raiseInputValue, raiseAmount]);
+    setRaiseAmount(betBase + (num * multiplier));
+  }, [client, raiseInputValue, raiseAmount]);
 
   const handleButton = useCallback((btn) => {
     const map = new Map([
@@ -304,7 +317,15 @@ export default function Player({
         <Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />
       </div>
       <p>current action: { PlayerStateToString(curAction) }</p>
-      <p>chip count: { chipCount.toLocaleString() }</p>
+      <div className={styles.chipCountContainer}>
+        <p>chip count: { chipCount.toLocaleString() }</p>
+        <Image
+          src={'/chipCountChips.png'}
+          width={30}
+          height={30}
+          alt={'<chipCount img>'}
+        />
+      </div>
       <YourPlayerActions {...{isYourPlayer, client, keyPressed, socket}} />
     </div>
   );

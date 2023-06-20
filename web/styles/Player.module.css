@@ -25,6 +25,14 @@
   font-size: 1.2rem;
 }
 
+.chipCountContainer {
+  display: flex;
+  flex-direction: row;
+  place-items: center;
+  padding: 5px;
+  gap: 7px;
+}
+
 .player > p {
   padding: 5px;
 }
