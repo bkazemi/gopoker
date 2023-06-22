@@ -7,13 +7,13 @@ import cx from 'classnames';
 import { cloneDeep } from 'lodash';
 import { Tooltip } from 'react-tooltip';
 
-import { TABLE_STATE, NETDATA, NetData, NetDataToPlayerState, PlayerStateToString } from '@/lib/libgopoker';
+import { TABLE_STATE, NETDATA, NetData, NetDataToPlayerState, PlayerStateToString, PLAYERSTATE } from '@/lib/libgopoker';
 
 import styles from '@/styles/Player.module.css';
 
 const literata = Literata({ subsets: ['latin'], weight: '500' });
 
-const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
+const YourPlayerActions = ({ isYourPlayer, isSmallBlind, curPlayer, tableState, client, keyPressed, socket }) => {
   const betInputRef = useRef(null);
   const checkBtnRef = useRef(null);
   const callBtnRef = useRef(null);
@@ -23,6 +23,12 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
 
   const [raiseInputValue, setRaiseInputValue] = useState('');
   const [raiseAmount, setRaiseAmount] = useState(BigInt(0));
+
+  const [isCheckDisabled, setIsCheckDisabled] = useState(false);
+  const [isCallDisabled, setIsCallDisabled] = useState(false);
+  const [isRaiseDisabled, setIsRaiseDisabled] = useState(false);
+  const [isFoldDisabled, setIsFoldDisabled] = useState(false);
+  const [isAllinDisabled, setIsAllinDisabled] = useState(false);
 
   const btnRefMap = new Map([
     ['b', betInputRef],
@@ -101,6 +107,22 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
     );
   }, [client, socket, raiseAmount]);
 
+  // enable/disable action buttons as appropriate
+  useEffect(() => {
+    const notStartedOrYourTurn =
+      (tableState === TABLE_STATE.NOT_STARTED || curPlayer.ID !== client.ID);
+    const isSmallBlindPreflop =
+      (isSmallBlind && tableState === TABLE_STATE.PREFLOP);
+    const playerRaised = tableState === TABLE_STATE.PLAYER_RAISED;
+    const isAllIn = client.Player?.Action.Action === PLAYERSTATE.ALLIN;
+
+    setIsCheckDisabled(notStartedOrYourTurn || isAllIn || isSmallBlindPreflop || playerRaised);
+    setIsCallDisabled(notStartedOrYourTurn  || isAllIn || (!isSmallBlindPreflop && !playerRaised));
+    setIsRaiseDisabled(notStartedOrYourTurn || isAllIn)
+    setIsFoldDisabled(notStartedOrYourTurn  || isAllIn)
+    setIsAllinDisabled(notStartedOrYourTurn || isAllIn);
+  }, [client, curPlayer, tableState, isSmallBlind]);
+
   // keyboard shortcuts
   useEffect(() => {
     const focusedKey = btnRefMap.get(keyPressed);
@@ -160,11 +182,46 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
         className={cx(styles.yourPlayerActions,
           styles.buttons, literata.className
       )}>
-        <button ref={checkBtnRef} onClick={() => handleButton('check')}>check</button>
-        <button ref={callBtnRef}  onClick={() => handleButton('call')}>call</button>
-        <button ref={raiseBtnRef} onClick={() => handleButton('raise')}>raise</button>
-        <button ref={foldBtnRef}  onClick={() => handleButton('fold')}>fold</button>
-        <button ref={allInBtnRef} onClick={() => handleButton('allin')}>allin</button>
+        <button
+          ref={checkBtnRef}
+          disabled={isCheckDisabled}
+          style={{ cursor: isCheckDisabled ? 'default' : 'pointer' }}
+          onClick={() => handleButton('check')}
+        >
+          check
+        </button>
+        <button
+          ref={callBtnRef}
+          disabled={isCallDisabled}
+          style={{ cursor: isCallDisabled ? 'default' : 'pointer' }}
+          onClick={() => handleButton('call')}
+        >
+          call
+        </button>
+        <button
+          ref={raiseBtnRef}
+          disabled={isRaiseDisabled}
+          style={{ cursor: isRaiseDisabled ? 'default' : 'pointer' }}
+          onClick={() => handleButton('raise')}
+        >
+          raise
+        </button>
+        <button
+          ref={foldBtnRef}
+          disabled={isFoldDisabled}
+          style={{ cursor: isFoldDisabled ? 'default' : 'pointer' }}
+          onClick={() => handleButton('fold')}
+        >
+          fold
+        </button>
+        <button
+          ref={allInBtnRef}
+          disabled={isAllinDisabled}
+          style={{ cursor: isAllinDisabled ? 'default' : 'pointer' }}
+          onClick={() => handleButton('allin')}
+        >
+          allin
+        </button>
       </div>
     </div>
   );
@@ -356,7 +413,7 @@ export default function Player({
           alt={'<chipCount img>'}
         />
       </div>
-      <YourPlayerActions {...{isYourPlayer, client, keyPressed, socket}} />
+      <YourPlayerActions {...{isYourPlayer, curPlayer, isSmallBlind, tableState, client, keyPressed, socket}} />
     </div>
   );
 }

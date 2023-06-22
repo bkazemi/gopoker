@@ -427,7 +427,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         >
         {/* TOP-SIDE PLAYERS */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+            {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={2}
           />
@@ -442,7 +442,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       >
         {/* LEFT-SIDE PLAYERS */}
         <PlayerList
-          {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+          {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
           dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
           sideNum={1}
         />
@@ -530,7 +530,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       >
         {/* RIGHT-SIDE PLAYERS */}
         <PlayerList
-          {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+          {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
           dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
           sideNum={3}
         />
@@ -550,7 +550,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         >
           {/* BOTTOM-SIDE PLAYERS */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, keyPressed, socket}}
+            {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={0}
           />
