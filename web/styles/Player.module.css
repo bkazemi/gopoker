@@ -55,8 +55,26 @@
   padding-right: 5px;
 }
 
-.yourPlayerActions input {
+.yourPlayerActions {
+}
+
+.betContainer {
+  display: flex;
+  flex-direction: row;
+  place-items: center;
+  gap: 5px;
   padding: 5px;
+}
+
+.betContainer > input {
+  padding: 5px;
+}
+
+.betTooltipTxt {
+  display: flex;
+  flex-direction: 'row';
+  text-align: start;
+  font-size: 15px;
 }
 
 .positions {

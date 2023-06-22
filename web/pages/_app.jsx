@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Head from 'next/head';
 
+import 'react-tooltip/dist/react-tooltip.css';
+
 import { GameProvider } from '@/GameContext';
 
 import '@/styles/globals.css'

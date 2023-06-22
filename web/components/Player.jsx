@@ -5,6 +5,7 @@ import { Literata } from 'next/font/google';
 
 import cx from 'classnames';
 import { cloneDeep } from 'lodash';
+import { Tooltip } from 'react-tooltip';
 
 import { TABLE_STATE, NETDATA, NetData, NetDataToPlayerState, PlayerStateToString } from '@/lib/libgopoker';
 
@@ -115,18 +116,46 @@ const YourPlayerActions = ({ isYourPlayer, client, keyPressed, socket }) => {
 
   return (
     <div className={styles.yourPlayerActions}>
-      <label htmlFor='raiseInput'>bet amount</label>
-      <input
-        ref={betInputRef}
-        id='raiseInput'
-        type='text'
-        name='raiseInput'
-        step={10}
-        min={0}
-        value={raiseInputValue}
-        onInput={handleRaiseInput}
-        /*max={} TODO: add me */
-      />
+      <div className={styles.betContainer}>
+        <label htmlFor='raiseInput'>bet amount</label>
+        <input
+          ref={betInputRef}
+          id='raiseInput'
+          type='text'
+          name='raiseInput'
+          step={10}
+          min={0}
+          value={raiseInputValue}
+          onInput={handleRaiseInput}
+          /*max={} TODO: add me */
+        />
+        <a data-tooltip-id="betTooltip">
+          <Image
+            src={'/betHelp.png'}
+            width={29}
+            height={29}
+            alt={'<bet help img>'}
+          />
+        </a>
+        <Tooltip id="betTooltip">
+          <pre className={styles.betTooltipTxt}>
+            {`The amount to bet.
+
+             Typing K or k after a number multiplies the bet by 1,000.
+             Typing M or m after a number multiplies the bet by 1,000,000.
+             Typing '+' before a number sets your bet amount to your last bet + <number>
+
+             Examples:
+
+             100k => 100,000
+             5m => 5,000,000
+
+             last bet: 250 chips
+             +100 => 250+100 => 350
+            `.replace(/^ +/gm, '')}
+          </pre>
+        </Tooltip>
+      </div>
       <div
         className={cx(styles.yourPlayerActions,
           styles.buttons, literata.className

@@ -1,5 +1,5 @@
-import { Exo } from 'next/font/google'
-import styles from '@/styles/Home.module.css'
+import { Exo } from 'next/font/google';
+import styles from '@/styles/Home.module.css';
 
 import React, { useCallback, useContext, useEffect, useState, useRef } from 'react';
 
