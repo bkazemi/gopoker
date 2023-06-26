@@ -11,8 +11,9 @@ const Cards = ({ client, isYourPlayer, side, tableState }) => {
     tableState === TABLE_STATE.NOT_STARTED ||
     client.Player.Action.Action === PLAYERSTATE.FOLD ||
     client.Player.Action.Action === PLAYERSTATE.MIDROUND_ADDITION
-  )
+  ) {
     return;
+  }
 
   let style = {};
   if (side === 'left' || side === 'right')
@@ -49,7 +50,7 @@ const Cards = ({ client, isYourPlayer, side, tableState }) => {
               width={65}
               alt={`[${c.Name}]`}
             />;
-        }) || ''
+        }) || null
       }
     </div>
 };
@@ -102,9 +103,6 @@ export default function PlayerTableItems({
   client, isYourPlayer, dealerAndBlinds,
   side, gridRow, gridCol, tableState
 }) {
-  if (client._ID === 'vacant')
-    return;
-
   // currently disabled
   /*const [isDealer, setIsDealer] = useState(false);
   const [isSmallBlind, setIsSmallBlind] = useState(false);
@@ -130,6 +128,9 @@ export default function PlayerTableItems({
         posSetStateMap[name](true);
       });
   }, [dealerAndBlinds, client]);*/
+
+  if (client._ID === 'vacant')
+    return;
 
   let justifyContent;
   if (side === 'top') {

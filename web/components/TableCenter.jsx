@@ -33,6 +33,15 @@ export default function TableCenter({ isAdmin, tableState, community, mainPot, y
         </div> || null
       }
       {
+        (!isAdmin && tableState === TABLE_STATE.NOT_STARTED) &&
+        <p
+          className={literata.className}
+          style={{ fontSize: '1.3rem' }}
+        >
+          waiting for table admin to start the game
+        </p>
+      }
+      {
         tableState !== TABLE_STATE.NOT_STARTED &&
         <div className={styles.mainPotContainer} >
           <Image

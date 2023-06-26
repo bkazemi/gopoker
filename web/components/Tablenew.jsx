@@ -169,6 +169,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     setBigBlind(netData.Table.BigBlind || nullClient);
     setTablePass(netData.Table.Password);
     setTableLock(netData.Table.Lock);
+    setNumSeats(netData.Table.NumSeats);
     setTableState(netData.Table.State);
   }, [netData]);
 
@@ -197,12 +198,6 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   }, [dealer, smallBlind, bigBlind]);
 
   useEffect(() => {
-    if (numSeats) {
-      ;
-    }
-  }, [numSeats]);
-
-  useEffect(() => {
   if (netData.Response) {
     console.log(`%cresp: ${NetDataToString(netData.Response)} (${netData.Response})`, "background-color:red;color:white;padding:5px;font-size:1.3rem");
     if (NETDATA.needsTable(netData) && !netData.Table)
@@ -211,11 +206,14 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       console.error(`needsPlayers(): player obj found ? ${!!netData.Client?.Player} ID ? ${!!NETDATA.Client?.ID}`);
 
     switch (netData.Response) {
-    case NETDATA.NEWCONN:
-      if (!yourClient?.ID)
+    case NETDATA.NEWCONN: // FIXME: racy
+      if (netData.Client)
         setYourClient(netData.Client);
       setNumConnected(netData.Table.NumConnected);
+      break;
     case NETDATA.CLIENT_EXITED:
+      if (netData.Client?.ID !== yourClient.ID) // XXX
+        setChatMsgs(msgs => [...msgs, `<${netData.Client.Name} id: ${netData.Client.ID}> left the room`]);
       setNumConnected(netData.Table.NumConnected);
       break;
     case NETDATA.CHAT_MSG:
@@ -327,6 +325,13 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         setModalTxt(arr => [...arr, 'you have been eliminated']);
         setModalOpen(true);
         updatePlayer(netData.Client, nullClient)
+      } else if (netData.Client && players.findIndex(c => c.ID === netData.Client.ID) !== -1); {
+        // XXX: sometimes an UPDATE_PLAYER is being processed after
+        //      PLAYER_LEFT, causing the players array to retain
+        //      the eliminated player. if so, we will remove them again
+        //      from here for now.
+        console.warn('PLAYER_LEFT & UPDATE_PLAYER received out of order, re-removing', netData.Client.Name);
+        updatePlayer(netData.Client, nullClient);
       }
       setChatMsgs(msgs => [...msgs, netData.Msg]);
       break;
@@ -374,6 +379,20 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     }
   }
   }, [netData._noShallowCompare]);
+
+  useEffect(() => {
+    if (numSeats) {
+      setPlayers(players => {
+        const newPlayerArr = players.filter(p => !p._ID);
+        while (newPlayerArr.length < numSeats)
+          newPlayerArr.push(nullClient);
+
+        console.log('numSeats ue: players =>', newPlayerArr);
+
+        return newPlayerArr;
+      });
+    }
+  }, [numSeats]);
 
   useEffect(() => {console.log(`players isArray: ${Array.isArray(players)}`); console.log(players); console.log(`pl len: ${players.length}`)}, [players]);
 
@@ -589,7 +608,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         <div className={cx(styles.tableInfoItems, vt323.className)}>
           <p>
             name: { yourClient?.Name }
-            <br></br>
+            <br />
             <span style={{ fontStyle: 'italic' }}>
               id: { yourClient?.ID }
             </span>

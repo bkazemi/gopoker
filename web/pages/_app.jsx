@@ -19,6 +19,10 @@ export default function App({ Component, pageProps, router }) {
 
   const isHomePage = router.pathname === '/';
 
+  if (!process.env.NEXT_PUBLIC_SHOW_LOG) {
+    console.debug = console.warn = console.log = () => {}; // keep console.error
+  }
+
   const fetchHeaderInfo = useCallback(async () => {
     const URL = `/api/${isHomePage ? 'status' : 'roomCount'}`;
 

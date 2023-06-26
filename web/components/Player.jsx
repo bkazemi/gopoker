@@ -110,7 +110,7 @@ const YourPlayerActions = ({ isYourPlayer, isSmallBlind, curPlayer, tableState, 
   // enable/disable action buttons as appropriate
   useEffect(() => {
     const notStartedOrYourTurn =
-      (tableState === TABLE_STATE.NOT_STARTED || curPlayer.ID !== client.ID);
+      (tableState === TABLE_STATE.NOT_STARTED || curPlayer?.ID !== client.ID);
     const isSmallBlindPreflop =
       (isSmallBlind && tableState === TABLE_STATE.PREFLOP);
     const playerRaised = tableState === TABLE_STATE.PLAYER_RAISED;
@@ -151,7 +151,7 @@ const YourPlayerActions = ({ isYourPlayer, isSmallBlind, curPlayer, tableState, 
           onInput={handleRaiseInput}
           /*max={} TODO: add me */
         />
-        <a data-tooltip-id="betTooltip">
+        <a style={{ display: 'flex' }} data-tooltip-id="betTooltip">
           <Image
             src={'/betHelp.png'}
             width={29}
@@ -159,7 +159,7 @@ const YourPlayerActions = ({ isYourPlayer, isSmallBlind, curPlayer, tableState, 
             alt={'<bet help img>'}
           />
         </a>
-        <Tooltip id="betTooltip">
+        <Tooltip id="betTooltip" style={{ zIndex: 5 }}>
           <pre className={styles.betTooltipTxt}>
             {`The amount to bet.
 

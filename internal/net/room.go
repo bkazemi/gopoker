@@ -145,8 +145,8 @@ func (room *Room) removeClient(conn *websocket.Conn) {
     room.table.NumConnected--
   }
 
-  // TODO: send client info
   netData := &NetData{
+    Client:   client,
     Response: NetDataClientExited,
     Table:    room.table,
   }
@@ -447,14 +447,17 @@ func (room *Room) sendAllPlayerInfo(client *Client, isCurPlayers bool, sendToSel
     Response: NetDataUpdatePlayer,
   }
 
-  var players *poker.PlayerList
+  var players []*poker.Player
   if isCurPlayers {
-    players = room.table.CurPlayers()
+    players = room.table.CurPlayers().ToPlayerArray()
   } else {
-    players = room.table.ActivePlayers()
+    // we use this instead of ActivePlayers because we need to preserve insertion order
+    //
+    // TODO: save table pos in Player instead
+    players = room.table.GetOccupiedSeats()
   }
 
-  for _, player := range players.ToPlayerArray() {
+  for _, player := range players {
     playerClient := room.connClientMap[room.getPlayerConn(player)]
 
     netData.Client = playerClient
@@ -786,6 +789,7 @@ type ClientSettings struct {
 
   Admin struct {
     RoomName string
+    NumSeats uint8
     Lock     poker.TableLock
     Password string
   }

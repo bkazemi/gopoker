@@ -141,6 +141,21 @@ func (table *Table) SetBetter(player *Player) {
   table.better = player
 }
 
+func (table *Table) SetNumSeats(numSeats uint8) error {
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
+
+  if numSeats < 2 || numSeats > 7 {
+    return errors.New("numSeats must be between 2 and 7")
+  } else if numSeats < table.NumPlayers {
+    return errors.New("numSeats must be greater than the current number of players")
+  }
+
+  table.NumSeats = numSeats
+
+  return nil
+}
+
 // XXX we should probably only have the poker package
 // accessing the table lock, but for now i'm leaving it.
 func (table *Table) Mtx() *sync.Mutex {
@@ -510,7 +525,7 @@ func (table *Table) GetOpenSeat() *Player {
   return nil
 }
 
-func (table *Table) getOccupiedSeats() []*Player {
+func (table *Table) GetOccupiedSeats() []*Player {
   seats := make([]*Player, 0)
 
   for _, seat := range table.players {

@@ -202,6 +202,16 @@ func (server *Server) handleRoomSettings(room *Room, client *Client, settings *C
     msg += "room name: unchanged\n"
   }
 
+  if settings.Admin.NumSeats != room.table.NumSeats {
+    if err := room.table.SetNumSeats(settings.Admin.NumSeats); err != nil {
+      errs += "num seats: " + err.Error() + "\n"
+    } else {
+      msg += "num seats: changed\n"
+    }
+  } else {
+    msg += "num seats: unchanged"
+  }
+
   if errs != "" {
     return "", errors.New(errs)
   }
@@ -388,6 +398,16 @@ func (server *Server) handleNewConn(
 ) {
   netData.Request = 0
 
+  if netData.Client == nil { // XXX
+    netData.Client = NewClient(nil).SetConn(conn)
+    netData.Response = NetDataBadRequest
+    netData.Msg = "netData.Client was not created by the client"
+
+    netData.Send()
+
+    return
+  }
+
   if client := room.connClientMap[conn]; client != nil {
     netData.Client = client
     netData.Response = NetDataServerMsg
@@ -411,12 +431,15 @@ func (server *Server) handleNewConn(
     room.table.NumConnected++
     room.table.Mtx().Unlock()
 
-    room.sendResponseToAll(&netData, nil)
     if player := room.table.GetOpenSeat(); player != nil {
       client.Player = player
       room.playerClientMap[player] = client
 
       room.applyClientSettings(client, netData.Client.Settings)
+
+      netData.Client = client
+      netData.Send() // send NewConn after we've processed their settings
+
       fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s'\n",
                  room.name, client.ID, &conn, client.Name, player.Name)
 
@@ -492,7 +515,13 @@ func (server *Server) handleNewConn(
   room.table.NumConnected++
   room.table.Mtx().Unlock()
 
-  room.sendResponseToAll(&netData, nil)
+  room.applyClientSettings(client, netData.Client.Settings)
+
+  netData.Client = nil
+  room.sendResponseToAll(&netData, client) // send NewConn to other connected clients
+
+  netData.Client = client
+  netData.Send() // send NewConn with Client info to this client
 
   // send current player info to this client
   if room.table.NumConnected > 1 {
@@ -522,7 +551,6 @@ func (server *Server) handleNewConn(
 
   if room.table.Lock == poker.TableLockPlayers {
     netData.Response = NetDataServerMsg
-    //netData.Client = &Client{conn: conn}
     netData.Msg = "This table is not allowing new players. " +
                   "You have been added as a spectator."
     netData.Send()
@@ -722,7 +750,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           room.sendResponseToAll(&netData, client)
         }
 
-        //netData.Client = client
+        netData.Client = client
         netData.Response = NetDataClientSettings
         netData.Send()
 

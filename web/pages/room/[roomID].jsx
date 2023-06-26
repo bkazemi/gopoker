@@ -52,16 +52,18 @@ const Connect = () => {
     };
   }, []);
 
+  // FIXME: when a player is eliminated, NetDataUpdatePlayer, NetDataPlayerLeft & NetDataEliminated
+  // sometimes are being processed out of order, due to async nature of SWR
   const { data, error } = useSWRSubscription(roomURL, (key, { next }) => {
-    let socket;
+    let gameSocket;
     try {
       next(null); // need to reset error on Game remounts
 
-      socket = new WebSocket(key);
-      socket.addEventListener('open', (event) => {
-        socket.send(websocketOpts.toMsgPack());
+      gameSocket = new WebSocket(key);
+      gameSocket.addEventListener('open', (event) => {
+        gameSocket.send(websocketOpts.toMsgPack());
       });
-      socket.addEventListener('message',
+      gameSocket.addEventListener('message',
         async (event) => {
           try {
             //const msg = JSON.parse(event.data.toString());
@@ -76,18 +78,18 @@ const Connect = () => {
             next(e);
           }
       });
-      socket.addEventListener('error', (event) => {
+      gameSocket.addEventListener('error', (event) => {
         console.error('websocket err', event.error);
         next(event.error ?? new Error('unspecified'));
       });
-      setSocket(socket);
+      setSocket(gameSocket);
     } catch (e) {
       next(e);
     }
 
     return () => {
-      socket.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
-      socket.close(1000, 'web client exited');
+      gameSocket.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
+      gameSocket.close(1000, 'web client exited');
     }
   });
 
@@ -234,6 +236,9 @@ export default function Room() {
         roomURL: `${config.gopokerServerWSURL}/room/${roomID}/web`
       }));
   }, [websocketOpts, roomURL, reset]);
+
+  if (gameOpts.goHome)
+    return;
 
   return (
       <CSSTransition

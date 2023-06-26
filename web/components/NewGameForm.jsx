@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState, useRef } from 'react';
+import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
 
 import Select from 'react-select';
 
@@ -32,7 +32,7 @@ const maxPlayerOpts = [
 ];
 
 const RequiredFields = ({
-  router,
+  goHome,
   isSettings, isDirectLink, isAdmin,
   roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
   handleSubmit, setModalOpen, setRoomName, setName, setTablePwd, setTableLock, setMaxPlayers
@@ -124,7 +124,7 @@ const RequiredFields = ({
       <button
         onClick={() => {
           if (isSettings) setModalOpen(false)
-          else router.push('/')
+          else goHome();
         }}
       >
         { isSettings ? 'cancel' : 'go home' }
@@ -137,7 +137,7 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   const { Name, Password } = gameOpts.websocketOpts?.Client?.Settings || {Name: '', Password: ''};
-  const { RoomName, Lock } = gameOpts.websocketOpts?.Client?.Settings?.Admin || {RoomName: '', Lock: null};
+  const { RoomName, Lock, NumSeats } = gameOpts.websocketOpts?.Client?.Settings?.Admin || {RoomName: '', Lock: null, NumSeats: 7};
 
   const router = useRouter();
 
@@ -147,9 +147,19 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
   const [name, setName] = useState(Name);
   const [tablePwd , setTablePwd] = useState(Password);
   const [tableLock, setTableLock] = useState(lockOpts.find(opt => opt.value === Lock) || lockOpts[0]);
-  const [maxPlayers, setMaxPlayers] = useState(maxPlayerOpts.find(opt => opt.value === Lock)); // TODO: implement
+  const [maxPlayers, setMaxPlayers] = useState(maxPlayerOpts.find(opt => opt.value === NumSeats) || maxPlayerOpts[0]);
 
   const isAdmin = !!gameOpts.isAdmin;
+
+  const goHome = useCallback(() => {
+    console.log('goHome()');
+    setGameOpts(opts => ({
+      ...opts,
+      goHome: true,
+    }));
+
+    router.push('/');
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -158,6 +168,7 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
     const Name = name;
     const Password = tablePwd;
     const TableLock = tableLock.value;
+    const TableNumSeats = maxPlayers.value;
 
     const data = new NetData(
       NewClient({
@@ -165,7 +176,8 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
         Password,
         RoomName,
         TableLock,
-        TablePass: Password
+        TableNumSeats,
+        TablePass: Password,
       }),
       isSettings ? NETDATA.CLIENT_SETTINGS : NETDATA.NEWCONN,
     );
@@ -206,7 +218,7 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
       >
         <RequiredFields
           {...{
-            router,
+            goHome,
             isSettings, isDirectLink, isAdmin, handleSubmit,
             roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
             setModalOpen, setRoomName, setName, setTablePwd, setTableLock, setMaxPlayers

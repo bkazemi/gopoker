@@ -63,7 +63,7 @@ export default function Game({ isVisible, setShowGame }) {
   useEffect(() => {
     if (isVisible && !fetchCalled) {
       const createNewRoom = async () => {
-        const { RoomName, Lock, Password } = gameOpts.websocketOpts.Client.Settings.Admin;
+        const { RoomName, Lock, Password, NumSeats } = gameOpts.websocketOpts.Client.Settings.Admin;
         console.log('before createNewRoom: gameOpts.websocketOpts:', gameOpts.websocketOpts);
         try {
           const res = await fetch('/api/new', {
@@ -73,7 +73,7 @@ export default function Game({ isVisible, setShowGame }) {
               roomName: RoomName || '',
               lock: Lock,
               password: Password || '',
-              numSeats: 7,
+              numSeats: NumSeats || 7,
             })
           });
 

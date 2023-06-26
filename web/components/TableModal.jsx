@@ -28,7 +28,9 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
     setGameOpts(opts => ({
       ...opts,
       client: NewClient({}),
-      roomURL: '', reset: true,
+      roomURL: '',
+      reset: true,
+      goHome: true,
     }));
     router.push('/');
   };

@@ -22,9 +22,11 @@ export default function Home() {
   useEffect(() => {
     console.log(`Home: showGame: ${showGame} showGrid: ${showGrid}`);
 
-    setGameOpts(gameOpts => {{
-      return {...gameOpts, setShowGame}
-    }})
+    setGameOpts(gameOpts => ({
+      ...gameOpts,
+      setShowGame,
+      goHome: gameOpts.goHome ? false : undefined,
+    }));
   }, []);
 
   useEffect(() => {
