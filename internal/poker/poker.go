@@ -452,7 +452,7 @@ func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
 
   var players []*Player
   if includeAllIns {
-    players = table.getNonFoldedPlayers()
+    players = table.GetNonFoldedPlayers()
   } else {
     players = table.curPlayers.ToPlayerArray()
   }
@@ -1589,7 +1589,7 @@ func checkTies(players []*Player, cardidx int) []*Player {
   return checkTies(best, cardidx-1)
 }
 
-func (table *Table) getNonFoldedPlayers() []*Player {
+func (table *Table) GetNonFoldedPlayers() []*Player {
   players := make([]*Player, 0)
 
   for _, player := range table.getActiveSeats() {
@@ -1652,7 +1652,7 @@ func (table *Table) FinishRound() {
     return
   }
 
-  players := table.getNonFoldedPlayers()
+  players := table.GetNonFoldedPlayers()
 
   printer.Printf("Table.FinishRound(): mainpot: last bet: %d pot: %d %s\n",
                  table.MainPot.Bet, table.MainPot.Total, table.MainPot.PlayerInfo())

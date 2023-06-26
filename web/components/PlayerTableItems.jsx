@@ -22,7 +22,7 @@ const Cards = ({ client, isYourPlayer, side, tableState }) => {
       'right': '32.5px',
     }
 
-  if (!isYourPlayer && tableState !== TABLE_STATE.SHOW_HANDS)
+  if (!isYourPlayer && !client?.Player?.Hole?.Cards)
     return <div className={styles.playerCards}>
             <Image
               src={'/cards/cardBack_blue5.png'}

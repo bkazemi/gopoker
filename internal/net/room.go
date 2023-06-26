@@ -399,7 +399,7 @@ func (room *Room) sendHands() {
     Table: room.table,
   }
 
-  for _, player := range room.table.CurPlayers().ToPlayerArray() {
+  for _, player := range room.table.GetNonFoldedPlayers() {
     client := room.playerClientMap[player]
     //assert(client != nil, "Room.sendHands(): player not in playerMap")
     netData.Client = room.publicClientInfo(client)
@@ -680,10 +680,10 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
     room.sendPlayerTurnToAll()
   }
 
-  fmt.Println("Server.postBetting(): done betting...")
+  fmt.Println("Room.postBetting(): done betting...")
 
   if room.table.BettingIsImpossible() {
-    fmt.Println("Server.postBetting(): no more betting possible this round")
+    fmt.Println("Room.postBetting(): no more betting possible this round")
 
     tmpReq := netData.Request
     tmpClient := netData.Client
@@ -691,6 +691,12 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
     netData.Request = 0
     netData.Table = room.table
     netData.Client = nil
+
+    tableState := room.table.State
+    room.table.State = poker.TableStateShowHands
+    room.sendHands()
+    room.table.State = tableState
+
     for room.table.State != poker.TableStateRoundOver {
       room.table.NextCommunityAction()
       netData.Response = commState2NetDataResponse(room)
@@ -725,7 +731,7 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
     room.table.SetBetter(nil)
 
     for _, player := range room.table.CurPlayers().ToPlayerArray() {
-      fmt.Printf("Server.postBetting(): clearing %v's action\n", player.Name)
+      fmt.Printf("Room.postBetting(): clearing %v's action\n", player.Name)
       player.Action.Clear()
     }
 
@@ -805,21 +811,21 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
   )
 
   if client == nil {
-    fmt.Println("Server.handleClientSettings(): called with a nil parameter")
+    fmt.Println("Room.handleClientSettings(): called with a nil parameter")
 
     return "", errors.New("room.handleClientSettings(): BUG: client == nil")
   } else if settings == nil {
-    fmt.Println("Server.handleClientSettings(): called with a nil parameter")
+    fmt.Println("Room.handleClientSettings(): called with a nil parameter")
 
-    return "", errors.New("Server.handleClientSettings(): BUG: settings == nil")
+    return "", errors.New("Room.handleClientSettings(): BUG: settings == nil")
   }
 
-  //fmt.Printf("Server.handleClientSettings(): <%s> settings: %v\n", client.Name, settings)
+  //fmt.Printf("Room.handleClientSettings(): <%s> settings: %v\n", client.Name, settings)
 
   settings.Name = strings.TrimSpace(settings.Name)
   if settings.Name != "" {
     if len(settings.Name) > int(MaxNameLen) {
-      fmt.Printf("Server.handleClientSettings(): %p requested a name that was longer " +
+      fmt.Printf("Room.handleClientSettings(): %p requested a name that was longer " +
                  "than %v characters. using a default name\n", client.conn, MaxNameLen)
       msg += fmt.Sprintf("You've requested a name that was longer than %v characters. " +
               "Using a default name.\n\n", MaxNameLen)
@@ -827,7 +833,7 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
     } else {
       if player := client.Player; player != nil {
         if player.Name == settings.Name {
-          fmt.Println("Server.handleClientSettings(): name unchanged")
+          fmt.Println("Room.handleClientSettings(): name unchanged")
           msg += "name: unchanged\n\n"
         } else {
           _, found := room.nameClientMap[settings.Name]
@@ -864,11 +870,11 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
 
     lock := poker.TableLockToString(settings.Admin.Lock)
     if lock == "" {
-      fmt.Printf("Server.handleClientSettings(): %p requested invalid table lock '%v'\n",
+      fmt.Printf("Room.handleClientSettings(): %p requested invalid table lock '%v'\n",
                  client.conn, settings.Admin.Lock)
       errs += fmt.Sprintf("invalid table lock: '%v'\n", settings.Admin.Lock)
     } else if settings.Admin.Lock == room.table.Lock {
-      fmt.Println("Server.handleClientSettings(): table lock unchanged")
+      fmt.Println("Room.handleClientSettings(): table lock unchanged")
       msg += "table lock: unchanged\n"
     } else {
       msg += "table lock: changed\n"
@@ -885,7 +891,7 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
         msg += "changed\n"
       }
     } else {
-      fmt.Println("Server.handleClientSettings(): table password unchanged")
+      fmt.Println("Room.handleClientSettings(): table password unchanged")
       msg += "table password: unchanged\n"
     }
   }
@@ -911,7 +917,7 @@ func commState2NetDataResponse(room *Room) NetAction {
     return netDataResponse
   }
 
-  fmt.Printf("Server.commState2NetDataResponse(): bad state `%v`\n", room.table.CommState)
+  fmt.Printf("Room.commState2NetDataResponse(): bad state `%v`\n", room.table.CommState)
   return NetDataBadRequest
 }
 

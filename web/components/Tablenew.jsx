@@ -303,6 +303,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       updatePlayer(netData.Client);
       break;
     case NETDATA.SHOW_HAND:
+      updatePlayer(netData.Client);
       break;
     case NETDATA.ROUND_OVER:
       updateTable();
