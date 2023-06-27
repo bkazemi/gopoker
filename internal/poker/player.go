@@ -22,6 +22,7 @@ type Player struct {
   IsCPU       bool
 
   IsVacant bool
+  TablePos uint
 
   ChipCount Chips
   Hole      *Hole

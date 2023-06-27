@@ -513,9 +513,10 @@ func (table *Table) GetOpenSeat() *Player {
     return nil
   }
 
-  for _, seat := range table.players {
+  for i, seat := range table.players {
     if seat.IsVacant {
       seat.IsVacant = false
+      seat.TablePos = uint(i)
       table.NumPlayers++
 
       return seat

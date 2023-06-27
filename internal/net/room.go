@@ -132,8 +132,10 @@ func (room *Room) removeClient(conn *websocket.Conn) {
   }
 
   client := room.connClientMap[conn]
-  if client == nil {
+  if client == nil { // table lock or bad auth
     fmt.Printf("Room.removeClient(): {%s}: couldn't find conn %p in connClientMap\n", room.name, conn)
+
+    return
   } else {
     delete(room.nameClientMap, client.Name)
     delete(room.IDClientMap, client.ID)
@@ -962,4 +964,17 @@ func (room *Room) newClient(conn *websocket.Conn, connType string, clientSetting
   }
 
   return client
+}
+
+func (room *Room) isLocked() bool {
+  room.table.Mtx().Lock()
+  defer room.table.Mtx().Unlock()
+
+  if room.table.Lock == poker.TableLockAll ||
+     (room.table.Lock == poker.TableLockSpectators &&
+      room.table.GetNumOpenSeats() == 0) {
+    return true
+  }
+
+  return false
 }

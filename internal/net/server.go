@@ -90,7 +90,7 @@ func NewServer(addr string) *Server {
     roomName := vars["roomName"]
 
     if room, found := server.rooms[roomName]; found {
-      if room.table.Lock == poker.TableLockAll {
+      if room.isLocked() {
         w.WriteHeader(http.StatusForbidden)
       } else {
         w.WriteHeader(http.StatusOK)
@@ -437,6 +437,11 @@ func (server *Server) handleNewConn(
 
       room.applyClientSettings(client, netData.Client.Settings)
 
+      // while unlikely, it is still possible that non-room creators could
+      // join while we are handling the room creator
+      netData.Client = nil
+      room.sendResponseToAll(&netData, client)
+
       netData.Client = client
       netData.Send() // send NewConn after we've processed their settings
 
@@ -459,11 +464,13 @@ func (server *Server) handleNewConn(
         room.table.BigBlind = room.table.SmallBlind.Next()
       }
 
-      /*netData.Client = room.publicClientInfo(client)
+      // while unlikely, it is still possible that non-room creators could
+      // join while we are handling the room creator
+      netData.Client = room.publicClientInfo(client)
       netData.Response = NetDataNewPlayer
       netData.Table = room.table
 
-      room.sendResponseToAll(&netData, client)*/
+      room.sendResponseToAll(&netData, client)
 
       netData.Client = client
       netData.Response = NetDataYourPlayer
@@ -527,27 +534,6 @@ func (server *Server) handleNewConn(
   if room.table.NumConnected > 1 {
     room.sendActivePlayers(client)
   }
-
-  /*if client.ID == room.tableAdminID {
-    msg, err := server.handleRoomSettings(room, client, netData.Client.Settings)
-    if err != nil {
-      (&NetData{
-        Response: NetDataBadRequest,
-        Client: client,
-        Msg: err.Error(),
-      }).Send()
-    } else {
-      netData.Client = client
-      netData.Response = NetDataRoomSettings
-      netData.Msg = msg
-      netData.Send()
-    }
-  }
-
-  room.applyClientSettings(client, netData.Client.Settings)
-  netData.Client = client
-  netData.Response = NetDataClientSettings
-  netData.Send()*/
 
   if room.table.Lock == poker.TableLockPlayers {
     netData.Response = NetDataServerMsg
@@ -967,143 +953,6 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
       if netData.Request == NetDataNewConn {
         server.handleNewConn(room, netData, conn, connType)
-        /*
-        netData.Request = 0
-
-        if client := room.connClientMap[conn]; client != nil {
-          netData.Client = client
-          netData.Response = NetDataServerMsg
-          netData.Msg = "you are already connected to the room."
-
-          netData.Send()
-
-          return
-        }
-
-        netData.Response = NetDataNewConn
-        if room.table.Lock == TableLockAll {
-          room.sendLock(conn, connType)
-
-          return
-        }
-
-        if room.table.Password != "" &&
-           netData.Client.Settings.Password != room.table.Password {
-          room.sendBadAuth(conn, connType)
-
-          return
-        }
-
-        // set this to a nonnil value so that the guard at the top of this block
-        // works if newClient is waiting on the room lock
-        // XXX: I have to check if is actually necessary. probably not
-        room.connClientMap[conn] = &Client{}
-
-        client := room.newClient(conn, connType, netData.Client.Settings)
-
-        if _, err := room.handleClientSettings(client, netData.Client.Settings); err != nil {
-          (&NetData{
-            Response: NetDataBadRequest,
-            Client: client,
-            Msg: err.Error(),
-          }).Send()
-        }
-
-        room.table.Mtx().Lock()
-        room.table.NumConnected++
-        room.table.Mtx().Unlock()
-
-        room.sendResponseToAll(&netData, nil)
-
-        // send current player info to this client
-        if room.table.NumConnected > 1 {
-          room.sendActivePlayers(client)
-        }
-
-        if client.ID == room.tableAdminID {
-          msg, err := server.handleRoomSettings(room, client, netData.Client.Settings)
-          if err != nil {
-            (&NetData{
-              Response: NetDataBadRequest,
-              Client: client,
-              Msg: err.Error(),
-            }).Send()
-          } else {
-            netData.Client = client
-            netData.Response = NetDataRoomSettings
-            netData.Msg = msg
-            netData.Send()
-          }
-        }
-
-        room.applyClientSettings(client, netData.Client.Settings)
-        netData.Client = client
-        netData.Response = NetDataClientSettings
-        netData.Send()
-
-        if room.table.Lock == TableLockPlayers {
-          netData.Response = NetDataServerMsg
-          //netData.Client = &Client{conn: conn}
-          netData.Msg = "This table is not allowing new players. " +
-                        "You have been added as a spectator."
-          netData.Send()
-        } else if player := room.table.GetOpenSeat(); player != nil {
-          client.Player = player
-          room.playerClientMap[player] = client
-
-          room.applyClientSettings(client, netData.Client.Settings)
-          fmt.Printf("Server.WSClient(): adding <%s> (%p) (%s) as player '%s'\n",
-                     client.ID, &conn, client.Name, player.Name)
-
-          if room.table.State == poker.TableStateNotStarted {
-            player.Action.Action = playerState.FirstAction
-            room.table.curPlayers.AddPlayer(player)
-          } else {
-            player.Action.Action = playerState.MidroundAddition
-          }
-          room.table.ActivePlayers().AddPlayer(player)
-
-          if room.table.CurPlayer() == nil {
-            room.table.CurPlayer() = room.table.curPlayers.Head
-          }
-
-          if room.table.Dealer == nil {
-            room.table.Dealer = room.table.ActivePlayers().Head
-          } else if room.table.SmallBlind == nil {
-            room.table.SmallBlind = room.table.Dealer.next
-          } else if room.table.BigBlind == nil {
-            room.table.BigBlind = room.table.SmallBlind.next
-          }
-
-          netData.Client = room.publicClientInfo(client)
-          netData.Response = NetDataNewPlayer
-          netData.Table = room.table
-
-          room.sendResponseToAll(&netData, client)
-
-          netData.Client = client
-          netData.Response = NetDataYourPlayer
-          netData.Send()
-        } else if room.table.Lock == TableLockSpectators {
-            room.sendLock(conn, connType)
-
-            return
-        } else {
-          netData.Response = NetDataServerMsg
-          netData.Msg = "No open seats available. You have been added as a spectator"
-
-          netData.Send()
-        }
-
-        room.sendAllPlayerInfo(client, false, false)
-
-        if room.table.State != poker.TableStateNotStarted {
-          room.sendPlayerTurn(client)
-        }
-
-        if room.tableAdminID == "" {
-          room.makeAdmin(client)
-        }*/
       } else {
         client := room.connClientMap[conn]
         go handleAsyncRequest(client, netData)

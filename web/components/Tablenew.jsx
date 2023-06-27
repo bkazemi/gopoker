@@ -36,7 +36,7 @@ const PlayerList = ({
   return (<>
     {
       players
-        .filter((_, idx) => idx % 4 === sideNum)
+        .filter(client => client.Player.TablePos % 4 === sideNum)
         .map((client, idx) => {
           //console.log(`${side} inner: ${!!innerTableItem} map: idx: ${idx} name: ${c.Name}`)
           const isYourPlayer = client.ID && client.ID === yourClient?.ID;
@@ -44,9 +44,12 @@ const PlayerList = ({
           //  console.log(`PlayerList: yourPlayer found: id: ${client.ID}`);
 
           if (side === 'left' || side === 'right')
-            gridRow = idx+1;
+            gridRow = (~~(client.Player.TablePos / 4) % 3) + 1; // modulo 3 is max number
+                                                                // of players on a given side
           else
-            gridCol = idx+1;
+            gridCol = (~~(client.Player.TablePos / 4) % 3) + 1;
+
+          console.log(`PlayerList: sideNum: ${sideNum} .TablePos: ${client.Player.TablePos} gridRow: ${gridRow} gridCol: ${gridCol}`)
 
           return innerTableItem
             ? <PlayerTableItems
@@ -97,7 +100,10 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   const [mainPot, setMainPot] = useState(netData.Table?.MainPot || nullPot);
 
   const [players, setPlayers] = useState(
-    Array.from({length: netData.Table?.NumSeats || 0}, () => nullClient)
+    Array.from({length: netData.Table?.NumSeats || 0}, (_, idx) => ({
+      ...nullClient,
+      Player: {...nullPlayer, TablePos: idx}
+    }))
   );
   const [curPlayer, setCurPlayer] = useState(null);
   const [playerHead, setPlayerHead] = useState(null);
@@ -174,13 +180,25 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   }, [netData]);
 
   const updatePlayer = useCallback((client, nullClient) => {
+    if (!client.ID) {
+      console.error('updatePlayer(): client without ID:', client);
+      return;
+    }
+
     console.log(players);
     const pIdx = players.findIndex(c => c.ID === client.ID);
     if (pIdx !== -1) {
-      console.log(`updating ${players[pIdx].Name} to`, nullClient ?? client);
+      const nullClientWithPos = nullClient ?
+        {...nullClient,
+         Player: {
+          ...nullPlayer,
+          TablePos: client.Player?.TablePos ?? players[pIdx].Player.TablePos // ELIMINATED resp does not include Player field
+        }}
+        : undefined;
+      console.log(`updating ${players[pIdx].Name} to`, nullClientWithPos ?? client);
       setPlayers(c => {
         const newClients = [...c];
-        newClients[pIdx] = nullClient ?? client;
+        newClients[pIdx] = nullClientWithPos ?? client;
         return newClients;
       });
     } else {
@@ -326,7 +344,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         setModalTxt(arr => [...arr, 'you have been eliminated']);
         setModalOpen(true);
         updatePlayer(netData.Client, nullClient)
-      } else if (netData.Client && players.findIndex(c => c.ID === netData.Client.ID) !== -1); {
+      } else if (netData.Client && players.findIndex(c => c.ID === netData.Client.ID) !== -1) {
         // XXX: sometimes an UPDATE_PLAYER is being processed after
         //      PLAYER_LEFT, causing the players array to retain
         //      the eliminated player. if so, we will remove them again
@@ -385,8 +403,16 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     if (numSeats) {
       setPlayers(players => {
         const newPlayerArr = players.filter(p => !p._ID);
-        while (newPlayerArr.length < numSeats)
-          newPlayerArr.push(nullClient);
+        while (newPlayerArr.length < numSeats) {
+          console.log('numSeats ue: TablePos:', Math.max(0, newPlayerArr.length))
+          newPlayerArr.push({
+            ...nullClient,
+            Player: {
+              ...nullPlayer,
+              TablePos: Math.max(0, newPlayerArr.length)
+            }
+          });
+        }
 
         console.log('numSeats ue: players =>', newPlayerArr);
 
