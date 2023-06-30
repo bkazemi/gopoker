@@ -120,6 +120,16 @@ func cardsSort(cards *Cards) error {
   return nil
 }
 
+func reverseCards(cards Cards) Cards {
+  reversed := make(Cards, len(cards))
+
+  for i, j := len(cards) - 1, 0; i >= 0; i, j = i - 1, j + 1 {
+      reversed[j] = cards[i]
+  }
+
+  return reversed
+}
+
 func cardNumToString(card *Card) error {
   cardNumStringMap := map[CardVal]string{
     CardTwo:   "2",

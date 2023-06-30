@@ -1831,7 +1831,7 @@ func (table *Table) BestHand(players []*Player, sidePot *SidePot) []*Player {
 
   // print the best hand
   fmt.Printf("Table.BestHand(): ")
-  for _, card := range tiedPlayers[0].Hand.Cards {
+  for _, card := range reverseCards(tiedPlayers[0].Hand.Cards) {
     fmt.Printf("[%4s]", card.Name)
     *winInfo += fmt.Sprintf("[%4s]", card.Name)
   }
@@ -2070,9 +2070,9 @@ func AssembleBestHand(preshow bool, table *Table, player *Player) {
 
     // muck
     player.Hand.Rank = RankHighCard
-    player.Hand.Cards = append(player.Hand.Cards, cards[bestCard-1],
-      cards[bestCard-2], cards[bestCard-3],
-      cards[bestCard-4], cards[bestCard-5])
+    player.Hand.Cards = append(player.Hand.Cards, cards[bestCard-5],
+      cards[bestCard-4], cards[bestCard-3],
+      cards[bestCard-2], cards[bestCard-1])
 
     Assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
 
@@ -2239,9 +2239,9 @@ func AssembleBestHand(preshow bool, table *Table, player *Player) {
 
   // muck
   player.Hand.Rank = RankHighCard
-  player.Hand.Cards = append(player.Hand.Cards, cards[bestCard-1],
-    cards[bestCard-2], cards[bestCard-3],
-    cards[bestCard-4], cards[bestCard-5])
+  player.Hand.Cards = append(player.Hand.Cards, cards[bestCard-5],
+    cards[bestCard-4], cards[bestCard-3],
+    cards[bestCard-2], cards[bestCard-1])
 
   return
 }
