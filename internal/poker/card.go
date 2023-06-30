@@ -103,6 +103,7 @@ func (hand *Hand) RankName() string {
     RankFullHouse:     "full house",
     RankQuads:         "four of a kind",
     RankStraightFlush: "straight flush",
+    RankRoyalFlush:    "royal flush",
   }
 
   if rankName, ok := rankNameMap[hand.Rank]; ok {

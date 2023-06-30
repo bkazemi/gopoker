@@ -30,23 +30,23 @@ func (client *Client) SetName(name string) *Client {
   if len(name) > MaxClientNameLen {
     fmt.Printf("Client.SetName(): requested name too long. rejecting\n")
 
-		return client
+    return client
   }
 
   fmt.Printf("Client.SetName(): <%s> (%p) '%s' => '%s'\n", client.ID, client.conn, client.Name, name)
   client.Name = name
 
-	return client
+  return client
 }
 
 func (client *Client) SetConn(conn *websocket.Conn) *Client {
-	client.conn = conn
+  client.conn = conn
 
-	return client
+  return client
 }
 
 func (client *Client) SetConnType(connType string) *Client {
-	client.connType = connType
+  client.connType = connType
 
-	return client
+  return client
 }
