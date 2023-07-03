@@ -141,6 +141,7 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
 
   const router = useRouter();
 
+  const newGameFormRef = useRef(null);
   const tablePwdRef = useRef(null);
 
   const [roomName, setRoomName] = useState(RoomName);
@@ -196,6 +197,16 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
   };
 
   useEffect(() => {
+    if (isVisible && newGameFormRef.current) {
+      console.log('scrolling into newGameForm')
+      newGameFormRef.current.parentNode.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+      });
+    }
+  }, [isVisible, newGameFormRef]);
+
+  useEffect(() => {
     if (gameOpts.reset) {
       setRoomName('');
       setName('');
@@ -207,8 +218,9 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
 
   return (
     <div
+      ref={newGameFormRef}
       className={isVisible ? styles.newGameForm : 'hidden'}
-      onClick={(e) => { e.stopPropagation() }}
+      onClick={(e) => e.stopPropagation()}
     >
       {/*<form action="/new" method="post" className={literata.className}>*/}
       <form

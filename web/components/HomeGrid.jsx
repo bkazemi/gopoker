@@ -116,28 +116,5 @@ export default function HomeGrid({ isVisible, setShowGrid }) {
         isVisible={showNewGameForm}
       />
     </div>
-
-    <a
-      href="/c"
-      className={styles.card}
-      target="_blank"
-      rel="noopener noreferrer"
-      tabIndex={0}
-    >
-      <h2 className={exo.className}>
-        join room{' '}
-        <span>
-          <Image
-            src={'/pokerchip3.png'}
-            width={20}
-            height={20}
-            alt='chip'
-          />
-        </span>
-      </h2>
-      {/*<p className={exo.className}>
-        ...
-      </p>*/}
-    </a>
   </div>;
 }

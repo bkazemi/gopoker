@@ -113,6 +113,18 @@ img, h2 {
   transform-origin: center center;
 }
 
+footer {
+  border-top: 2px dotted;
+  display: flex;
+  flex-direction: row;
+  place-items: center;
+  place-content: center;
+  width: 80vw;
+  padding-top: 7px;
+  opacity: 0.8;
+  gap: 5px;
+}
+
 @media (prefers-color-scheme: dark) {
   html {
     color-scheme: dark;

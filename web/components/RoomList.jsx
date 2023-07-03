@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 import { useRouter } from 'next/router';
 import { Exo } from 'next/font/google';
@@ -27,15 +27,37 @@ const RoomInfo = ({ isVisible, room }) => {
   );
 };
 
-const RoomListItem = ({ room, searchRegex }) => {
+const RoomListItem = ({ room, searchRegex, roomListRef }) => {
+  const roomListItemRef = useRef(null);
+
   const [clicked, setClicked] = useState(false);
+  const [prevScrollPos, setPrevScrollPos] = useState(0);
 
   const router = useRouter();
 
   const roomLink = `/room/${room.roomName}`;
 
+  useEffect(() => {
+    console.log('roomListItem clicked');
+    if (clicked && roomListRef.current && roomListItemRef.current) {
+      setPrevScrollPos(roomListRef.current.scrollTop);
+      console.log('scrolling to roomListItem')
+      roomListItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
+    } else {
+      console.log(`scrolling to pos: ${prevScrollPos}`);
+      roomListRef.current.scrollTo({
+        top: prevScrollPos,
+        behavior: 'smooth',
+      })
+    }
+  }, [clicked]);
+
   return (
   <div
+    ref={roomListItemRef}
     className={styles.roomListItem}
     onClick={() => setClicked(!clicked)}
   >
@@ -101,6 +123,8 @@ export default function RoomList({ isVisible }) {
   const [error, setError] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [searchRegex, setSearchRegex] = useState(null);
+
+  const roomListRef = useRef(null);
 
   useEffect(() => {
     const fetchRoomList = async () => {
@@ -186,8 +210,9 @@ export default function RoomList({ isVisible }) {
         />
       </div>
       <div
+        ref={roomListRef}
         className={isVisible ? styles.roomList : 'hidden'}
-        onClick={(e) => { e.stopPropagation() }}
+        onClick={(e) => e.stopPropagation()}
       >
       {
         roomList.length &&
@@ -196,7 +221,7 @@ export default function RoomList({ isVisible }) {
           .map((room, idx) => {
             return <RoomListItem
                      key={idx}
-                     {...{room, searchRegex}}
+                     {...{room, searchRegex, roomListRef}}
                    />
           }) ||
         <p className={exo.className}>there are currently no rooms</p>

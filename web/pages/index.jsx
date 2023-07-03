@@ -1,9 +1,12 @@
 import { Exo } from 'next/font/google';
+import Image from 'next/image';
 import styles from '@/styles/Home.module.css';
 
 import React, { useCallback, useContext, useEffect, useState, useRef } from 'react';
 
 import { CSSTransition } from 'react-transition-group';
+
+import { Tooltip } from 'react-tooltip';
 
 import { GameContext } from '@/GameContext';
 
@@ -12,10 +15,52 @@ import Game from '@/components/Game';
 
 const exo = Exo({ subsets: ['latin', 'latin-ext'] });
 
+const UnsupportedDeviceToolTip = ({ isUnsupportedDevice, showGame }) => {
+  if (!isUnsupportedDevice || showGame)
+    return;
+
+  // unfortunately, I cannot get the ref prop to work on <a>
+  //
+  // there is no way (that I know of) to open tooltip by default while keeping the
+  // native behavior of closing on position changes (grid items opening/closing),
+  // so we have to manually click the <a> elem
+  setTimeout(() => document.querySelector('#unsupportedDeviceToolTipIcon')?.click(), 0);
+
+  return (
+    <>
+      <a
+        id='unsupportedDeviceToolTipIcon'
+        style={{
+          display: 'flex',
+          padding: '5px',
+        }}
+        data-tooltip-id="unsupportedDeviceToolTip"
+      >
+        <Image
+          src={'/warningIcon.png'}
+          width={29}
+          height={29}
+          alt={'<UnsupportedDevice warning icon>'}
+        />
+      </a>
+      <Tooltip
+        id="unsupportedDeviceToolTip"
+        style={{ zIndex: 5 }}
+        openOnClick={true}
+      >
+        <p>
+          this device's dimensions are not currently supported.
+        </p>
+      </Tooltip>
+    </>
+  );
+};
+
 export default function Home() {
   const { gameOpts, setGameOpts } = useContext(GameContext);
 
   //const [newGameFormData, setNewGameFormData] = useState(null);
+  const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(false);
   const [showGame, setShowGame] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
 
@@ -27,6 +72,9 @@ export default function Home() {
       setShowGame,
       goHome: gameOpts.goHome ? false : undefined,
     }));
+
+    const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+    setIsUnsupportedDevice(screenWidth < 1080);
   }, []);
 
   useEffect(() => {
@@ -38,6 +86,7 @@ export default function Home() {
 
   return (
     <>
+      <UnsupportedDeviceToolTip {...{isUnsupportedDevice, showGame }} />
       <Game isVisible={showGame} setShowGame={setShowGame} />
       <HomeGrid
         {...{setShowGrid}}
@@ -45,73 +94,4 @@ export default function Home() {
       />
     </>
   );
-    {/*<>
-      <main className={styles.main}>
-        <div className={styles.header}>
-          <div className={`${styles.logo} ${styles.unselectable}`}>
-            <h1>g</h1>
-            <Image
-              ref={logoImgRef}
-              className={styles.logoImgSpin}
-              priority
-              src={'/pokerchip3.png'}
-              width={75}
-              height={75}
-              alt='o'
-              onClick={toggleSpin}
-            />
-            <h1>poker</h1>
-          </div>
-          <p>current games: {'...'}</p>
-        </div>
-
-        <div className={styles.center} id='center'>
-          {/*<CSSTransition
-            in={showGame}
-            timeout={500}
-            classNames={{
-              enter: styles.fadeEnter,
-              enterActive: styles.fadeEnterActive,
-              exit: styles.fadeExit,
-              exitActive: styles.fadeExitActive,
-            }}
-            unmountOnExit
-            onExited={() => {
-              setShowGame(false);
-              setShowGrid(true);
-            }}
-          >
-            <Game
-              isVisible={showGame}
-              setShowGame={setShowGame}
-            />
-          </CSSTransition>*}
-          <Game isVisible={showGame} setShowGame={setShowGame} />
-          <HomeGrid
-            {...{setShowGrid}}
-            isVisible={showGrid}
-          />
-          {/*<CSSTransition
-            in={showGrid}
-            timeout={500}
-            classNames={{
-              enter: styles.fadeEnter,
-              enterActive: styles.fadeEnterActive,
-              exit: styles.fadeExit,
-              exitActive: styles.fadeExitActive,
-            }}
-            onExited={() => {
-              setShowGrid(false);
-              setShowGame(true);
-            }}
-          >
-            <HomeGrid
-              {...{setShowGrid}}
-              isVisible={showGrid}
-            />
-          </CSSTransition>*}
-        </div>
-      </main>
-    </>
-  )*/}
 }

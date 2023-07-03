@@ -6,22 +6,19 @@ import Head from 'next/head';
 import 'react-tooltip/dist/react-tooltip.css';
 
 import { GameProvider } from '@/GameContext';
+import UnsupportedDevice from '@/components/UnsupportedDevice';
 
 import '@/styles/globals.css'
 
 import homeStyles from '@/styles/Home.module.css';
 
-export default function App({ Component, pageProps, router }) {
+const MainContent = ({ Component, pageProps, router }) => {
   const logoImgRef = useRef(null);
 
   const [headerInfo, setHeaderInfo] = useState('fetching...');
   const [headerError, setHeaderError] = useState(false);
 
   const isHomePage = router.pathname === '/';
-
-  if (!process.env.NEXT_PUBLIC_SHOW_LOG) {
-    console.debug = console.warn = console.log = () => {}; // keep console.error
-  }
 
   const fetchHeaderInfo = useCallback(async () => {
     const URL = `/api/${isHomePage ? 'status' : 'roomCount'}`;
@@ -65,6 +62,67 @@ export default function App({ Component, pageProps, router }) {
 
   fetchHeaderInfo();
 
+  return <>
+    <div className={homeStyles.header}>
+      <div className={`${homeStyles.logo} ${homeStyles.unselectable}`}>
+        <h1>g</h1>
+        <Image
+          ref={logoImgRef}
+          priority
+          src={'/pokerchip3.png'}
+          width={75}
+          height={75}
+          alt='o'
+          onClick={toggleSpin}
+        />
+        <h1>poker</h1>
+      </div>
+      {
+        <p>
+          { isHomePage ? 'server status:' : 'current games:' }
+          &nbsp;
+          <span
+            style={{
+              color: headerError ? 'red' : isHomePage ? 'green' : 'inherit'
+            }}
+          >
+            { headerInfo }
+          </span>
+        </p>
+      }
+    </div>
+    <div className={homeStyles.center} id='center'>
+      <Component {...pageProps} />
+    </div>
+    <footer>
+      <span style={{ fontStyle: 'italic' }}>
+        v0
+      </span>
+      &nbsp;|&nbsp;
+      <a
+        href='https://github.com/bkazemi/gopoker'
+        target='_blank'
+        rel='noopener noreferrer'
+      >
+        src
+      </a>
+    </footer>
+  </>
+};
+
+export default function App({ Component, pageProps, router }) {
+  const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(false);
+
+  if (!process.env.NEXT_PUBLIC_SHOW_LOG) {
+    console.debug = console.warn = console.log = () => {}; // keep console.error
+  }
+
+  // check for bare minimum width
+  useEffect(() => {
+    const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+    setIsUnsupportedDevice(screenWidth < 375);
+  }, []);
+
   return (
     <>
       <Head>
@@ -75,36 +133,11 @@ export default function App({ Component, pageProps, router }) {
       </Head>
       <GameProvider>
         <main className={homeStyles.main}>
-          <div className={homeStyles.header}>
-            <div className={`${homeStyles.logo} ${homeStyles.unselectable}`}>
-              <h1>g</h1>
-              <Image
-                ref={logoImgRef}
-                priority
-                src={'/pokerchip3.png'}
-                width={75}
-                height={75}
-                alt='o'
-                onClick={toggleSpin}
-              />
-              <h1>poker</h1>
-            </div>
-            {
-              <p>
-                { isHomePage ? 'server status: ' : 'current games: ' }
-                <span
-                  style={{
-                    color: headerError ? 'red' : isHomePage ? 'green' : 'inherit'
-                  }}
-                >
-                  { headerInfo }
-                </span>
-              </p>
-            }
-          </div>
-          <div className={homeStyles.center} id='center'>
-            <Component {...pageProps} />
-          </div>
+          {
+            isUnsupportedDevice
+              ? <UnsupportedDevice showHomeBtn={false} />
+              : <MainContent {...{Component, pageProps, router}} />
+          }
         </main>
       </GameProvider>
     </>

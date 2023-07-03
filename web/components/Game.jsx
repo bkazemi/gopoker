@@ -24,6 +24,7 @@ const literata = Literata({
 });
 
 import { decode } from '@msgpack/msgpack';
+import UnsupportedDevice from './UnsupportedDevice';
 
 async function decodeAsync(stream) {
   const chunks = [];
@@ -43,7 +44,7 @@ async function decodeFromBlob(blob) {
   }
 }
 
-export default function Game({ isVisible, setShowGame }) {
+function GamePostDimCheck({ isVisible, setShowGame }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   const [fetchCalled, setFetchCalled] = useState(false);
@@ -138,5 +139,28 @@ export default function Game({ isVisible, setShowGame }) {
         alt='spinner'
       />
     </div>
+  );
+}
+
+export default function Game({ isVisible, setShowGame }) {
+  const {gameOpts, _} = useContext(GameContext);
+
+  const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const isUnsupportedDevice = screenWidth < 1080;
+
+  useEffect(() => {
+    return () => {
+      console.log('game ue ret')
+      setShowGame(false)
+    }
+  }, []);
+
+  if (!isVisible || gameOpts.goHome)
+    return;
+
+  return (
+    isUnsupportedDevice
+      ? <UnsupportedDevice showHomeBtn={true} />
+      : <GamePostDimCheck {...{isVisible, setShowGame}} />
   );
 }

@@ -13,6 +13,7 @@ import { cloneDeep } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 
 import { GameContext } from '@/GameContext';
+import UnsupportedDevice from '@/components/UnsupportedDevice';
 import NewGameForm from '@/components/NewGameForm';
 import Tablenew from '@/components/Tablenew';
 
@@ -189,7 +190,7 @@ const RoomNotFound = ({ errMsg, router }) => (
     </div>
 );
 
-export default function Room() {
+function RoomPostDimCheck() {
   const router = useRouter();
   const { roomID } = router.query;
 
@@ -269,5 +270,21 @@ export default function Room() {
           )
         }
       </CSSTransition>
+  );
+}
+
+export default function Room() {
+  //const {gameOpts, setGameOpts} = useContext(GameContext);
+
+  const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const isUnsupportedDevice = screenWidth < 1080;
+
+  //if (gameOpts.goHome)
+  //  return;
+
+  return (
+    isUnsupportedDevice
+      ? <UnsupportedDevice showHomeBtn={true} />
+      : <RoomPostDimCheck />
   );
 }
