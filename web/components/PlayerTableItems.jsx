@@ -6,7 +6,7 @@ import styles from '@/styles/PlayerTableItems.module.css';
 
 import { TABLE_STATE, cardToImagePath, PLAYERSTATE } from '@/lib/libgopoker';
 
-const Cards = ({ client, isYourPlayer, side, tableState }) => {
+const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
   if (
     tableState === TABLE_STATE.NOT_STARTED ||
     client.Player.Action.Action === PLAYERSTATE.FOLD ||
@@ -53,9 +53,9 @@ const Cards = ({ client, isYourPlayer, side, tableState }) => {
         }) || null
       }
     </div>
-};
+});
 
-const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
+const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
   if (tableState === TABLE_STATE.NOT_STARTED ||
      (!isDealer && !isBigBlind && !isSmallBlind))
     return;
@@ -91,7 +91,7 @@ const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
       }
     </div>
   );
-};
+});
 
 /*const seatImgMap = new Map([
   ['dealer', '/D.png'],
@@ -99,7 +99,7 @@ const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
   ['bigBlind', '/BB.png']
 ]);*/
 
-export default function PlayerTableItems({
+function PlayerTableItems({
   client, isYourPlayer, dealerAndBlinds,
   side, gridRow, gridCol, tableState
 }) {
@@ -154,3 +154,5 @@ export default function PlayerTableItems({
     </div>
   );
 }
+
+export default React.memo(PlayerTableItems);

@@ -31,7 +31,7 @@ const maxPlayerOpts = [
   { value: 7, label: '7'},
 ];
 
-const RequiredFields = ({
+const RequiredFields = React.memo(({
   goHome,
   isSettings, isDirectLink, isAdmin,
   roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
@@ -131,9 +131,9 @@ const RequiredFields = ({
       </button>
     </div>
   </>
-);
+));
 
-export default function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
+function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   const { Name, Password } = gameOpts.websocketOpts?.Client?.Settings || {Name: '', Password: ''};
@@ -240,3 +240,5 @@ export default function NewGameForm({ isVisible, isSettings, isDirectLink, setMo
     </div>
   );
 }
+
+export default React.memo(NewGameForm);

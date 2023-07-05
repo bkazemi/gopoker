@@ -13,7 +13,10 @@ import styles from '@/styles/Player.module.css';
 
 const literata = Literata({ subsets: ['latin'], weight: '500' });
 
-const YourPlayerActions = ({ isYourPlayer, isSmallBlind, curPlayer, tableState, client, keyPressed, socket }) => {
+const YourPlayerActions = React.memo(({
+  isYourPlayer, isSmallBlind, curPlayer, tableState, client, keyPressed,
+  socket,
+}) => {
   const betInputRef = useRef(null);
   const checkBtnRef = useRef(null);
   const callBtnRef = useRef(null);
@@ -225,9 +228,9 @@ const YourPlayerActions = ({ isYourPlayer, isSmallBlind, curPlayer, tableState, 
       </div>
     </div>
   );
-};
+});
 
-const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
+const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
   if (tableState === TABLE_STATE.NOT_STARTED ||
      (!isDealer && !isBigBlind && !isSmallBlind))
     return;
@@ -263,9 +266,9 @@ const Positions = ({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
       }
     </div>
   );
-};
+});
 
-export default function Player({
+function Player({
   client, socket, tableState, curPlayer,
   playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer, keyPressed
 }) {
@@ -417,3 +420,5 @@ export default function Player({
     </div>
   );
 }
+
+export default React.memo(Player);

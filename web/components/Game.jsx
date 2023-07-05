@@ -44,7 +44,7 @@ async function decodeFromBlob(blob) {
   }
 }
 
-function GamePostDimCheck({ isVisible, setShowGame }) {
+const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   const [fetchCalled, setFetchCalled] = useState(false);
@@ -54,7 +54,7 @@ function GamePostDimCheck({ isVisible, setShowGame }) {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('Game mounted isVisible:', isVisible, 'fetchCalled:', fetchCalled);
+    console.log('Game mounted isVisible:', isVisible, 'fetchCalled:', fetchCalled, 'gameOpts:', gameOpts);
 
     return () => {
       console.log('Game unmounted');
@@ -65,7 +65,7 @@ function GamePostDimCheck({ isVisible, setShowGame }) {
     if (isVisible && !fetchCalled) {
       const createNewRoom = async () => {
         const { RoomName, Lock, Password, NumSeats } = gameOpts.websocketOpts.Client.Settings.Admin;
-        console.log('before createNewRoom: gameOpts.websocketOpts:', gameOpts.websocketOpts);
+        console.log('before createNewRoom: gameOpts', gameOpts);
         try {
           const res = await fetch('/api/new', {
             method: 'POST',
@@ -88,7 +88,7 @@ function GamePostDimCheck({ isVisible, setShowGame }) {
           setFetchCalled(true);
           setGameOpts(gameOpts => ({
             ...gameOpts,
-            roomURL, creatorToken, setShowGame
+            roomURL, creatorToken, setShowGame,
           }));
 
           router.push(data.URL);
@@ -140,27 +140,14 @@ function GamePostDimCheck({ isVisible, setShowGame }) {
       />
     </div>
   );
-}
+});
 
-export default function Game({ isVisible, setShowGame }) {
-  const {gameOpts, _} = useContext(GameContext);
-
-  const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
-  const isUnsupportedDevice = screenWidth < 1080;
-
-  useEffect(() => {
-    return () => {
-      console.log('game ue ret')
-      setShowGame(false)
-    }
-  }, []);
-
-  if (!isVisible || gameOpts.goHome)
-    return;
-
+function Game({ isVisible, isUnsupportedDevice, setShowGame }) {
   return (
     isUnsupportedDevice
-      ? <UnsupportedDevice showHomeBtn={true} />
+      ? <UnsupportedDevice isVisible={isVisible} showHomeBtn={true} />
       : <GamePostDimCheck {...{isVisible, setShowGame}} />
   );
 }
+
+export default React.memo(Game);

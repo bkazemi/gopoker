@@ -11,7 +11,7 @@ import { TABLE_LOCK } from '@/lib/libgopoker';
 
 import styles from '@/styles/RoomList.module.css';
 
-const RoomInfo = ({ isVisible, room }) => {
+const RoomInfo = React.memo(({ isVisible, room }) => {
   if (!isVisible)
     return;
 
@@ -25,9 +25,9 @@ const RoomInfo = ({ isVisible, room }) => {
       <p>password protected: {room.needPassword ? 'yes' : 'no'}</p>
     </div>
   );
-};
+});
 
-const RoomListItem = ({ room, searchRegex, roomListRef }) => {
+const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
   const roomListItemRef = useRef(null);
 
   const [clicked, setClicked] = useState(false);
@@ -113,9 +113,9 @@ const RoomListItem = ({ room, searchRegex, roomListRef }) => {
     />
   </div>
   );
-};
+});
 
-export default function RoomList({ isVisible }) {
+function RoomList({ isVisible }) {
   const [curRoomCnt, setCurRoomCnt] = useState('fetching room count...');
 
   const [roomList, setRoomList] = useState([]);
@@ -230,3 +230,5 @@ export default function RoomList({ isVisible }) {
     </>
   );
 }
+
+export default React.memo(RoomList);

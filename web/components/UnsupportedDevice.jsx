@@ -12,7 +12,7 @@ import { GameContext } from '@/GameContext';
 
 import styles from '@/styles/UnsupportedDevice.module.css';
 
-export default function UnsupportedDevice({ showHomeBtn }) {
+function UnsupportedDevice({ isVisible, showHomeBtn }) {
   const router = useRouter();
 
   const {gameOpts, setGameOpts} = useContext(GameContext);
@@ -32,6 +32,9 @@ export default function UnsupportedDevice({ showHomeBtn }) {
       router.push('/');
   }, []);
 
+  if (!isVisible)
+    return;
+
   return (
     <div className={cx(styles.container, literata.className)}>
       <h1>Your device's dimensions are not currently supported</h1>
@@ -39,3 +42,5 @@ export default function UnsupportedDevice({ showHomeBtn }) {
     </div>
   );
 }
+
+export default React.memo(UnsupportedDevice);

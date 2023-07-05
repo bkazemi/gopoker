@@ -19,7 +19,10 @@ const OverpassMono = Overpass_Mono({ subsets: ['latin', 'latin-ext', 'cyrillic',
 import { GameContext } from '@/GameContext';
 import { NewClient } from '@/lib/libgopoker';
 
-const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData, setGameOpts }) => {
+const ModalContent = React.memo(({
+  modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData,
+  setGameOpts
+}) => {
   const router = useRouter();
 
   const [pageIdx, setPageIdx] = useState(0);
@@ -165,9 +168,9 @@ const ModalContent = ({ modalType, modalTxt, modalOpen, setModalOpen, setShowGam
       </>
     );
   }
-};
+});
 
-export default function TableModal({
+function TableModal({
   modalType, modalTxt, setModalTxt,
   modalOpen, setModalOpen, setShowGame, setFormData
 }) {
@@ -220,3 +223,5 @@ export default function TableModal({
     </Modal>
   );
 }
+
+export default React.memo(TableModal);

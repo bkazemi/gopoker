@@ -50,6 +50,13 @@ const Connect = () => {
 
     return () => {
       console.log('Connect unmounted');
+      if (creatorToken) { // token invalidated after first use
+        console.log('Connect: removing creatorToken');
+        setGameOpts(opts => ({
+          ...opts,
+          creatorToken: undefined,
+        }));
+      }
     };
   }, []);
 
@@ -284,7 +291,7 @@ export default function Room() {
 
   return (
     isUnsupportedDevice
-      ? <UnsupportedDevice showHomeBtn={true} />
+      ? <UnsupportedDevice isVisible={true} showHomeBtn={true} />
       : <RoomPostDimCheck />
   );
 }

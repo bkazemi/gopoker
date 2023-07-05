@@ -10,7 +10,7 @@ import styles from '@/styles/Chat.module.css';
 
 const vt323 = VT323({ subsets: ['latin', 'latin-ext', 'vietnamese'], weight: '400' });
 
-export default function Chat({ socket, yourClient, msgs, chatInputRef }) {
+function Chat({ socket, yourClient, msgs, chatInputRef }) {
   const chatMsgsRef = useRef(null);
 
   const [msg, setMsg] = useState('');
@@ -117,3 +117,5 @@ export default function Chat({ socket, yourClient, msgs, chatInputRef }) {
     </div>
   );
 }
+
+export default React.memo(Chat);

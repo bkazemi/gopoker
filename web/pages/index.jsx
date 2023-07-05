@@ -82,12 +82,15 @@ export default function Home() {
       setShowGrid(false);
     else if (!showGame && !showGrid)
       setShowGrid(true);
-  }, [showGame]);
+  }, [showGame, showGrid]);
 
   return (
     <>
       <UnsupportedDeviceToolTip {...{isUnsupportedDevice, showGame }} />
-      <Game isVisible={showGame} setShowGame={setShowGame} />
+      <Game
+        {...{isUnsupportedDevice, setShowGame}}
+        isVisible={showGame}
+      />
       <HomeGrid
         {...{setShowGrid}}
         isVisible={showGrid}

@@ -12,7 +12,7 @@ import styles from '@/styles/TableCenter.module.css';
 const literata = Literata({ subsets: ['latin'], weight: '500' });
 const dmMono = DM_Mono({ subsets: ['latin', 'latin-ext'], weight: '500' });
 
-export default function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, socket }) {
+function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, socket }) {
   return (
     <div>
       {
@@ -69,3 +69,5 @@ export default function TableCenter({ isAdmin, tableState, community, mainPot, y
     </div>
   );
 }
+
+export default React.memo(TableCenter);

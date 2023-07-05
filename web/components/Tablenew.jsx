@@ -20,7 +20,7 @@ import Chat from '@/components/Chat';
 
 import styles from '@/styles/Tablenew.module.css';
 
-const PlayerList = ({
+const PlayerList = React.memo(({
   players, curPlayer, playerHead, dealerAndBlinds, yourClient, sideNum, innerTableItem,
   tableState, keyPressed, socket
 }) => {
@@ -49,7 +49,7 @@ const PlayerList = ({
           else
             gridCol = (~~(client.Player.TablePos / 4) % 3) + 1;
 
-          console.log(`PlayerList: sideNum: ${sideNum} .TablePos: ${client.Player.TablePos} gridRow: ${gridRow} gridCol: ${gridCol}`)
+          //console.log(`PlayerList: sideNum: ${sideNum} .TablePos: ${client.Player.TablePos} gridRow: ${gridRow} gridCol: ${gridCol}`)
 
           return innerTableItem
             ? <PlayerTableItems
@@ -64,7 +64,7 @@ const PlayerList = ({
       })
     }
   </>);
-};
+});
 
 const nullPlayer = {
   Name: 'vacant seat',
