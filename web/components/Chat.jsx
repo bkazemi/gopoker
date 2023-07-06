@@ -118,4 +118,6 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
   );
 }
 
+Chat.displayName = 'Chat';
+
 export default React.memo(Chat);

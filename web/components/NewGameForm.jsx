@@ -133,6 +133,8 @@ const RequiredFields = React.memo(({
   </>
 ));
 
+RequiredFields.displayName = 'RequiredFields';
+
 function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
@@ -240,5 +242,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
     </div>
   );
 }
+
+NewGameForm.displayName = 'NewGameForm';
 
 export default React.memo(NewGameForm);

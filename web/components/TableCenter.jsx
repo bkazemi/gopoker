@@ -70,4 +70,6 @@ function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, sock
   );
 }
 
+TableCenter.displayName = 'TableCenter';
+
 export default React.memo(TableCenter);

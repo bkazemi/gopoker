@@ -37,10 +37,12 @@ function UnsupportedDevice({ isVisible, showHomeBtn }) {
 
   return (
     <div className={cx(styles.container, literata.className)}>
-      <h1>Your device's dimensions are not currently supported</h1>
+      <h1>{`Your device's dimensions are not currently supported`}</h1>
       { showHomeBtn && <button onClick={goHome}>go home</button> }
     </div>
   );
 }
+
+UnsupportedDevice.displayName = 'UnsupportedDevice';
 
 export default React.memo(UnsupportedDevice);

@@ -142,6 +142,8 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
   );
 });
 
+GamePostDimCheck.displayName = 'GamePostDimCheck';
+
 function Game({ isVisible, isUnsupportedDevice, setShowGame }) {
   return (
     isUnsupportedDevice
@@ -149,5 +151,7 @@ function Game({ isVisible, isUnsupportedDevice, setShowGame }) {
       : <GamePostDimCheck {...{isVisible, setShowGame}} />
   );
 }
+
+Game.displayName = 'Game';
 
 export default React.memo(Game);

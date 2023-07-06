@@ -170,6 +170,8 @@ const ModalContent = React.memo(({
   }
 });
 
+ModalContent.displayName = 'ModalContent';
+
 function TableModal({
   modalType, modalTxt, setModalTxt,
   modalOpen, setModalOpen, setShowGame, setFormData
@@ -223,5 +225,7 @@ function TableModal({
     </Modal>
   );
 }
+
+TableModal.displayName = 'TableModal';
 
 export default React.memo(TableModal);

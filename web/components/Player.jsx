@@ -230,6 +230,8 @@ const YourPlayerActions = React.memo(({
   );
 });
 
+YourPlayerActions.displayName = 'YourPlayerActions';
+
 const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
   if (tableState === TABLE_STATE.NOT_STARTED ||
      (!isDealer && !isBigBlind && !isSmallBlind))
@@ -267,6 +269,8 @@ const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }
     </div>
   );
 });
+
+Positions.displayName = 'Positions';
 
 function Player({
   client, socket, tableState, curPlayer,
@@ -420,5 +424,7 @@ function Player({
     </div>
   );
 }
+
+Player.displayName = 'Player';
 
 export default React.memo(Player);

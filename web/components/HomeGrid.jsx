@@ -122,4 +122,6 @@ function HomeGrid({ isVisible }) {
   </div>;
 }
 
+HomeGrid.displayName = 'HomeGrid';
+
 export default React.memo(HomeGrid);

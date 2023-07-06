@@ -27,6 +27,8 @@ const RoomInfo = React.memo(({ isVisible, room }) => {
   );
 });
 
+RoomInfo.displayName = 'RoomInfo';
+
 const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
   const roomListItemRef = useRef(null);
 
@@ -114,6 +116,8 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
   </div>
   );
 });
+
+RoomListItem.displayName = 'RoomListItem';
 
 function RoomList({ isVisible }) {
   const [curRoomCnt, setCurRoomCnt] = useState('fetching room count...');
@@ -230,5 +234,7 @@ function RoomList({ isVisible }) {
     </>
   );
 }
+
+RoomList.displayName = 'RoomList';
 
 export default React.memo(RoomList);

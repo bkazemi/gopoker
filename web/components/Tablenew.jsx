@@ -66,6 +66,8 @@ const PlayerList = React.memo(({
   </>);
 });
 
+PlayerList.displayName = 'PlayerList';
+
 const nullPlayer = {
   Name: 'vacant seat',
   Action: {Action: NETDATA.VACANT_SEAT},

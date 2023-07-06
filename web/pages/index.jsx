@@ -49,7 +49,7 @@ const UnsupportedDeviceToolTip = ({ isUnsupportedDevice, showGame }) => {
         openOnClick={true}
       >
         <p>
-          this device's dimensions are not currently supported.
+          {`this device's dimensions are not currently supported.`}
         </p>
       </Tooltip>
     </>

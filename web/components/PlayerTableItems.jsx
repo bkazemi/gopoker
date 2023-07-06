@@ -55,6 +55,8 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
     </div>
 });
 
+Cards.displayName = 'Cards';
+
 const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
   if (tableState === TABLE_STATE.NOT_STARTED ||
      (!isDealer && !isBigBlind && !isSmallBlind))
@@ -92,6 +94,8 @@ const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }
     </div>
   );
 });
+
+Positions.displayName = 'Positions';
 
 /*const seatImgMap = new Map([
   ['dealer', '/D.png'],
@@ -154,5 +158,7 @@ function PlayerTableItems({
     </div>
   );
 }
+
+PlayerTableItems.displayName = 'PlayerTableItems';
 
 export default React.memo(PlayerTableItems);
