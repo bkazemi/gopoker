@@ -1,9 +1,10 @@
-import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Literata } from 'next/font/google';
+import dynamic from 'next/dynamic';
 
 import useSWRSubscription from 'swr/subscription';
 
@@ -13,9 +14,12 @@ import { cloneDeep } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 
 import { GameContext } from '@/GameContext';
-import UnsupportedDevice from '@/components/UnsupportedDevice';
 import NewGameForm from '@/components/NewGameForm';
 import Tablenew from '@/components/Tablenew';
+
+const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice'), {
+  ssr: false,
+});
 
 import config from '@/serverConfig';
 
@@ -48,6 +52,11 @@ const Connect = () => {
     console.log('Connect mounted');
     console.log('Connect: roomURL: ', roomURL);
 
+    setGameOpts(opts => ({
+      ...opts,
+      isCompactRoom: window.innerWidth <= 1920,
+    }));
+
     return () => {
       console.log('Connect unmounted');
       if (creatorToken) { // token invalidated after first use
@@ -55,6 +64,7 @@ const Connect = () => {
         setGameOpts(opts => ({
           ...opts,
           creatorToken: undefined,
+          isCompactRoom: false,
         }));
       }
     };
@@ -96,8 +106,8 @@ const Connect = () => {
     }
 
     return () => {
-      gameSocket.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
-      gameSocket.close(1000, 'web client exited');
+      gameSocket?.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
+      gameSocket?.close(1000, 'web client exited');
     }
   });
 
@@ -238,11 +248,14 @@ function RoomPostDimCheck() {
   }, [roomID]);
 
   useEffect(() => {
-    if (!reset && websocketOpts && !roomURL)
+    if (!reset && websocketOpts && !roomURL) {
+      const roomURL = `${config.gopokerServerWSURL}/room/${roomID}/web`;
       setGameOpts(gameOpts => ({
         ...gameOpts,
-        roomURL: `${config.gopokerServerWSURL}/room/${roomID}/web`
+        roomURL,
       }));
+      window.roomURL = roomURL;
+    }
   }, [websocketOpts, roomURL, reset]);
 
   if (gameOpts.goHome)
@@ -282,12 +295,22 @@ function RoomPostDimCheck() {
 
 export default function Room() {
   //const {gameOpts, setGameOpts} = useContext(GameContext);
+  const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(false);
 
-  const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
-  const isUnsupportedDevice = screenWidth < 1080;
+  const [isReadyForRender, setIsReadyForRender] = useState(false);
+
+  useEffect(() => {
+    const screenWidth = window?.innerWidth;
+    setIsUnsupportedDevice(screenWidth < 1080);
+
+    setIsReadyForRender(true);
+  }, []);
 
   //if (gameOpts.goHome)
   //  return;
+
+  if (!isReadyForRender)
+    return;
 
   return (
     isUnsupportedDevice

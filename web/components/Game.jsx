@@ -90,6 +90,7 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
             ...gameOpts,
             roomURL, creatorToken, setShowGame,
           }));
+          window.roomURL = roomURL;
 
           router.push(data.URL);
         } catch (err) {

@@ -23,7 +23,7 @@
   border: 1px solid;
   padding: 1rem;
   word-wrap: break-word;
-  overflow-y: scroll;
+  overflow-y: auto;
   scroll-behavior: smooth;
   font-size: 19px;
 }

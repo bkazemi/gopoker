@@ -35,6 +35,7 @@ const ModalContent = React.memo(({
       reset: true,
       goHome: true,
     }));
+    window.roomURL = undefined;
     router.push('/');
   };
 

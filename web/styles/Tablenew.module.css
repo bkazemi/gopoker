@@ -44,13 +44,17 @@
   grid-template-rows: 20% 60% 20%;
   grid-template-columns: 20% 60% 20%;
   grid-template-areas:
-    ".    top    ."
-    "left center right"
-    ".    bottom .";
+    "header top    ."
+    "left   center right"
+    ".      bottom .";
   width: 100%;
   height: 100%;
   min-height: 1110px;
   max-width: 2700px;
+}
+
+.compactTableGrid {
+  min-height: 1050px;
 }
 
 .tableGrid > * {
@@ -88,7 +92,7 @@
   width: 80%;
   height: 100%;
   padding: 10px;
-  overflow-y: scroll;
+  overflow-y: auto;
 }
 
 .tableGridItem.topPlayers {
@@ -112,7 +116,7 @@
   height: 80%;
   padding: 10px;
   text-align: center;
-  overflow-x: scroll;
+  overflow-x: auto;
   max-width: 500px;
 }
 

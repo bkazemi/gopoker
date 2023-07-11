@@ -1,19 +1,29 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useContext, useEffect } from 'react';
 
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 
+import cx from 'classnames';
+
+import { GameContext } from '@/GameContext';
+
 import homeStyles from '@/styles/Home.module.css';
 
-export default function Header() {
+export default function Header({ isTableHeader }) {
+  const {gameOpts, setGameOpts} = useContext(GameContext);
+
   const logoImgRef = useRef(null);
+
+  const router = useRouter();
 
   const [headerInfo, setHeaderInfo] = useState('fetching...');
   const [headerError, setHeaderError] = useState(false);
 
-  const router = useRouter();
+  const [isHomePage, setIsHomePage] = useState(router.pathname === '/');
 
-  const isHomePage = router.pathname === '/';
+  const [isCompactRoom, setIsCompactRoom] =
+    useState(router.pathname === '/room/[roomID]' && gameOpts.roomURL
+      && window?.innerWidth <= 1920);
 
   const fetchHeaderInfo = useCallback(async () => {
     const URL = `/api/${isHomePage ? 'status' : 'roomCount'}`;
@@ -30,20 +40,36 @@ export default function Header() {
       setHeaderInfo(isHomePage ? 'down' : 'error');
       setHeaderError(true);
     }
-  }, [router.pathname]);
+  }, [isHomePage]);
 
   const toggleSpin = useCallback(() => {
-    if (logoImgRef.current.classList.contains(homeStyles.pauseAnimation))
-      logoImgRef.current.classList.remove(homeStyles.pauseAnimation);
+    if (logoImgRef.current?.classList.contains(homeStyles.pauseAnimation))
+      logoImgRef.current?.classList.remove(homeStyles.pauseAnimation);
     else
-      logoImgRef.current.classList.add(homeStyles.pauseAnimation);
+      logoImgRef.current?.classList.add(homeStyles.pauseAnimation);
   }, [logoImgRef]);
 
-  fetchHeaderInfo();
+  useEffect(() => {
+    setIsHomePage(router.pathname === '/');
+    fetchHeaderInfo();
+  }, [router.pathname, fetchHeaderInfo]);
+
+  useEffect(() => {
+    const isConnectedRoom = router.pathname === '/room/[roomID]' && gameOpts.roomURL;
+
+    setIsCompactRoom(isConnectedRoom && window.innerWidth <= 1920);
+  }, [router.pathname, gameOpts.roomURL]);
+
+  if ((isCompactRoom && !isTableHeader) || (!isCompactRoom && isTableHeader))
+    return;
 
   return (
-    <div className={homeStyles.header}>
-      <div className={`${homeStyles.logo} ${homeStyles.unselectable}`}>
+    <div className={cx(
+        homeStyles.header,
+        isCompactRoom && homeStyles.compactHeader
+      )}
+    >
+      <div className={cx(homeStyles.logo, homeStyles.unselectable)}>
         <h1>g</h1>
         <Image
           ref={logoImgRef}
@@ -56,19 +82,17 @@ export default function Header() {
         />
         <h1>poker</h1>
       </div>
-      {
-        <p>
-          { isHomePage ? 'server status:' : 'current games:' }
-          &nbsp;
-          <span
-            style={{
-              color: headerError ? 'red' : isHomePage ? 'green' : 'inherit'
-            }}
-          >
-            { headerInfo }
-          </span>
-        </p>
-      }
+      <p>
+        { isHomePage ? 'server status:' : 'current games:' }
+        &nbsp;
+        <span
+          style={{
+            color: headerError ? 'red' : isHomePage ? 'green' : 'inherit'
+          }}
+        >
+          { headerInfo }
+        </span>
+      </p>
     </div>
   );
 }

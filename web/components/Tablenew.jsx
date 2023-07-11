@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useCallback, useContext } from 'rea
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import { DM_Mono, VT323 } from 'next/font/google';
+import dynamic from 'next/dynamic';
 
 const dmMono = DM_Mono({ subsets: [ 'latin', 'latin-ext' ], weight: '500' });
 const vt323 = VT323({ subsets: ['latin', 'latin-ext', 'vietnamese'], weight: '400' });
@@ -17,6 +18,10 @@ import TableCenter from '@/components/TableCenter';
 import PlayerTableItems from '@/components/PlayerTableItems';
 import Player from '@/components/Player';
 import Chat from '@/components/Chat';
+
+const Header = dynamic(() => import('@/components/Header'), {
+  ssr: false,
+});
 
 import styles from '@/styles/Tablenew.module.css';
 
@@ -459,7 +464,15 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       {...{modalType, modalTxt, setModalTxt, modalOpen, setModalOpen, setShowGame}}
       setFormData={setSettingsFormData}
     />
-    <div className={cx(styles.tableGrid, dmMono.className)} id='tableGrid'>
+    <div
+      className={cx(
+        styles.tableGrid,
+        dmMono.className,
+        gameOpts.isCompactRoom && styles.compactTableGrid
+      )}
+      id='tableGrid'
+    >
+      <Header isTableHeader={true} />
       <div
         id='topPlayers'
         className={cx(
