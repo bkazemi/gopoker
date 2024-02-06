@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useRef } from 'react';
 
 import { useRouter } from 'next/router';
 import Image from 'next/image';
@@ -38,6 +38,7 @@ import { decode } from '@msgpack/msgpack';
 const Connect = () => {
   const {gameOpts, setGameOpts} = useContext(GameContext);
   const [socket, setSocket] = useState(null);
+  const creatorTokenRef = useRef(null);
 
   const { roomURL, creatorToken, setShowGame } = gameOpts;
   let { websocketOpts } = gameOpts;
@@ -46,10 +47,12 @@ const Connect = () => {
     console.log(`Connect: setting password to creator token (${creatorToken})`);
     websocketOpts = cloneDeep(websocketOpts);
     websocketOpts.Client.Settings.Password = creatorToken;
+    creatorTokenRef.current = creatorToken;
   }
 
   useEffect(() => {
     console.log('Connect mounted');
+    // eslint-disable-next-line
     console.log('Connect: roomURL: ', roomURL);
 
     setGameOpts(opts => ({
@@ -59,7 +62,7 @@ const Connect = () => {
 
     return () => {
       console.log('Connect unmounted');
-      if (creatorToken) { // token invalidated after first use
+      if (creatorTokenRef.current) { // token invalidated after first use
         console.log('Connect: removing creatorToken');
         setGameOpts(opts => ({
           ...opts,
@@ -68,7 +71,7 @@ const Connect = () => {
         }));
       }
     };
-  }, []);
+  }, [setGameOpts]);
 
   // FIXME: when a player is eliminated, NetDataUpdatePlayer, NetDataPlayerLeft & NetDataEliminated
   // sometimes are being processed out of order, due to async nature of SWR
@@ -161,9 +164,9 @@ const Connect = () => {
   );
 }
 
-const CheckRoom = () => (
+const Spinner = ({ isCheckRoom }) => (
   <div className={gameStyles.spinner}>
-    <p className={literata.className}>checking if room exists...</p>
+    { isCheckRoom && <p className={literata.className}>checking if room exists...</p> }
     <Image
       src='/pokerchip3.png'
       width={100} height={100}
@@ -218,6 +221,10 @@ function RoomPostDimCheck() {
   const [roomNotFound, setRoomNotFound] = useState(undefined);
   const [checkRoomErr, setCheckRoomErr] = useState('');
 
+  // creatorToken is guaranteed to be set before it's consumed in the
+  // checkRoom useEffect
+  const creatorToken = gameOpts.creatorToken;
+
   useEffect(() => {
     const checkRoom = async () => {
       try {
@@ -241,7 +248,7 @@ function RoomPostDimCheck() {
       }
     }
 
-    if (gameOpts.creatorToken)
+    if (creatorToken)
       setRoomNotFound(false);
     else
       roomID && checkRoom();
@@ -256,7 +263,7 @@ function RoomPostDimCheck() {
       }));
       window.roomURL = roomURL;
     }
-  }, [websocketOpts, roomURL, reset]);
+  }, [websocketOpts, roomURL, reset, setGameOpts]);
 
   if (gameOpts.goHome)
     return;
@@ -279,7 +286,7 @@ function RoomPostDimCheck() {
         }}
       >
         {
-          (roomNotFound === undefined && <CheckRoom />) ||
+          (roomNotFound === undefined && <Spinner isCheckRoom={true} />) ||
           (
             (roomNotFound && <RoomNotFound errMsg={checkRoomErr} router={router} />) ||
             (
@@ -310,7 +317,7 @@ export default function Room() {
   //  return;
 
   if (!isReadyForRender)
-    return;
+    return <Spinner />
 
   return (
     isUnsupportedDevice

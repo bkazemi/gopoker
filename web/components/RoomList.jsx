@@ -33,7 +33,7 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
   const roomListItemRef = useRef(null);
 
   const [clicked, setClicked] = useState(false);
-  const [prevScrollPos, setPrevScrollPos] = useState(0);
+  const prevScrollPos = useRef(0);
 
   const router = useRouter();
 
@@ -42,20 +42,20 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
   useEffect(() => {
     console.log('roomListItem clicked');
     if (clicked && roomListRef.current && roomListItemRef.current) {
-      setPrevScrollPos(roomListRef.current.scrollTop);
+      prevScrollPos.current = roomListRef.current.scrollTop;
       console.log('scrolling to roomListItem')
       roomListItemRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'nearest',
       })
     } else {
-      console.log(`scrolling to pos: ${prevScrollPos}`);
+      console.log(`scrolling to pos: ${prevScrollPos.current}`);
       roomListRef.current.scrollTo({
-        top: prevScrollPos,
+        top: prevScrollPos.current,
         behavior: 'smooth',
       })
     }
-  }, [clicked]);
+  }, [clicked, roomListRef]);
 
   return (
   <div

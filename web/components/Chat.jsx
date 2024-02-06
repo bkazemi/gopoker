@@ -17,7 +17,7 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
   const [netData, setNetData] = useState(new NetData(yourClient, NETDATA.CHAT_MSG, msg));
   const [chatMsgsStyle, setChatMsgsStyle] = useState({borderColor: 'black', borderWidth: '1px'});
   const [chatMsgsUserScrolled, setChatMsgsUserScrolled] = useState(false);
-  const chatMsgsAtBottom = useRef(true);
+  const chatMsgsAtBottomRef = useRef(true);
 
   const sendMsg = useCallback(() => {
     if (msg) {
@@ -36,9 +36,9 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
   const scrollToBottomOfChatMsgs = useCallback(() => {
     if (chatMsgsRef.current)
       chatMsgsRef.current.scrollTop = chatMsgsRef.current.scrollHeight;
-    if (!chatMsgsAtBottom.current)
-      chatMsgsAtBottom.current = true;
-  }, [chatMsgsRef, chatMsgsAtBottom]);
+    if (!chatMsgsAtBottomRef.current)
+      chatMsgsAtBottomRef.current = true;
+  }, [chatMsgsRef, chatMsgsAtBottomRef]);
 
   const handleChatMsgsScroll = useCallback(() => {
     if (!chatMsgsUserScrolled) {
@@ -51,9 +51,9 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
       chatMsgs.scrollTop + chatMsgs.clientHeight >=
       chatMsgs.scrollHeight - 1;
 
-    chatMsgsAtBottom.current = isScrollAtBottom;
+    chatMsgsAtBottomRef.current = isScrollAtBottom;
     if (isScrollAtBottom) setChatMsgsUserScrolled(false);
-  }, [chatMsgsUserScrolled, scrollToBottomOfChatMsgs]);
+  }, [chatMsgsUserScrolled]);
 
   const handleChatMsgsUserScroll = useCallback(() => {
     setChatMsgsUserScrolled(true);
@@ -67,11 +67,10 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
 
   useEffect(() => {
     if (msgs.length) {
-      if (chatMsgsStyle.borderColor === 'black')
-        setChatMsgsStyle({ borderColor: 'green', borderWidth: '2px' });
-      chatMsgsAtBottom.current && setTimeout(scrollToBottomOfChatMsgs, 100);
+      setChatMsgsStyle({ borderColor: 'green', borderWidth: '2px' });
+      chatMsgsAtBottomRef.current && setTimeout(scrollToBottomOfChatMsgs, 100);
     }
-  }, [msgs]);
+  }, [msgs, scrollToBottomOfChatMsgs]);
 
   return (
     <div className={styles.chatContainer}>

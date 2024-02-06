@@ -182,7 +182,7 @@ function TableModal({
   useEffect(() => {
     if (!modalOpen)
       setModalTxt([]);
-  }, [modalOpen]);
+  }, [modalOpen, setModalTxt]);
 
   return (
     <Modal

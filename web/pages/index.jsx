@@ -57,7 +57,7 @@ const UnsupportedDeviceToolTip = ({ isUnsupportedDevice, showGame }) => {
 };
 
 export default function Home() {
-  const { gameOpts, setGameOpts } = useContext(GameContext);
+  const { _, setGameOpts } = useContext(GameContext);
 
   //const [newGameFormData, setNewGameFormData] = useState(null);
   const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(false);
@@ -65,6 +65,7 @@ export default function Home() {
   const [showGrid, setShowGrid] = useState(true);
 
   useEffect(() => {
+    // eslint-disable-next-line
     console.log(`Home: showGame: ${showGame} showGrid: ${showGrid}`);
 
     setGameOpts(gameOpts => ({

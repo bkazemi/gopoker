@@ -104,11 +104,8 @@ export default function App({ Component, pageProps, router }) {
     setIsCompactRoom(router.pathname === '/room/[roomID]'
       && window.roomURL && window?.innerWidth <= 1920);
 
-    if (!isJSEnabled)
-      setIsJSEnabled(true);
-
-    if (!isReadyForRender)
-      setIsReadyForRender(true);
+    setIsJSEnabled(true);
+    setIsReadyForRender(true);
   }, [router.pathname]);
 
   if (!isReadyForRender)

@@ -41,17 +41,17 @@ function HomeGrid({ isVisible }) {
     } else {
       visibleCard.classList.remove(styles.selectedCard);
     }
-  }, [showNewGameForm, showRoomList]);
+  }, []);
 
   useEffect(() => {
     toggleGrid(showNewGameForm, newGameRef);
     console.log(`showNewGameForm: ${showNewGameForm}`);
-  }, [showNewGameForm]);
+  }, [showNewGameForm, toggleGrid]);
 
   useEffect(() => {
     toggleGrid(showRoomList, roomListRef);
     console.log(`showRoomList: ${showRoomList}`);
-  }, [showRoomList])
+  }, [showRoomList, toggleGrid]);
 
   /*useEffect(() => {
     console.log('HomeGrid: gameOpts.websocketOpts useEffect');

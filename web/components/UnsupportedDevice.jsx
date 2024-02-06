@@ -30,7 +30,7 @@ function UnsupportedDevice({ isVisible, showHomeBtn }) {
       setShowGame(false);
     else // came from a /room route
       router.push('/');
-  }, []);
+  }, [router, setGameOpts, setShowGame]);
 
   if (!isVisible)
     return;

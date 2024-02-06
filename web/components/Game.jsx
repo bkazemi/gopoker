@@ -54,6 +54,7 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
   const router = useRouter();
 
   useEffect(() => {
+    // eslint-disable-next-line
     console.log('Game mounted isVisible:', isVisible, 'fetchCalled:', fetchCalled, 'gameOpts:', gameOpts);
 
     return () => {
@@ -62,9 +63,11 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
   }, []);
 
   useEffect(() => {
-    if (isVisible && !fetchCalled) {
+    if (isVisible &&
+        gameOpts.websocketOpts?.Client?.Settings?.Admin && !fetchCalled) {
       const createNewRoom = async () => {
         const { RoomName, Lock, Password, NumSeats } = gameOpts.websocketOpts.Client.Settings.Admin;
+        // eslint-disable-next-line
         console.log('before createNewRoom: gameOpts', gameOpts);
         try {
           const res = await fetch('/api/new', {
@@ -101,7 +104,8 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
 
       createNewRoom();
     }
-  }, [isVisible, fetchCalled]);
+  }, [isVisible, fetchCalled, gameOpts.websocketOpts?.Client?.Settings?.Admin,
+      router, setGameOpts, setShowGame]);
 
   if (!isVisible)
     return;

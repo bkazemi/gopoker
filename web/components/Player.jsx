@@ -1,4 +1,4 @@
-import React, {useCallback, useContext, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useContext, useEffect, useRef, useState, useMemo} from 'react';
 
 import Image from 'next/image';
 import { Literata } from 'next/font/google';
@@ -33,14 +33,16 @@ const YourPlayerActions = React.memo(({
   const [isFoldDisabled, setIsFoldDisabled] = useState(false);
   const [isAllinDisabled, setIsAllinDisabled] = useState(false);
 
-  const btnRefMap = new Map([
-    ['b', betInputRef],
-    ['C', callBtnRef],
-    ['c', checkBtnRef],
-    ['r', raiseBtnRef],
-    ['f', foldBtnRef],
-    ['a', allInBtnRef],
-  ]);
+  const btnRefMap = useMemo(() => (
+      new Map([
+        ['b', betInputRef],
+        ['C', callBtnRef],
+        ['c', checkBtnRef],
+        ['r', raiseBtnRef],
+        ['f', foldBtnRef],
+        ['a', allInBtnRef],
+      ])
+    ), []);
 
   const handleRaiseInput = useCallback((e) => {
     if (e.target.value === '') {
@@ -134,7 +136,7 @@ const YourPlayerActions = React.memo(({
       if (focusedKey.current !== document.activeElement)
         focusedKey.current.focus();
     }
-  }, [keyPressed]);
+  }, [keyPressed, btnRefMap]);
 
   if (!isYourPlayer)
     return;
@@ -284,11 +286,11 @@ function Player({
   const [isSmallBlind, setIsSmallBlind] = useState(false);
   const [isBigBlind, setIsBigBlind] = useState(false);
 
-  const posSetStateMap = {
-    dealer: setIsDealer,
+  const posSetStateMap = useMemo(() => ({
+    dealer:     setIsDealer,
     smallBlind: setIsSmallBlind,
-    bigBlind: setIsBigBlind,
-  };
+    bigBlind:   setIsBigBlind,
+  }), [])
 
   const [style, setStyle] = useState({gridRow, gridCol});
 
@@ -330,7 +332,7 @@ function Player({
           borderColor: 'black',
           borderWidth: '1px',
       }));
-  }, [client, curPlayer, playerHead]);
+  }, [client, curPlayer, playerHead, style.borderColor]);
 
   useEffect(() => {
     if (!side)
@@ -374,7 +376,7 @@ function Player({
         //console.log(`MAP ${client.Player.Name} ${name}`);
         posSetStateMap[name](true);
       });
-  }, [dealerAndBlinds, client]);
+  }, [dealerAndBlinds, client, posSetStateMap]);
 
   if (client._ID) { // vacant seat
     return (

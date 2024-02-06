@@ -162,7 +162,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
     }));
 
     router.push('/');
-  }, []);
+  }, [setGameOpts, router]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();

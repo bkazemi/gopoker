@@ -94,9 +94,12 @@ export default function Tablenew({ socket, netData, setShowGame }) {
 
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
+  // need this ref so that server response useEffect doesn't trigger when router changes
   const router = useRouter();
+  const routerRef = useRef(router);
 
   const [yourClient, setYourClient] = useState(null);
+  const yourClientID = useRef(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [numSeats, setNumSeats] = useState(netData.Table?.NumSeats || 0);
   const [numPlayers, setNumPlayers] = useState(netData.Table?.NumPlayers || 0);
@@ -133,6 +136,10 @@ export default function Tablenew({ socket, netData, setShowGame }) {
 
   const chatInputRef = useRef(null);
 
+  useEffect(() => {
+    routerRef.current = router
+  }, [router]);
+
   // keyboard event state
   const [keyPressed, setKeyPressed] = useState('');
 
@@ -164,17 +171,19 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   }, [chatInputRef, modalOpen]);
 
   const updateRoom = useCallback((client) => {
+    const router = routerRef.current;
+
     if (client.Settings?.Admin?.RoomName) {
       const newPath = `/room/${client.Settings.Admin.RoomName}`;
-      if (newPath !== router.asPath) {
+      if (newPath !== routerRef.asPath) {
         console.log(`newPath: ${newPath} router.asPath: ${router.asPath}`);
         console.log('replacing URL with:', newPath);
         router.replace(newPath);
       }
     }
-  }, [router, netData]);
+  }, [routerRef]);
 
-  const updateTable = useCallback(() => {
+  const updateTable = useCallback((netData) => {
     setMainPot(netData.Table.MainPot);
     setCommunity(netData.Table.Community);
     setDealer(netData.Table.Dealer || nullClient);
@@ -184,7 +193,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     setTableLock(netData.Table.Lock);
     setNumSeats(netData.Table.NumSeats);
     setTableState(netData.Table.State);
-  }, [netData]);
+  }, []);
 
   const updatePlayer = useCallback((client, nullClient) => {
     if (!client.ID) {
@@ -192,30 +201,31 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       return;
     }
 
-    console.log(players);
-    const pIdx = players.findIndex(c => c.ID === client.ID);
-    if (pIdx !== -1) {
-      const nullClientWithPos = nullClient ?
-        {...nullClient,
-         Player: {
-          ...nullPlayer,
-          TablePos: client.Player?.TablePos ?? players[pIdx].Player.TablePos // ELIMINATED resp does not include Player field
-        }}
-        : undefined;
-      console.log(`updating ${players[pIdx].Name} to`, nullClientWithPos ?? client);
-      setPlayers(c => {
-        const newClients = [...c];
+    setPlayers(players => {
+      const pIdx = players.findIndex(c => c.ID === client.ID);
+      if (pIdx !== -1) {
+        const nullClientWithPos = nullClient ?
+          {...nullClient,
+           Player: {
+            ...nullPlayer,
+            TablePos: client.Player?.TablePos ?? players[pIdx].Player.TablePos // ELIMINATED resp does not include Player field
+          }}
+          : undefined;
+        console.log(`updating ${players[pIdx].Name} to`, nullClientWithPos ?? client);
+        const newClients = [...players];
         newClients[pIdx] = nullClientWithPos ?? client;
         return newClients;
-      });
-    } else {
-      console.error(`updatePlayer(): couldn't find ${client.ID} ${client.Player?.Name} in players array, pIdx: ${pIdx}`);
-      console.log(players);
-    }
-  }, [players]);
+      } else {
+        console.error(`updatePlayer(): couldn't find ${client.ID} ${client.Player?.Name} in players array, pIdx: ${pIdx}`);
+        console.log(players);
+        return players;
+      }
+    });
+  }, []);
 
   useEffect(() => {
     console.log('yourClient is ', yourClient);
+    yourClientID.current = yourClient?.ID;
   }, [yourClient]);
 
   useEffect(() => {
@@ -237,7 +247,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       setNumConnected(netData.Table.NumConnected);
       break;
     case NETDATA.CLIENT_EXITED:
-      if (netData.Client?.ID !== yourClient.ID) // XXX
+      if (netData.Client?.ID !== yourClientID.current) // XXX
         setChatMsgs(msgs => [...msgs, `<${netData.Client.Name} id: ${netData.Client.ID}> left the room`]);
       setNumConnected(netData.Table.NumConnected);
       break;
@@ -300,8 +310,6 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     }
     case NETDATA.MAKE_ADMIN:
       setIsAdmin(true);
-      if (gameOpts.creatorToken)
-        setGameOpts(opts => ({...opts, creatorToken: ''}));
       break;
     case NETDATA.DEAL:
       //setTableState(netData.Table.State);
@@ -310,7 +318,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       break;
     case NETDATA.PLAYER_ACTION:
       updatePlayer(netData.Client);
-      updateTable();
+      updateTable(netData);
       break;
     case NETDATA.PLAYER_HEAD:
       setPlayerHead(netData.Client);
@@ -322,7 +330,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       updatePlayer(netData.Client)
       break;
     case NETDATA.UPDATE_TABLE:
-      updateTable();
+      updateTable(netData);
       break;
     case NETDATA.CUR_HAND:
       updatePlayer(netData.Client);
@@ -331,7 +339,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       updatePlayer(netData.Client);
       break;
     case NETDATA.ROUND_OVER:
-      updateTable();
+      updateTable(netData);
       setModalType('');
       setModalTxt(arr => [...arr, netData.Msg]);
       setModalOpen(true);
@@ -339,33 +347,29 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     case NETDATA.RESET:
       if (netData.Client)
         updatePlayer(netData.Client);
-      updateTable();
+      updateTable(netData);
       setPlayerHead(null);
       setCurPlayer(null);
       break;
     case NETDATA.ELIMINATED:
-      if (netData.Client.ID === yourClient.ID) {
-        if (isAdmin)
-          setIsAdmin(false);
+      if (netData.Client.ID === yourClientID.current) {
+        setIsAdmin(false);
         setModalType('');
         setModalTxt(arr => [...arr, 'you have been eliminated']);
         setModalOpen(true);
-        updatePlayer(netData.Client, nullClient)
-      } else if (netData.Client && players.findIndex(c => c.ID === netData.Client.ID) !== -1) {
-        // XXX: sometimes an UPDATE_PLAYER is being processed after
-        //      PLAYER_LEFT, causing the players array to retain
-        //      the eliminated player. if so, we will remove them again
-        //      from here for now.
-        console.warn('PLAYER_LEFT & UPDATE_PLAYER received out of order, re-removing', netData.Client.Name);
-        updatePlayer(netData.Client, nullClient);
       }
+      // XXX: sometimes an UPDATE_PLAYER is being processed after
+      //      PLAYER_LEFT, causing the players array to retain
+      //      the eliminated player. if so, we will always remove them again
+      //      from here for now.
+      updatePlayer(netData.Client, nullClient);
       setChatMsgs(msgs => [...msgs, netData.Msg]);
       break;
     case NETDATA.FLOP:
     case NETDATA.TURN:
     case NETDATA.RIVER:
       setCommunity(netData.Table.Community);
-      updateTable();
+      updateTable(netData);
       // we need to pause when there are new community cards
       // because for example when curPlayers are all in, the
       // server loops thru all the rounds automatically.
@@ -404,7 +408,14 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       break;
     }
   }
-  }, [netData._noShallowCompare]);
+  // NOTE: _noShallowCompare is given a new uuid on every new server response
+  // passed from Connect component. We do this to ensure this useEffect gets
+  // retriggered in cases where say the same user sends the same chat message,
+  // causing the shallow comparison of the netData object to be the same for some reason.
+  // My only guess is that it is a useSWRSubscription optimization.
+  //
+  // updatePlayer, updateRoom, etc. don't actually trigger rerenders.
+  }, [netData._noShallowCompare, yourClientID, updatePlayer, updateRoom, updateTable]);
 
   useEffect(() => {
     if (numSeats) {
@@ -446,16 +457,19 @@ export default function Tablenew({ socket, netData, setShowGame }) {
     if (gameOpts.settingsChange) {
       console.log('Tablenew gameOpts.websocketOpts ue:', gameOpts.websocketOpts);
       socket.send(gameOpts.websocketOpts.toMsgPack());
+      setGameOpts(opts => ({...opts, settingsChange: false}));
     }
-    setGameOpts(opts => ({...opts, settingsChange: false}));
-  }, [gameOpts.settingsChange]);
+  }, [gameOpts.settingsChange, gameOpts.websocketOpts, setGameOpts, socket]);
 
   useEffect(() => {
+    if (isAdmin && gameOpts.creatorToken)
+      setGameOpts(opts => ({...opts, creatorToken: ''}));
+
     setGameOpts(opts => ({
       ...opts,
       isAdmin,
     }));
-  }, [isAdmin]);
+  }, [isAdmin, setGameOpts, gameOpts.creatorToken]);
 
   return (
     //!isPaused &&
