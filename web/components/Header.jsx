@@ -21,12 +21,24 @@ export default function Header({ isTableHeader }) {
 
   const [isHomePage, setIsHomePage] = useState(router.pathname === '/');
 
+  const [windowWidth, setWindowWidth] = useState(window?.innerWidth);
   const [isCompactRoom, setIsCompactRoom] =
     useState(router.pathname === '/room/[roomID]' && gameOpts.roomURL
       && window?.innerWidth <= 1920);
 
-  const fetchHeaderInfo = useCallback(async () => {
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+
+    window.addEventListener('resize', handleResize)
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const fetchHeaderInfo = useCallback(async (pathname) => {
+    const isHomePage = pathname === '/';
     const URL = `/api/${isHomePage ? 'status' : 'roomCount'}`;
+
+    setIsHomePage(isHomePage);
 
     try {
       const res = await fetch(URL);
@@ -40,7 +52,7 @@ export default function Header({ isTableHeader }) {
       setHeaderInfo(isHomePage ? 'down' : 'error');
       setHeaderError(true);
     }
-  }, [isHomePage]);
+  }, []);
 
   const toggleSpin = useCallback(() => {
     if (logoImgRef.current?.classList.contains(homeStyles.pauseAnimation))
@@ -50,15 +62,15 @@ export default function Header({ isTableHeader }) {
   }, [logoImgRef]);
 
   useEffect(() => {
-    setIsHomePage(router.pathname === '/');
-    fetchHeaderInfo();
+    fetchHeaderInfo(router.pathname);
   }, [router.pathname, fetchHeaderInfo]);
 
   useEffect(() => {
     const isConnectedRoom = router.pathname === '/room/[roomID]' && gameOpts.roomURL;
+    const winWidth = windowWidth || window.innerWidth;
 
-    setIsCompactRoom(isConnectedRoom && window.innerWidth <= 1920);
-  }, [router.pathname, gameOpts.roomURL]);
+    setIsCompactRoom(isConnectedRoom && winWidth <= 1920);
+  }, [router.pathname, gameOpts.roomURL, windowWidth]);
 
   if ((isCompactRoom && !isTableHeader) || (!isCompactRoom && isTableHeader))
     return;
