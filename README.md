@@ -1,4 +1,4 @@
-# gopoker
+# ![gopoker](/assets/logo.gif)
 ## Poker game in Go (WIP)
 ### still being heavily modified. clone at your own risk.
 ```sh
