@@ -63,6 +63,7 @@
 .logo {
   display: flex;
   flex-direction: row;
+  transition: opacity 2s;
 }
 
 .logo img {

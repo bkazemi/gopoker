@@ -21,6 +21,7 @@ export default function Header({ isTableHeader }) {
 
   const [headerInfo, setHeaderInfo] = useState('fetching...');
   const [headerError, setHeaderError] = useState(false);
+  const [headerChipLoaded, setHeaderChipLoaded] = useState(false);
 
   const [isHomePage, setIsHomePage] = useState(router.pathname === '/');
 
@@ -84,7 +85,12 @@ export default function Header({ isTableHeader }) {
         isCompactRoom && homeStyles.compactHeader
       )}
     >
-      <div className={cx(homeStyles.logo, mPlus.className, homeStyles.unselectable)}>
+      <div
+        className={cx(homeStyles.logo, mPlus.className, homeStyles.unselectable)}
+        style={{
+          opacity: headerChipLoaded ? 1 : 0
+        }}
+      >
         <h1>g</h1>
         <Image
           ref={logoImgRef}
@@ -94,6 +100,7 @@ export default function Header({ isTableHeader }) {
           height={75}
           alt='o'
           onClick={toggleSpin}
+          onLoad={() => setHeaderChipLoaded(true)}
         />
         <h1>poker</h1>
       </div>
