@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useContext, useEffect } from 'react';
 
+import { M_PLUS_Code_Latin } from 'next/font/google';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 
@@ -8,6 +9,8 @@ import cx from 'classnames';
 import { GameContext } from '@/GameContext';
 
 import homeStyles from '@/styles/Home.module.css';
+
+const mPlus = M_PLUS_Code_Latin({ subsets: ['latin'], weight: '700' });
 
 export default function Header({ isTableHeader }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
@@ -81,7 +84,7 @@ export default function Header({ isTableHeader }) {
         isCompactRoom && homeStyles.compactHeader
       )}
     >
-      <div className={cx(homeStyles.logo, homeStyles.unselectable)}>
+      <div className={cx(homeStyles.logo, mPlus.className, homeStyles.unselectable)}>
         <h1>g</h1>
         <Image
           ref={logoImgRef}
