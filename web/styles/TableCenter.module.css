@@ -1,6 +1,7 @@
 .community {
   display: flex;
   flex-direction: row;
+  transition: opacity 0.5s;
 }
 
 .preGame button {

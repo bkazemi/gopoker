@@ -7,6 +7,10 @@ import styles from '@/styles/PlayerTableItems.module.css';
 import { TABLE_STATE, cardToImagePath, PLAYERSTATE } from '@/lib/libgopoker';
 
 const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
+  // we want the cards to be displayed at the same time,
+  // so we make sure both card images are loaded before displaying them
+  const [numCardsLoaded, setNumCardsLoaded] = useState(0);
+
   if (
     tableState === TABLE_STATE.NOT_STARTED ||
     client.Player.Action.Action === PLAYERSTATE.FOLD ||
@@ -23,12 +27,16 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
     }
 
   if (!isYourPlayer && !client?.Player?.Hole?.Cards)
-    return <div className={styles.playerCards}>
+    return <div
+             className={styles.playerCards}
+             style={{ opacity: (numCardsLoaded === 2) ? 1 : 0 }}
+           >
             <Image
               src={'/cards/cardBack_blue5.png'}
               height={90}
               width={65}
               alt={'[card]'}
+              onLoad={() => setNumCardsLoaded(numCards => numCards % 2 + 1)}
             />
             <Image
               src={'/cards/cardBack_blue5.png'}
@@ -36,10 +44,14 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
               width={65}
               alt={'[card]'}
               style={style}
+              onLoad={() => setNumCardsLoaded(numCards => numCards % 2 + 1)}
             />
       </div>
   else
-    return <div className={styles.playerCards}>
+    return <div
+             className={styles.playerCards}
+             style={{ opacity: (numCardsLoaded === client?.Player?.Hole?.Cards?.length) ? 1 : 0 }}
+           >
       {
         client?.Player?.Hole?.Cards
           .map((c, idx) => {
@@ -49,6 +61,9 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
               height={90}
               width={65}
               alt={`[${c.Name}]`}
+              onLoad={() => setNumCardsLoaded(numCards =>
+                numCards % client?.Player?.Hole?.Cards?.length + 1
+              )}
             />;
         }) || null
       }

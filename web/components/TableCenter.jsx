@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 
 import Image from 'next/image';
 import { Literata, DM_Mono } from 'next/font/google';
@@ -13,11 +13,20 @@ const literata = Literata({ subsets: ['latin'], weight: '500' });
 const dmMono = DM_Mono({ subsets: ['latin', 'latin-ext'], weight: '500' });
 
 function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, socket }) {
+  const [numCardsLoaded, setNumCardsLoaded] = useState(0);
+
   return (
     <div>
       {
         community.length &&
-        <div className={styles.community}>
+        <div
+          className={styles.community}
+          style={{
+            opacity: tableState === TABLE_STATE.FLOP ?
+                                      (numCardsLoaded === 3 ? 1 : 0)
+                                      : 1
+          }}
+        >
           {
             community
               .map((c, idx) => {
@@ -27,6 +36,9 @@ function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, sock
                   height={100}
                   width={66.66666667}
                   alt={c.Name}
+                  onLoad={() =>
+                    tableState === TABLE_STATE.FLOP && setNumCardsLoaded(numCards => numCards % 3 + 1)
+                  }
                 />
               })
           }
