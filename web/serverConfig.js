@@ -3,7 +3,7 @@ const config = {
   gopokerServerHTTPURL: '',
   gopokerServerWSURL: '',
 
-  sslEnabled: !!process.env.NEXT_PUBLIC_SSL_ENABLED,
+  sslEnabled: process.env.NEXT_PUBLIC_SSL_ENABLED.toLowerCase() === 'true',
 };
 
 config.gopokerServerHTTPURL = (config.sslEnabled ? 'https://' : 'http://') + config.gopokerServerAddr;
