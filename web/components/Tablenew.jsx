@@ -245,6 +245,8 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       if (netData.Client)
         setYourClient(netData.Client);
       setNumConnected(netData.Table.NumConnected);
+      if (netData.Table)
+          updateTable(netData);
       break;
     case NETDATA.CLIENT_EXITED:
       if (netData.Client?.ID !== yourClientID.current) // XXX

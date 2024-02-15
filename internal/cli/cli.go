@@ -817,6 +817,10 @@ func cliInputLoop(cli *CLI) {
           cli.settings = *netData.Client.Settings
         }
         cli.updateInfoList("# connected", netData.Table)
+        if netData.Table != nil {
+          cli.updateInfoList("status", netData.Table)
+          cli.commView.SetText(cli.cards2String(netData.Table.Community))
+        }
       case net.NetDataClientExited:
         cli.updateInfoList("# connected", netData.Table)
       case net.NetDataChatMsg:
