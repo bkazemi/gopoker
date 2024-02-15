@@ -1,12 +1,15 @@
 const config = {
   gopokerServerAddr: process.env.NEXT_PUBLIC_GOPOKER_SERVER_ADDR || 'localhost',
-  gopokerServerHTTPURL: '',
-  gopokerServerWSURL: '',
+  gopokerServerHTTPURL: process.env.NEXT_PUBLIC_GOPOKER_SERVER_HTTPURL,
+  gopokerServerWSURL: process.env.NEXT_PUBLIC_GOPOKER_SERVER_WSURL,
 
   sslEnabled: process.env.NEXT_PUBLIC_SSL_ENABLED.toLowerCase() === 'true',
 };
 
-config.gopokerServerHTTPURL = (config.sslEnabled ? 'https://' : 'http://') + config.gopokerServerAddr;
-config.gopokerServerWSURL = (config.sslEnabled ? 'wss://' : 'ws://') + config.gopokerServerAddr;
+if (!config.gopokerServerHTTPURL)
+  config.gopokerServerHTTPURL = (config.sslEnabled ? 'https://' : 'http://') + config.gopokerServerAddr;
+
+if (!config.gopokerServerWSURL)
+  config.gopokerServerWSURL = (config.sslEnabled ? 'wss://' : 'ws://') + config.gopokerServerAddr;
 
 export default config;
