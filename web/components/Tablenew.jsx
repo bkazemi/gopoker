@@ -101,6 +101,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   const [yourClient, setYourClient] = useState(null);
   const yourClientID = useRef(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSpectator, setIsSpectator] = useState(gameOpts?.websocketOpts?.Client?.Settings?.IsSpectator);
   const [numSeats, setNumSeats] = useState(netData.Table?.NumSeats || 0);
   const [numPlayers, setNumPlayers] = useState(netData.Table?.NumPlayers || 0);
   const [numConnected, setNumConnected] = useState(netData.Table?.NumConnected || 0);
@@ -308,6 +309,10 @@ export default function Tablenew({ socket, netData, setShowGame }) {
 
       setChatMsgs(msgs => [...msgs, `<server-msg> ${netData.Client.Player.Name} left the table`]);
       setNumPlayers(netData.Table.NumPlayers);
+
+      if (netData.Client.ID === yourClientID.current)
+        setIsAdmin(false);
+
       break;
     }
     case NETDATA.MAKE_ADMIN:
@@ -472,6 +477,13 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       isAdmin,
     }));
   }, [isAdmin, setGameOpts, gameOpts.creatorToken]);
+
+  useEffect(() => {
+    if (gameOpts?.websocketOpts?.Client?.Settings?.IsSpectator === true && !isSpectator) {
+      socket?.send((new NetData(yourClient, NETDATA.PLAYER_LEFT)).toMsgPack());
+      setIsSpectator(true);
+    }
+  }, [gameOpts?.websocketOpts?.Client?.Settings?.IsSpectator, isSpectator, yourClient, socket]);
 
   return (
     //!isPaused &&
@@ -641,6 +653,7 @@ export default function Tablenew({ socket, netData, setShowGame }) {
         <div>
           <label>table info</label>
           <Image
+            title='settings'
             src={'/settingsIcon.png'}
             height={35}
             width={35}
@@ -650,7 +663,26 @@ export default function Tablenew({ socket, netData, setShowGame }) {
               setModalOpen(true);
             }}
           />
+          {
+            !isSpectator &&
+            <Image
+              title='move to spectator'
+              src={'/spectator.png'}
+              height={35}
+              width={35}
+              alt={'<spectate>'}
+              onClick={() => {
+                setModalTxt(arr => [...arr, 'are you sure?']);
+                setModalType('spectate');
+                setModalOpen(true);
+              }}
+              style={{
+                paddingRight: '5px'
+              }}
+            />
+          }
           <Image
+            title='quit game'
             src={'/quitGame.png'}
             height={35}
             width={35}

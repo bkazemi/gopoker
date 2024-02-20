@@ -126,6 +126,7 @@ func runClient(opts options) (err error) {
     (&net.NetData{
       Request: net.NetDataNewConn,
       Client: net.NewClient(&net.ClientSettings{
+        IsSpectator: opts.isSpectator,
         Name: opts.name,
         Password: opts.pass,
       }).
@@ -241,12 +242,13 @@ func init() {
 }
 
 type options struct {
-  serverPort string
-  addr       string
-  name       string
-  pass       string
-  GUI        bool
-  numSeats   uint8
+  serverPort  string
+  addr        string
+  name        string
+  pass        string
+  GUI         bool
+  isSpectator bool
+  numSeats    uint8
 }
 
 /*
@@ -284,6 +286,7 @@ func main() {
   flag.StringVar(&opts.name, "n", "", "name you wish to be identified by while connected")
   flag.StringVar(&opts.pass, "pass", "", "login password (as client)")
   flag.BoolVar(&opts.GUI, "g", false, "run with a GUI")
+  flag.BoolVar(&opts.isSpectator, "S", false, "join table as a spectator")
   flag.UintVar(&numSeats, "ns", 7, "max number of players allowed at the table")
   flag.Parse()
 

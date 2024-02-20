@@ -109,8 +109,10 @@ const Connect = () => {
     }
 
     return () => {
-      gameSocket?.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
-      gameSocket?.close(1000, 'web client exited');
+      if (gameSocket?.readyState === WebSocket.OPEN) {
+        gameSocket?.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
+        gameSocket?.close(1000, 'web client exited');
+      }
     }
   });
 

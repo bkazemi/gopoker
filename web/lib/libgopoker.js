@@ -192,7 +192,7 @@ TABLE_STATE.toString = (state) => {
 };
 
 export function NewClient(settings) {
-  const { RoomName, Name, Password, TableLock, TablePass, TableNumSeats } = settings;
+  const { IsSpectator, RoomName, Name, Password, TableLock, TablePass, TableNumSeats } = settings;
 
   const haveAdminSettings = (
     RoomName !== undefined || TableLock !== undefined || TablePass !== undefined
@@ -202,6 +202,7 @@ export function NewClient(settings) {
 
   return {
     Settings: {
+      IsSpectator,
       Name,
       Password,
 

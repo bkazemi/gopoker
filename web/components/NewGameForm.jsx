@@ -33,9 +33,10 @@ const maxPlayerOpts = [
 
 const RequiredFields = React.memo(({
   goHome,
-  isSettings, isDirectLink, isAdmin,
+  isSettings, isDirectLink, isAdmin, isSpectatorChecked,
   roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
-  handleSubmit, setModalOpen, setRoomName, setName, setTablePwd, setTableLock, setMaxPlayers
+  handleSubmit, setModalOpen, setRoomName, setName, setTablePwd, setTableLock,
+  setMaxPlayers, setIsSpectatorChecked
 }) => (
   <>
     {
@@ -117,6 +118,22 @@ const RequiredFields = React.memo(({
       </>
     }
 
+    {
+      !isSettings &&
+      <label>
+        <input
+          type='checkbox'
+          checked={isSpectatorChecked}
+          onChange={e => setIsSpectatorChecked(e.target.checked)}
+          style={{
+            marginRight: '5px',
+            scale: '1.1',
+          }}
+        />
+        join as spectator
+      </label>
+    }
+
     <div className={styles.formBtns}>
       <button type="submit">
         { isDirectLink ? 'connect' : 'submit' }
@@ -151,6 +168,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
   const [tablePwd , setTablePwd] = useState(Password);
   const [tableLock, setTableLock] = useState(lockOpts.find(opt => opt.value === Lock) || lockOpts[0]);
   const [maxPlayers, setMaxPlayers] = useState(maxPlayerOpts.find(opt => opt.value === NumSeats) || maxPlayerOpts[0]);
+  const [isSpectatorChecked, setIsSpectatorChecked] = useState(false);
 
   const isAdmin = !!gameOpts.isAdmin;
 
@@ -167,6 +185,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
+    const IsSpectator = isSpectatorChecked;
     const RoomName = roomName;
     const Name = name;
     const Password = tablePwd;
@@ -175,6 +194,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
 
     const data = new NetData(
       NewClient({
+        IsSpectator,
         Name,
         Password,
         RoomName,
@@ -215,6 +235,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
       setTablePwd('');
       setTableLock(lockOpts[0]);
       setMaxPlayers(7);
+      setIsSpectatorChecked(false);
     }
   }, [gameOpts.reset]);
 
@@ -233,9 +254,10 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
         <RequiredFields
           {...{
             goHome,
-            isSettings, isDirectLink, isAdmin, handleSubmit,
+            isSettings, isDirectLink, isAdmin, isSpectatorChecked, handleSubmit,
             roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
-            setModalOpen, setRoomName, setName, setTablePwd, setTableLock, setMaxPlayers
+            setModalOpen, setRoomName, setName, setTablePwd, setTableLock,
+            setMaxPlayers, setIsSpectatorChecked
           }}
         />
       </form>

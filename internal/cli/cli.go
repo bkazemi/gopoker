@@ -38,6 +38,7 @@ type CLI struct {
   lastKey            rune
 
   isTableAdmin       bool
+  isSpectator        bool
   yourClient         net.Client
 
   bet                 poker.Chips
@@ -73,6 +74,7 @@ type CLI struct {
 
   tableInfoList      *tview.List
 
+  spectateModal,
   exitModal,
   errorModal         *tview.Modal
 
@@ -135,6 +137,9 @@ func (cli *CLI) handleButton(btn string) {
     msg = cli.chatMsg
 
     cli.chatMsg = ""
+  case "spectate":
+    cli.switchToPage("spectate")
+    return
   case "quit":
     cli.switchToPage("exit")
     return
@@ -264,6 +269,22 @@ func (cli *CLI) clearPlayerScreens() {
   }
 }
 
+func (cli *CLI) makeSpectator() {
+  if !cli.isSpectator {
+    cli.isSpectator = true
+
+    if spectatorBtnIdx := cli.actionsForm.GetButtonIndex("spectate");
+       spectatorBtnIdx != -1 {
+      cli.actionsForm.RemoveButton(spectatorBtnIdx)
+    }
+
+    cli.outputChan <- &net.NetData{
+      Request: net.NetDataPlayerLeft,
+      Client: &cli.yourClient,
+    }
+  }
+}
+
 func (cli *CLI) unmakeAdmin() {
   if cli.isTableAdmin {
     if startGameBtnIdx := cli.actionsForm.GetButtonIndex("start game");
@@ -332,11 +353,12 @@ func textViewSetLine(textView *tview.TextView, lineNum int, txt string) {
 }
 
 func (cli *CLI) Init() error {
-  cli.app        = tview.NewApplication()
-  cli.pages      = tview.NewPages()
-  cli.gameGrid   = tview.NewGrid()
-  cli.exitModal  = tview.NewModal()
-  cli.errorModal = tview.NewModal()
+  cli.app           = tview.NewApplication()
+  cli.pages         = tview.NewPages()
+  cli.gameGrid      = tview.NewGrid()
+  cli.spectateModal = tview.NewModal()
+  cli.exitModal     = tview.NewModal()
+  cli.errorModal    = tview.NewModal()
 
   cli.inputChan  = make(chan *net.NetData)
   cli.outputChan = make(chan *net.NetData)
@@ -651,6 +673,7 @@ func (cli *CLI) Init() error {
           'r': "raise",
           'f': "fold",
           's': "start game",
+          'S': "spectate",
           '.': "settings",
       }
 
@@ -658,7 +681,7 @@ func (cli *CLI) Init() error {
       if label, ok := keyToActionsButtonLabel[keyRune]; ok {
         if cli.lastKey == keyRune {
           if label == "settings" {
-            cli.switchToPage("settings")
+            cli.switchToPage(label)
           } else if label == "start game" && !cli.isTableAdmin {
             return nil
           } else {
@@ -690,6 +713,18 @@ func (cli *CLI) Init() error {
       }
 
       return eventKey
+  })
+
+  cli.spectateModal.SetText("do you want to become a spectator?").
+    AddButtons([]string{"spectate", "cancel"}).
+    SetDoneFunc(func(btnIdx int, btnLabel string) {
+      switch btnLabel {
+      case "spectate":
+        cli.makeSpectator()
+        fallthrough
+      case "cancel":
+        cli.switchToPage("game")
+      }
   })
 
   cli.exitModal.SetText("do you want to quit the game?").
@@ -725,15 +760,17 @@ func (cli *CLI) Init() error {
   cli.focusList.prev.prev = cli.focusList.next
   cli.focusList.prev.next = cli.focusList
 
-  cli.pages.AddPage("game",     cli.gameGrid,     true, true)
-  cli.pages.AddPage("exit",     cli.exitModal,    true, false)
-  cli.pages.AddPage("error",    cli.errorModal,   true, false)
-  cli.pages.AddPage("settings", cli.settingsFlex, true, false)
+  cli.pages.AddPage("game",     cli.gameGrid,      true, true)
+  cli.pages.AddPage("spectate", cli.spectateModal, true, false)
+  cli.pages.AddPage("exit",     cli.exitModal,     true, false)
+  cli.pages.AddPage("error",    cli.errorModal,    true, false)
+  cli.pages.AddPage("settings", cli.settingsFlex,  true, false)
 
   // XXX: i probably shouldn't need this. sometimes pages weren't being focused
   //       properly back when i was learning the library. check back
   cli.pagesToPrimFocus = map[string]tview.Primitive{
     "game":          cli.gameGrid,
+    "spectate":      cli.spectateModal,
     "exit":          cli.exitModal,
     "error":         cli.errorModal,
     "errorMustQuit": cli.errorModal,
@@ -841,6 +878,11 @@ func cliInputLoop(cli *CLI) {
         if netData.Table != nil {
           cli.updateInfoList("# players", netData.Table)
         }
+
+        cli.isSpectator = false
+        cli.actionsForm.AddButton("spectate", func () {
+          cli.handleButton("spectate")
+        })
 
         cli.yourClient = *netData.Client
         cli.settings = *cli.yourClient.Settings

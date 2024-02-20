@@ -39,6 +39,18 @@ const ModalContent = React.memo(({
     router.push('/');
   };
 
+  const spectate = () => {
+    setGameOpts(opts => {
+      if (opts.websocketOpts.Client.Settings.IsSpectator)
+        return opts;
+
+      const newOpts = {...opts};
+      newOpts.websocketOpts.Client.Settings.IsSpectator = true;
+
+      return newOpts;
+    });
+  };
+
   switch (modalType) {
   case 'preGame':
     return (
@@ -89,6 +101,56 @@ const ModalContent = React.memo(({
             onClick={goHome}
           >
             quit
+          </button>
+          <button
+            className={styles.modalBtn}
+            onClick={() => setModalOpen(false)}
+          >
+            cancel
+          </button>
+        </div>
+      </>
+    );
+  case 'spectate':
+    return (
+      <>
+       <div
+          style={{
+            display: 'flex',
+            alignSelf: 'flex-start',
+            paddingLeft: '4.5rem',
+            paddingBottom: '7px',
+          }}
+        >
+          <Image
+            src={'/spectator.png'}
+            height={35}
+            width={35}
+            alt={'<spectate image>'}
+            style={{
+              alignSelf: 'flex-start',
+              marginRight: '10px',
+            }}
+          />
+          <h2>move to spectator</h2>
+        </div>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+        <div
+          style={{
+            display: 'flex',
+            gap: '3px',
+            paddingTop: '7px',
+          }}
+        >
+          <button
+            className={styles.modalBtn}
+            style={{ marginRight: '3px' }}
+            onClick={() => {
+              setModalOpen(false);
+              spectate();
+            }}
+          >
+            spectate
           </button>
           <button
             className={styles.modalBtn}

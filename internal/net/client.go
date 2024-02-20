@@ -19,6 +19,11 @@ type Client struct {
 }
 
 func NewClient(settings *ClientSettings) *Client {
+  if settings == nil {
+    fmt.Println("Client.NewClient(): called with nil ClientSettings, using defaults")
+    settings = NewClientSettings()
+  }
+
   client := &Client{
     Settings: settings,
   }

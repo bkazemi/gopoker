@@ -156,7 +156,7 @@ func (room *Room) removeClient(conn *websocket.Conn) {
   room.sendResponseToAll(netData, nil)
 }
 
-func (room *Room) removePlayer(client *Client, calledFromClientExit bool) {
+func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedToSpectator bool) {
   reset := false // XXX race condition guard
   noPlayersLeft := false // XXX race condition guard
 
@@ -164,7 +164,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool) {
   defer func() {
     fmt.Printf("Room.removePlayer(): {%s}: cleanup defer CALLED\n", room.name);
     if reset {
-      if calledFromClientExit {
+      if calledFromClientExit || movedToSpectator {
         room.Lock()
       }
 
@@ -172,7 +172,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool) {
         fmt.Printf("Room.removePlayers(): {%s}: no players left, resetting\n", room.name)
         room.table.Reset(nil)
         room.sendReset(nil)
-      } else if !calledFromClientExit {
+      } else if !calledFromClientExit && !movedToSpectator {
         fmt.Printf("Room.removePlayer(): {%s}: !calledFromClientExit, returning\n", room.name)
         return
       } else if room.table.State == poker.TableStateNotStarted {
@@ -188,17 +188,19 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool) {
         room.gameOver()
       }
 
-      room.Unlock()
+      if calledFromClientExit || movedToSpectator {
+        room.Unlock()
+      }
     } else if room.table.State == poker.TableStateDoneBetting ||
               room.table.State == poker.TableStateRoundOver {
-      if calledFromClientExit {
+      if calledFromClientExit || movedToSpectator {
         room.Lock()
       }
 
       fmt.Printf("Room.removePlayer(): {%s}: defer postPlayerAction\n", room.name)
       room.postPlayerAction(nil, &NetData{})
 
-      if calledFromClientExit {
+      if calledFromClientExit || movedToSpectator {
         room.Unlock()
       }
     }
@@ -222,7 +224,11 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool) {
       Response:   NetDataPlayerLeft,
       Table:      table,
     }
-    room.sendResponseToAll(netData, client)
+    exceptClient := client
+    if movedToSpectator {
+      exceptClient = nil
+    }
+    room.sendResponseToAll(netData, exceptClient)
 
     client.Player = nil
     delete(room.playerClientMap, player)
@@ -504,7 +510,7 @@ func (room *Room) removeEliminatedPlayers() {
     netData.Msg = fmt.Sprintf("<%s id: %s> was eliminated", client.Player.Name,
                               netData.Client.ID[:7])
 
-    room.removePlayer(client, false)
+    room.removePlayer(client, false, false)
     room.sendResponseToAll(netData, nil)
   }
 }
@@ -792,6 +798,8 @@ func (room *Room) publicClientInfo(client *Client) *Client {
 }
 
 type ClientSettings struct {
+  IsSpectator bool
+
   Name     string
   Password string
 
@@ -800,6 +808,12 @@ type ClientSettings struct {
     NumSeats uint8
     Lock     poker.TableLock
     Password string
+  }
+}
+
+func NewClientSettings() *ClientSettings {
+  return &ClientSettings{
+    Name: "noname",
   }
 }
 
@@ -924,7 +938,13 @@ func commState2NetDataResponse(room *Room) NetAction {
 }
 
 func (room *Room) applyClientSettings(client *Client, settings *ClientSettings) {
-  client.Settings = settings
+  if settings == nil {
+    fmt.Printf("Room.applyClientSettings(): %s had nil ClientSettings, using defaults\n", client.Name)
+    client.Settings = NewClientSettings()
+  } else {
+    client.Settings = settings
+  }
+
   if player := client.Player; player != nil {
     player.SetName(settings.Name)
     client.SetName(player.Name)
