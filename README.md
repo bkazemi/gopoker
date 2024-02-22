@@ -1,19 +1,33 @@
-# ![gopoker](/assets/logo.gif)
-## Poker game in Go (WIP)
-### still being heavily modified. clone at your own risk.
+![gopoker](https://github.com/bkazemi/gopoker/blob/web/assets/logo.gif)
+# Poker game in Go (WIP)
+
+### Try it [here](https://poker.shirkadeh.org)
+
+## Setup
 ```sh
-git clone https://github.com/bkazemi/gopoker
-cd gopoker
-git checkout websockets
-go build
+$ git clone https://github.com/bkazemi/gopoker
+$ cd gopoker
+$ git checkout web
+
+# build the server
+$ go build
+
+# build the web frontend
+$ cd web/
+$ yarn build
 ```
 
 ```sh
-# *nix
-./gopoker -s 777 # create a new poker server on localhost:777
-./gopoker -c ws://locallost:777/cli # connect to the server as a CLI client
-```
+# start the poker server on localhost:777
+$ gopoker -s 777
 
-```cmd
-C:\[whateverdirs]\gopoker\"gopoker.exe" REM Windows CMD
+# create a new poker room
+$ curl -d '{"roomName": "test"}' -H "Content-Type: application/json" http://localhost:777/new
+
+# connect to the poker room as a CLI client
+$ gopoker -c ws://localhost:777/cli
+
+# alternatively,  connect to the server as a web client
+$ export  NEXT_PUBLIC_GOPOKER_SERVER_ADDR='localhost:777' # tell web frontend where the server is
+$ yarn start # start next.js web frontend
 ```
