@@ -35,9 +35,76 @@ const literata = Literata({
 
 import { decode } from '@msgpack/msgpack';
 
+const createWebSocket = (key, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt) => {
+  if (tryCnt > 2) {
+    setConnStatus('closed');
+    return;
+  }
+
+  const gameSocket = new WebSocket(key);
+
+  gameSocket.addEventListener('message',
+    async (event) => {
+      try {
+        //const msg = JSON.parse(event.data.toString());
+        //const msg = await decodeFromBlob(event.data);
+        const msg = decode(await event.data.arrayBuffer(), { useBigInt64: true });
+        console.warn('Game: recv msg:', msg);
+
+        msg._noShallowCompare = uuidv4();
+        next(null, msg);
+        if (tryCnt) // XXX
+          tryCnt = 0;
+      } catch(e) {
+        console.error(`msgpack decode(): err: ${e}`);
+        next(e);
+      }
+  });
+
+  gameSocket.addEventListener('error', (event) => {
+    console.error('websocket err', event.error);
+    next(event.error ?? new Error('unspecified'));
+  });
+
+  gameSocket.addEventListener('close', async (event) => {
+    if (!event.wasClean || event.code !== 1000) {
+      console.log('websocket had an unclean exit. attempting to reconnect...');
+      setConnStatus('rc');
+      tryCnt++;
+      await new Promise(res => setTimeout(res, 1000));
+      createWebSocket(key, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt);
+      //createWebSocket(...arguments);
+    } else {
+      console.log('websocket had clean close', event);
+    }
+  });
+
+  // set up open listener to make sure we don't miss the
+  // first response msg in the message listener (unlikely but possible)
+  gameSocket.addEventListener('open', (event) => {
+    console.log('websocket open: trycnt', tryCnt);
+    if (tryCnt > 0) {
+      if (!window.privID) {
+        console.error('createWebSocket: reconnect attempted with falsey window.privID');
+        setConnStatus('closed');
+        return;
+      }
+      console.log(`websocket open: reconnect attempt #${tryCnt}`);
+      websocketOpts.Request = NETDATA.PLAYER_RECONNECTING;
+      websocketOpts.Msg = window.privID;
+    }
+    gameSocket.send(websocketOpts.toMsgPack());
+  });
+
+  socketRef.current = gameSocket;
+  setSocket(gameSocket);
+};
+
 const Connect = () => {
   const {gameOpts, setGameOpts} = useContext(GameContext);
+  const [connStatus, setConnStatus] = useState('ok');
   const [socket, setSocket] = useState(null);
+  const socketRef = useRef(null);
   const creatorTokenRef = useRef(null);
 
   const { roomURL, creatorToken, setShowGame } = gameOpts;
@@ -76,42 +143,18 @@ const Connect = () => {
   // FIXME: when a player is eliminated, NetDataUpdatePlayer, NetDataPlayerLeft & NetDataEliminated
   // sometimes are being processed out of order, due to async nature of SWR
   const { data, error } = useSWRSubscription(roomURL, (key, { next }) => {
-    let gameSocket;
     try {
       next(null); // need to reset error on Game remounts
 
-      gameSocket = new WebSocket(key);
-      gameSocket.addEventListener('open', (event) => {
-        gameSocket.send(websocketOpts.toMsgPack());
-      });
-      gameSocket.addEventListener('message',
-        async (event) => {
-          try {
-            //const msg = JSON.parse(event.data.toString());
-            //const msg = await decodeFromBlob(event.data);
-            const msg = decode(await event.data.arrayBuffer(), { useBigInt64: true });
-            console.warn('Game: recv msg:', msg);
-
-            msg._noShallowCompare = uuidv4();
-            next(null, msg);
-          } catch(e) {
-            console.error(`msgpack decode(): err: ${e}`);
-            next(e);
-          }
-      });
-      gameSocket.addEventListener('error', (event) => {
-        console.error('websocket err', event.error);
-        next(event.error ?? new Error('unspecified'));
-      });
-      setSocket(gameSocket);
+      createWebSocket(key, websocketOpts, setSocket, socketRef, setConnStatus, next, 0);
     } catch (e) {
       next(e);
     }
 
     return () => {
-      if (gameSocket?.readyState === WebSocket.OPEN) {
-        gameSocket?.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
-        gameSocket?.close(1000, 'web client exited');
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
+        socketRef.current.close(1000, 'web client exited');
       }
     }
   });
@@ -160,7 +203,7 @@ const Connect = () => {
 
   return (
    <Tablenew
-     {...{socket, websocketOpts, setShowGame}}
+     {...{socket, websocketOpts, connStatus, setShowGame}}
      netData={data}
    />
   );

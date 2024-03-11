@@ -14,8 +14,11 @@ type Client struct {
   Name     string
   Player   *poker.Player
   Settings *ClientSettings // XXX: Settings.Name is redundant now
-  conn     *websocket.Conn
-  connType string
+
+  privID         string // used for reconnecting
+  conn           *websocket.Conn
+  connType       string
+  isDisconnected bool
 }
 
 func NewClient(settings *ClientSettings) *Client {

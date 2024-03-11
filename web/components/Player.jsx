@@ -274,6 +274,20 @@ const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }
 
 Positions.displayName = 'Positions';
 
+const ReconnectOverlay = React.memo(() => (
+  <div className={styles.reconnectOverlay}>
+    <Image
+      src={'/connectionLost.png'}
+      width={45}
+      height={45}
+      alt='[connectionLost img]'
+    />
+    <p>waiting for reconnect...</p>
+  </div>
+));
+
+ReconnectOverlay.displayName = 'ReconnectOverlay';
+
 function Player({
   client, socket, tableState, curPlayer,
   playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer, keyPressed
@@ -285,6 +299,8 @@ function Player({
   const [isDealer, setIsDealer] = useState(false);
   const [isSmallBlind, setIsSmallBlind] = useState(false);
   const [isBigBlind, setIsBigBlind] = useState(false);
+
+  const [isReconnecting, setIsReconnecting] = useState(client.Player?.isDisconnected);
 
   const posSetStateMap = useMemo(() => ({
     dealer:     setIsDealer,
@@ -298,6 +314,7 @@ function Player({
     setName(client.Name);
     setCurAction(client.Player?.Action);
     setChipCount(Number(client.Player?.ChipCount));
+    setIsReconnecting(client.Player?.isDisconnected);
   }, [client, client.Player]);
 
   useEffect(() => {
@@ -333,6 +350,13 @@ function Player({
           borderWidth: '1px',
       }));
   }, [client, curPlayer, playerHead, style.borderColor]);
+
+  useEffect(() => {
+    setStyle(s => ({
+      ...s,
+      position: isReconnecting ? 'relative' : ''
+    }));
+  }, [isReconnecting]);
 
   useEffect(() => {
     if (!side)
@@ -408,12 +432,22 @@ function Player({
       className={styles.player}
       style={style}
     >
-      <div className={styles.nameContainer}>
+      <div
+        className={styles.nameContainer}
+        style={{ filter: !isYourPlayer && isReconnecting ? 'blur(1.5px)' : '' }}
+      >
         <p className={styles.name}>{name}{isYourPlayer && <span style={{fontStyle: 'italic'}}> (You)</span>}</p>
         <Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />
       </div>
-      <p>current action: { PlayerStateToString(curAction) }</p>
-      <div className={styles.chipCountContainer}>
+      <p
+        style={{ filter: !isYourPlayer && isReconnecting ? 'blur(1.5px)' : '' }}
+      >
+        current action: { PlayerStateToString(curAction) }
+      </p>
+      <div
+        className={styles.chipCountContainer}
+        style={{ filter: !isYourPlayer && isReconnecting ? 'blur(1.5px)' : '' }}
+      >
         <p>chip count: { chipCount.toLocaleString() }</p>
         <Image
           src={'/chipCountChips.png'}
@@ -423,6 +457,7 @@ function Player({
         />
       </div>
       <YourPlayerActions {...{isYourPlayer, curPlayer, isSmallBlind, tableState, client, keyPressed, socket}} />
+      { !isYourPlayer && isReconnecting && <ReconnectOverlay /> }
     </div>
   );
 }

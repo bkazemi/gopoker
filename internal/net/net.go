@@ -28,6 +28,8 @@ const (
   NetDataUpdatePlayer
   NetDataUpdateTable
   NetDataPlayerLeft
+  NetDataPlayerReconnecting
+  NetDataPlayerReconnected
   NetDataClientExited
   NetDataClientSettings
   NetDataReset
@@ -70,7 +72,7 @@ const (
   NetDataBadRequest
 
   NetDataRoomSettings
-) // 42 flags, 22 left
+) // 43 flags, 21 left
 
 const NetActionNeedsTableBitMask = (NetDataNewConn | NetDataClientExited | NetDataUpdateTable | NetDataDeal)
 
@@ -159,18 +161,22 @@ func (netData *NetData) NetActionToString() string {
   }
 
   netDataReqStringMap := map[NetAction]string{
-    NetDataClose:          "NetDataClose",
-    NetDataNewConn:        "NetDataNewConn",
+    NetDataClose:   "NetDataClose",
+    NetDataNewConn: "NetDataNewConn",
 
-    NetDataYourPlayer:     "NetDataYourPlayer",
-    NetDataNewPlayer:      "NetDataNewPlayer",
-    NetDataCurPlayers:     "NetDataCurPlayers",
-    NetDataUpdatePlayer:   "NetDataUpdatePlayer",
-    NetDataUpdateTable:    "NetDataUpdateTable",
-    NetDataPlayerLeft:     "NetDataPlayerLeft",
-    NetDataClientExited:   "NetDataClientExited",
-    NetDataClientSettings: "NetDataClientSettings",
-    NetDataReset:          "NetDataReset",
+    NetDataYourPlayer:         "NetDataYourPlayer",
+    NetDataNewPlayer:          "NetDataNewPlayer",
+    NetDataCurPlayers:         "NetDataCurPlayers",
+    NetDataUpdatePlayer:       "NetDataUpdatePlayer",
+    NetDataUpdateTable:        "NetDataUpdateTable",
+    NetDataPlayerLeft:         "NetDataPlayerLeft",
+    NetDataPlayerReconnecting: "NetDataPlayerReconnecting",
+    NetDataPlayerReconnected:  "NetDataPlayerReconnected",
+    NetDataClientExited:       "NetDataClientExited",
+    NetDataClientSettings:     "NetDataClientSettings",
+    NetDataReset:              "NetDataReset",
+
+    NetDataServerClosed: "NetDataServerClosed",
 
     NetDataTableLocked: "NetDataTableLocked",
     NetDataBadAuth:     "NetDataBadAuth",

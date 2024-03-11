@@ -20,6 +20,7 @@ type Room struct {
   connClientMap map[*websocket.Conn]*Client
   playerClientMap map[*poker.Player]*Client
   IDClientMap map[string]*Client
+  privIDClientMap map [string]*Client
   nameClientMap map[string]*Client
 
   table *poker.Table
@@ -38,6 +39,7 @@ func NewRoom(name string, table *poker.Table, creatorToken string) *Room {
     connClientMap: make(map[*websocket.Conn]*Client),
     playerClientMap: make(map[*poker.Player]*Client),
     IDClientMap: make(map[string]*Client),
+    privIDClientMap: make(map[string]*Client),
     nameClientMap: make(map[string]*Client),
 
     creatorToken: creatorToken,
@@ -122,30 +124,23 @@ func (room *Room) getPlayerConn(player *poker.Player) *websocket.Conn {
   return nil
 }
 
-func (room *Room) removeClient(conn *websocket.Conn) {
+func (room *Room) removeClient(client *Client) {
   room.table.Mtx().Lock()
   defer room.table.Mtx().Unlock()
 
-  if (conn == nil) {
-    fmt.Printf("Room.removeClient(): {%s}: conn == nil\n", room.name)
+  if (client == nil) {
+    fmt.Printf("Room.removeClient(): {%s}: client == nil\n", room.name)
     return
   }
 
-  client := room.connClientMap[conn]
-  if client == nil { // table lock or bad auth
-    fmt.Printf("Room.removeClient(): {%s}: couldn't find conn %p in connClientMap\n", room.name, conn)
+  delete(room.nameClientMap, client.Name)
+  delete(room.IDClientMap, client.ID)
+  delete(room.playerClientMap, client.Player)
+  delete(room.privIDClientMap, client.privID)
 
-    return
-  } else {
-    delete(room.nameClientMap, client.Name)
-    delete(room.IDClientMap, client.ID)
-    delete(room.connClientMap, conn)
-    delete(room.playerClientMap, client.Player)
-
-    // NOTE: connections that don't become clients (e.g. in the case of a lock)
-    //       never increment NumConnected
-    room.table.NumConnected--
-  }
+  // NOTE: connections that don't become clients (e.g. in the case of a lock)
+  //       never increment NumConnected
+  room.table.NumConnected--
 
   netData := &NetData{
     Client:   client,
@@ -964,17 +959,30 @@ func (room *Room) newClient(conn *websocket.Conn, connType string, clientSetting
   room.Lock()
   defer room.Unlock()
 
-  client, ID := &Client{conn: conn, connType: connType}, ""
+  client, ID, privID := &Client{conn: conn, connType: connType}, "", ""
   for {
-    ID = poker.RandString(10) // 62^10 is plenty ;)
-    if _, found := room.IDClientMap[ID]; !found {
+    // 62^10 is plenty ;)
+    ID = poker.RandString(10)
+    privID = poker.RandString(10)
+
+    _, foundID := room.IDClientMap[ID]
+    _, foundPrivID := room.privIDClientMap[privID]
+    if !foundID && !foundPrivID {
       client.ID = ID
+      client.privID = privID
+
       room.IDClientMap[ID] = client
+      room.privIDClientMap[privID] = client
       room.connClientMap[conn] = client
 
       break
     } else {
-      fmt.Printf("room.newClient(): WARNING: possible bug: ID '%s' already found in IDClientMap\n", ID)
+      if foundID {
+        fmt.Printf("room.newClient(): WARNING: possible bug: ID '%s' already found in IDClientMap\n", ID)
+      }
+      if foundPrivID {
+        fmt.Printf("room.newClient(): WARNING: possible bug: privID '%s' already found in privIDClientMap\n", privID)
+      }
     }
   }
 

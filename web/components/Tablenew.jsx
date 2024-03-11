@@ -89,7 +89,7 @@ const nullPot = {
   Total: 0,
 };
 
-export default function Tablenew({ socket, netData, setShowGame }) {
+export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
   //const [isPaused, setIsPaused] = useState(false);
 
   const {gameOpts, setGameOpts} = useContext(GameContext);
@@ -136,6 +136,21 @@ export default function Tablenew({ socket, netData, setShowGame }) {
   const [modalTxt, setModalTxt] = useState([]);
 
   const chatInputRef = useRef(null);
+
+  useEffect(() => {
+    switch (connStatus) {
+    case 'rc':
+      setModalType('reconnect');
+      setModalTxt(arr => [...arr, 'reconnecting...']);
+      setModalOpen(true);
+      break;
+    case 'closed':
+      setModalType('preGame');
+      setModalTxt(['could not reconnect. connection closed']);
+      setModalOpen(true);
+      break;
+    }
+  }, [connStatus]);
 
   useEffect(() => {
     routerRef.current = router
@@ -243,8 +258,13 @@ export default function Tablenew({ socket, netData, setShowGame }) {
 
     switch (netData.Response) {
     case NETDATA.NEWCONN: // FIXME: racy
-      if (netData.Client)
+      if (netData.Client) {
+        if (!netData.Msg)
+          console.error('newconn: no privID sent by server');
+        netData.Client.privID = netData.Msg;
+        window.privID = netData.Msg;
         setYourClient(netData.Client);
+      }
       setNumConnected(netData.Table.NumConnected);
       if (netData.Table)
           updateTable(netData);
@@ -302,6 +322,17 @@ export default function Tablenew({ socket, netData, setShowGame }) {
 
         return newClients;
       });
+      break;
+    case NETDATA.PLAYER_RECONNECTING:
+      netData.Client.Player.isDisconnected = true;
+      updatePlayer(netData.Client);
+      break;
+    case NETDATA.PLAYER_RECONNECTED:
+      netData.Client.Player.isDisconnected = false;
+      updatePlayer(netData.Client);
+      if (netData.Client.ID === yourClientID.current)
+        setModalOpen(false);
+
       break;
     case NETDATA.PLAYER_LEFT: {
       console.log(`player left: id: ${netData.Client.ID} n: ${netData.Client.Player.Name}`);
@@ -389,28 +420,33 @@ export default function Tablenew({ socket, netData, setShowGame }) {
       break;
     case NETDATA.BAD_REQUEST:
     case NETDATA.SERVER_MSG:
-      setModalType('');
-      setModalTxt(arr => [...arr, netData.Msg]);
+      if (netData.Msg.startsWith('failed to reconnect')) {
+        setModalTxt([netData.Msg]);
+        setModalType('preGame');
+      } else {
+        setModalTxt(arr => [...arr, netData.Msg]);
+        setModalType('');
+      }
       setModalOpen(true);
       break;
     case NETDATA.TABLE_LOCKED:
         setModalType('preGame');
-        setModalTxt(arr => [...arr, 'this table is locked']);
+        setModalTxt(arr => ['this table is locked']);
         setModalOpen(true);
         break;
     case NETDATA.BAD_AUTH:
       setModalType('preGame');
-      setModalTxt(arr => [...arr, 'your password was incorrect']);
+      setModalTxt(arr => ['your password was incorrect']);
       setModalOpen(true);
       break;
     case NETDATA.SERVER_CLOSED:
       setModalType('preGame');
-      setModalTxt(arr => [...arr, 'server closed']);
+      setModalTxt(['server closed']);
       setModalOpen(true);
       break;
     default:
       setModalType('preGame');
-      setModalTxt(arr => [...arr, `bad response: ${netData.Response}`]);
+      setModalTxt([`bad response: ${netData.Response}`]);
       setModalOpen(true);
       break;
     }

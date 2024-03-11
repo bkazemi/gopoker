@@ -399,7 +399,7 @@ func (server *Server) handleNewConn(
   netData.Request = 0
 
   if netData.Client == nil { // XXX
-    netData.Client = NewClient(nil).SetConn(conn)
+    netData.Client = NewClient(nil).SetConn(conn).SetConnType(connType)
     netData.Response = NetDataBadRequest
     netData.Msg = "netData.Client was not created by the client"
 
@@ -447,6 +447,7 @@ func (server *Server) handleNewConn(
       room.sendResponseToAll(&netData, client)
 
       netData.Client = client
+      netData.Msg = client.privID
       netData.Send() // send NewConn after we've processed their settings
     }
 
@@ -543,6 +544,7 @@ func (server *Server) handleNewConn(
   room.sendResponseToAll(&netData, client) // send NewConn to other connected clients
 
   netData.Client = client
+  netData.Msg = client.privID
   netData.Send() // send NewConn with Client info to this client
 
   // send current player info to this client
@@ -616,6 +618,47 @@ func (server *Server) handleNewConn(
   }
 }
 
+func (server *Server) handleReconnect(
+  room *Room, netData NetData, conn *websocket.Conn, connType string,
+) {
+  if netData.Client == nil { // XXX
+    netData.ClearData(NewClient(nil).SetConn(conn).SetConnType(connType))
+    netData.Response = NetDataBadRequest
+    netData.Msg = "netData.Client was not created by the client"
+
+    netData.Send()
+
+    return
+  }
+
+  if client := room.connClientMap[conn]; client != nil {
+    netData.ClearData(client)
+    netData.Response = NetDataServerMsg
+    netData.Msg = "reconnect attempted while connected to server"
+
+    netData.Send()
+
+    return
+  }
+
+  // We put the private ID in the Msg member so we don't need to add an extra
+  // member to the struct. An extra member would almost never be used and is
+  // more likely be leaked to others via programmer error.
+  if client, ok := room.privIDClientMap[netData.Msg]; ok {
+    client.conn = conn
+    room.connClientMap[conn] = client
+    client.isDisconnected = false
+    netData.ClearData(client)
+    netData.Response = NetDataPlayerReconnected
+    room.sendResponseToAll(&netData, nil)
+  } else {
+    netData.ClearData(NewClient(nil).SetConn(conn).SetConnType(connType))
+    netData.Response = NetDataBadRequest
+    netData.Msg = "failed to reconnect: invalid or expired private ID"
+    netData.Send()
+  }
+}
+
 func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *Room, connType string) {
   if req.Header.Get("keepalive") != "" {
     return // NOTE: for heroku
@@ -639,12 +682,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
   conn.SetCompressionLevel(flate.BestCompression)
 
   // TODO: move me
-  playerCleanup := func(cleanExit bool, isClientExit bool) {
-    if client, ok := room.connClientMap[conn]; ok && client.Player != nil {
+  playerCleanup := func(client *Client, isClientExit bool) {
+    if client != nil && client.Player != nil {
       player := client.Player
-      if !cleanExit {
-        fmt.Printf("Server.WSClient(): {%s}: %s had an unclean exit\n", room.name, player.Name)
-      }
+
       if room.table.ActivePlayers().Len > 1 &&
          room.table.CurPlayer() != nil &&
          room.table.CurPlayer().Player.Name == player.Name {
@@ -666,13 +707,45 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
     if err := recover(); err != nil {
       server.serverError(poker.PanicRetToError(err), room)
     } else { // not a room panic()
-      playerCleanup(cleanExit, true)
+      if client, ok := room.connClientMap[conn]; ok {
+        minsToWait := 0 * time.Minute
 
-      room.removeClient(conn)
-      server.closeConn(conn)
+        client.isDisconnected = true
 
-      if room.table.NumConnected == 0 {
-        server.removeRoom(room)
+        if !cleanExit {
+          fmt.Printf("Server.WSClient: %s unclean exit, waiting 1 min for reconnect until cleanup\n", client.ID)
+
+          if client.Player != nil {
+            room.sendResponseToAll(&NetData{
+              Response: NetDataPlayerReconnecting,
+              Client: client,
+            }, client)
+          }
+          minsToWait = 1 * time.Minute
+        }
+
+        delete(room.connClientMap, conn)
+        server.closeConn(conn)
+
+        // the 0 min gofunc is kinda dumb, but they're cheap and it eliminates
+        // some redundancy
+        time.AfterFunc(minsToWait, func() {
+          if !client.isDisconnected {
+            return
+          }
+
+          // if IsLocked is true then there must be at least one other client
+          if !room.IsLocked && room.table.NumConnected == 1 {
+            fmt.Printf("Server.WSClient(): defer(): {%s}: last client left, skipping player & client cleanup\n", room.name)
+            server.removeRoom(room)
+            return
+          }
+
+          playerCleanup(client, true)
+          room.removeClient(client)
+        })
+      } else {
+        fmt.Printf("Server.WSClient(): defer(): {%s}: couldn't find conn %p in connClientMap\n", room.name, conn)
       }
     }
   }()
@@ -711,7 +784,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       returnFromInputLoop <- true
       return
     case NetDataPlayerLeft: // NOTE: used when a player moves to spectator
-      playerCleanup(true, false)
+      playerCleanup(client, false)
     case NetDataClientSettings: // TODO: check pointers
       if !room.TryLock() {
         netData.ClearData(client)
@@ -905,8 +978,11 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       if connType == "cli" {
         _, rawData, err := conn.ReadMessage()
         if err != nil {
-          if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+          if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
             fmt.Printf("Server.WSClient(): {%s}: cli: readConn() conn: %p err: %v\n", room.name, conn, err)
+          } else {
+            fmt.Printf("Server.WSClient(): {%s} cli: readConn() conn %p ws closed cleanly: %v\n", room.name, conn, err)
+            cleanExit = true
           }
 
           return
@@ -939,8 +1015,11 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       } else { // webclient
         _, rawData, err := conn.ReadMessage()
         if err != nil {
-          if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+          if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
             fmt.Printf("Server.WSClient(): {%s}: web: readConn() conn: %p err: %v\n", room.name, conn, err)
+          } else {
+            fmt.Printf("Server.WSClient(): {%s} web: readConn() conn %p ws closed cleanly: %v\n", room.name, conn, err)
+            cleanExit = true
           }
 
           return
@@ -976,6 +1055,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
       if netData.Request == NetDataNewConn {
         server.handleNewConn(room, netData, conn, connType)
+      } else if netData.Request == NetDataPlayerReconnecting {
+        server.handleReconnect(room, netData, conn, connType)
       } else {
         client := room.connClientMap[conn]
         go handleAsyncRequest(client, netData)

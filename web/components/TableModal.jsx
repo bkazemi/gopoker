@@ -64,6 +64,30 @@ const ModalContent = React.memo(({
         </button>
       </>
     );
+  case 'reconnect':
+    return (
+      <>
+       <div
+          style={{
+            display: 'flex',
+            paddingBottom: '7px',
+          }}
+        >
+          <Image
+            src={'/connectionLost.png'}
+            height={35}
+            width={35}
+            alt={'<connectionLost image>'}
+            style={{
+              alignSelf: 'flex-start',
+              marginRight: '10px',
+            }}
+          />
+          <h2>server connection lost</h2>
+        </div>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+      </>
+    );
   case 'quit':
     return (
       <>
@@ -246,13 +270,15 @@ function TableModal({
       setModalTxt([]);
   }, [modalOpen, setModalTxt]);
 
+  const isCloseable = modalType !== 'preGame' && modalType !== 'reconnect';
+
   return (
     <Modal
       ariaHideApp={false}
       isOpen={modalOpen}
       onRequestClose={() => setModalOpen(false)}
-      shouldCloseOnOverlayClick={modalType !== 'preGame'}
-      shouldCloseOnEsc={modalType !== 'preGame'}
+      shouldCloseOnOverlayClick={isCloseable}
+      shouldCloseOnEsc={isCloseable}
       contentLabel='label'
       style={{
         overlay: {

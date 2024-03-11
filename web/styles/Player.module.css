@@ -88,3 +88,22 @@
 .positions > img:first-child {
   margin-right: 3px;
 }
+
+.reconnectOverlay {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+}
+
+.reconnectOverlay p {
+  color: #ff3535;
+  background: #0c0b0b;
+  border-radius: 5px;
+  padding: 7px;
+}
