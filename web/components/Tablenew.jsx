@@ -141,7 +141,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
     switch (connStatus) {
     case 'rc':
       setModalType('reconnect');
-      setModalTxt(arr => [...arr, 'reconnecting...']);
+      setModalTxt(['reconnecting...']);
       setModalOpen(true);
       break;
     case 'closed':

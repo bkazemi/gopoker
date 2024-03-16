@@ -646,11 +646,19 @@ func (server *Server) handleReconnect(
   // more likely be leaked to others via programmer error.
   if client, ok := room.privIDClientMap[netData.Msg]; ok {
     client.conn = conn
+
     room.connClientMap[conn] = client
     client.isDisconnected = false
     netData.ClearData(client)
     netData.Response = NetDataPlayerReconnected
     room.sendResponseToAll(&netData, nil)
+
+    // make sure the client gets current game state
+    room.sendAllPlayerInfo(client, false, false)
+    room.sendTable(client)
+    if room.table.State != poker.TableStateNotStarted {
+      room.sendPlayerTurn(client)
+    }
   } else {
     netData.ClearData(NewClient(nil).SetConn(conn).SetConnType(connType))
     netData.Response = NetDataBadRequest
@@ -713,7 +721,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         client.isDisconnected = true
 
         if !cleanExit {
-          fmt.Printf("Server.WSClient: %s unclean exit, waiting 1 min for reconnect until cleanup\n", client.ID)
+          fmt.Printf("Server.WSClient: <%s> unclean exit, waiting 1 min for reconnect until cleanup\n", client.ID)
 
           if client.Player != nil {
             room.sendResponseToAll(&NetData{
@@ -736,7 +744,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
           // if IsLocked is true then there must be at least one other client
           if !room.IsLocked && room.table.NumConnected == 1 {
-            fmt.Printf("Server.WSClient(): defer(): {%s}: last client left, skipping player & client cleanup\n", room.name)
+            fmt.Printf("Server.WSClient(): <%s> defer(): {%s}: last client left, skipping player & client cleanup\n", client.ID, room.name)
             server.removeRoom(room)
             return
           }
@@ -836,7 +844,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         netData.Response = NetDataClientSettings
         netData.Send()
 
-        room.sendTable()
+        room.sendTable(nil)
 
         // TODO: combine server msg with prev response
         netData.Response = NetDataServerMsg
@@ -873,7 +881,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         room.sendDeals()
         room.sendAllPlayerInfo(nil, false, true)
         room.sendPlayerTurnToAll()
-        room.sendTable()
+        room.sendTable(nil)
       }
     case NetDataChatMsg:
       msg := netData.Msg

@@ -35,7 +35,7 @@ const literata = Literata({
 
 import { decode } from '@msgpack/msgpack';
 
-const createWebSocket = (key, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt) => {
+const createWebSocket = (key, roomID, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt) => {
   if (tryCnt > 2) {
     setConnStatus('closed');
     return;
@@ -61,18 +61,31 @@ const createWebSocket = (key, websocketOpts, setSocket, socketRef, setConnStatus
       }
   });
 
+  // we listen to error for debugging purposes, but all the error handling is
+  // dealt with in the close handler
   gameSocket.addEventListener('error', (event) => {
-    console.error('websocket err', event.error);
-    next(event.error ?? new Error('unspecified'));
+    console.error('websocket err', event);
   });
 
   gameSocket.addEventListener('close', async (event) => {
     if (!event.wasClean || event.code !== 1000) {
       console.log('websocket had an unclean exit. attempting to reconnect...');
+      console.log('making sure the room still exists...')
+      const res = await fetch(`/api/check/${roomID}`);
+      if (!res.ok) {
+        const body = await res.text();
+        next(
+          res.status === 404
+            ? new Error(`room "${roomID}" doesn't exist anymore`)
+            : body?.error ?? `code ${res.code} reason unspecified`
+        );
+
+        return;
+      }
       setConnStatus('rc');
       tryCnt++;
-      await new Promise(res => setTimeout(res, 1000));
-      createWebSocket(key, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt);
+      await new Promise(res => setTimeout(res, 1 * 1000));
+      createWebSocket(key, roomID, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt);
       //createWebSocket(...arguments);
     } else {
       console.log('websocket had clean close', event);
@@ -98,9 +111,10 @@ const createWebSocket = (key, websocketOpts, setSocket, socketRef, setConnStatus
 
   socketRef.current = gameSocket;
   setSocket(gameSocket);
+  window.socket = gameSocket;
 };
 
-const Connect = () => {
+const Connect = ({ roomID }) => {
   const {gameOpts, setGameOpts} = useContext(GameContext);
   const [connStatus, setConnStatus] = useState('ok');
   const [socket, setSocket] = useState(null);
@@ -146,7 +160,7 @@ const Connect = () => {
     try {
       next(null); // need to reset error on Game remounts
 
-      createWebSocket(key, websocketOpts, setSocket, socketRef, setConnStatus, next, 0);
+      createWebSocket(key, roomID, websocketOpts, setSocket, socketRef, setConnStatus, next, 0);
     } catch (e) {
       next(e);
     }
@@ -283,7 +297,7 @@ function RoomPostDimCheck() {
             setCheckRoomErr(`room "${roomID}" is locked.`);
           } else if (res.status != 404) {
             const body = await res.json();
-            setCheckRoomErr(body.error ?? 'not specified');
+            setCheckRoomErr(body.error ?? `code ${res.status} reason unspecified`);
           }
           setRoomNotFound(true);
         }
@@ -337,7 +351,7 @@ function RoomPostDimCheck() {
             (
               !roomURL &&
               <NewGameForm isVisible={true} isDirectLink={true} /> ||
-              <Connect />
+              <Connect roomID={roomID} />
             )
           )
         }

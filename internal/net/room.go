@@ -361,7 +361,7 @@ func (room *Room) sendPlayerActionToAll(player *poker.Player, client *Client) {
 
   var c *Client
   if client == nil {
-    c = room.connClientMap[room.getPlayerConn(player)]
+    c = room.getPlayerClient(player)
   } else {
     c = client
   }
@@ -388,8 +388,7 @@ func (room *Room) sendDeals() {
   }
 
   for _, player := range room.table.CurPlayers().ToPlayerArray() {
-    client := room.connClientMap[room.getPlayerConn(player)]
-    netData.Client = client
+    netData.Client = room.getPlayerClient(player)
 
     netData.Send()
   }
@@ -403,7 +402,7 @@ func (room *Room) sendHands() {
   }
 
   for _, player := range room.table.GetNonFoldedPlayers() {
-    client := room.playerClientMap[player]
+    client := room.getPlayerClient(player)
     //assert(client != nil, "Room.sendHands(): player not in playerMap")
     netData.Client = room.publicClientInfo(client)
 
@@ -438,8 +437,7 @@ func (room *Room) sendActivePlayers(client *Client) {
   }
 
   for _, player := range room.table.ActivePlayers().ToPlayerArray() {
-    playerClient := room.connClientMap[room.getPlayerConn(player)]
-    netData.Client = room.publicClientInfo(playerClient)
+    netData.Client = room.publicClientInfo(room.getPlayerClient(player))
     netData.SendTo(client)
   }
 }
@@ -461,7 +459,7 @@ func (room *Room) sendAllPlayerInfo(client *Client, isCurPlayers bool, sendToSel
   }
 
   for _, player := range players {
-    playerClient := room.connClientMap[room.getPlayerConn(player)]
+    playerClient := room.getPlayerClient(player)
 
     netData.Client = playerClient
 
@@ -480,11 +478,18 @@ func (room *Room) sendAllPlayerInfo(client *Client, isCurPlayers bool, sendToSel
   }
 }
 
-func (room *Room) sendTable() {
-  room.sendResponseToAll(&NetData{
+func (room *Room) sendTable(client *Client) {
+  netData := &NetData{
+    Client:   client,
     Response: NetDataUpdateTable,
     Table:    room.table,
-  }, nil)
+  }
+
+  if client == nil {
+    room.sendResponseToAll(netData, nil)
+  } else {
+    netData.Send()
+  }
 }
 
 func (room *Room) sendReset(winner *Client) {
@@ -499,7 +504,7 @@ func (room *Room) removeEliminatedPlayers() {
   netData := &NetData{Response: NetDataEliminated}
 
   for _, player := range room.table.GetEliminatedPlayers() {
-    client := room.connClientMap[room.getPlayerConn(player)]
+    client := room.getPlayerClient(player)
     netData.Client = client
     netData.Response = NetDataEliminated
     netData.Msg = fmt.Sprintf("<%s id: %s> was eliminated", client.Player.Name,
@@ -576,7 +581,7 @@ func (room *Room) newRound() {
   room.table.State = realRoundState
   room.table.Mtx().Unlock()
 
-  room.sendTable()
+  room.sendTable(nil)
 }
 
 // NOTE: called w/ room lock acquired in handleAsyncRequest()

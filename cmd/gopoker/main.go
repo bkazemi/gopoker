@@ -41,8 +41,12 @@ func runClient(opts options) (err error) {
   }
 
   fmt.Fprintf(os.Stderr, "connecting to %s ...\n", opts.addr)
-  conn, _, err := websocket.DefaultDialer.Dial(opts.addr, nil)
+  conn, resp, err := websocket.DefaultDialer.Dial(opts.addr, nil)
   if err != nil {
+    if resp != nil && resp.StatusCode == http.StatusNotFound {
+      return errors.New("404 not found")
+    }
+
     return err
   }
 
