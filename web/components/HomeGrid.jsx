@@ -1,6 +1,6 @@
 import Image from 'next/image';
 
-import React, {useState, useEffect, useCallback, useRef, useContext} from 'react';
+import React, {useState, useEffect, useCallback, useRef } from 'react';
 
 import { Exo } from 'next/font/google';
 
@@ -21,17 +21,6 @@ function HomeGrid({ isVisible }) {
 
   const toggleGrid = useCallback((isOn, visibleCard) => {
     visibleCard = visibleCard.current;
-
-    /*for (const el of gridRef.current.children) {
-      if (el !== visibleCard) {
-        /*if (isOn)
-          el.classList.remove('hidden');
-        else
-          el.classList.add('hidden');
-        el.classList.remove(styles.selectedCard);
-        console.log(`classList now: ${el.classList}`);
-      }
-    }*/
 
     if (isOn) {
       setTimeout(() => {

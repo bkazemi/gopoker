@@ -189,7 +189,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
   const updateRoom = useCallback((client) => {
     const router = routerRef.current;
 
-    if (client.Settings?.Admin?.RoomName) {
+    if (router && client.Settings?.Admin?.RoomName) {
       const newPath = `/room/${client.Settings.Admin.RoomName}`;
       if (newPath !== routerRef.asPath) {
         console.log(`newPath: ${newPath} router.asPath: ${router.asPath}`);

@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, { useState} from 'react';
 
 import Image from 'next/image';
 
@@ -72,82 +72,10 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
 
 Cards.displayName = 'Cards';
 
-const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }) => {
-  if (tableState === TABLE_STATE.NOT_STARTED ||
-     (!isDealer && !isBigBlind && !isSmallBlind))
-    return;
-
-  return (
-    <div className={styles.positions}>
-      {
-        isDealer &&
-        <Image
-          src={'/D.png'}
-          width={35}
-          height={35}
-          alt='[D]'
-        />
-      }
-      {
-        isSmallBlind &&
-        <Image
-          src={'/SB.png'}
-          width={35}
-          height={35}
-          alt='[Sb]'
-        />
-      }
-      {
-        isBigBlind &&
-        <Image
-          src={'/BB.png'}
-          width={35}
-          height={35}
-          alt='[Bb]'
-        />
-      }
-    </div>
-  );
-});
-
-Positions.displayName = 'Positions';
-
-/*const seatImgMap = new Map([
-  ['dealer', '/D.png'],
-  ['smallBlind', '/SB.png'],
-  ['bigBlind', '/BB.png']
-]);*/
-
 function PlayerTableItems({
-  client, isYourPlayer, dealerAndBlinds,
-  side, gridRow, gridCol, tableState
+  client, isYourPlayer, side,
+  gridRow, gridCol, tableState
 }) {
-  // currently disabled
-  /*const [isDealer, setIsDealer] = useState(false);
-  const [isSmallBlind, setIsSmallBlind] = useState(false);
-  const [isBigBlind, setIsBigBlind] = useState(false);
-
-  const posSetStateMap = {
-    dealer: setIsDealer,
-    smallBlind: setIsSmallBlind,
-    bigBlind: setIsBigBlind,
-  };
-
-  useEffect(() => {
-    [...Object.entries(dealerAndBlinds)]
-      .filter(([name, seat]) => {
-        console.log(`dSB ${name} name: ${seat?.Player?.Name}  cname ${client?.Player?.Name}`);
-        if (seat?.Player?.Name === client?.Player?.Name)
-          return true;
-        else
-          posSetStateMap[name](false);
-      })
-      .map(([name]) => {
-        console.log(`MAP ${client.Player.Name} ${name}`);
-        posSetStateMap[name](true);
-      });
-  }, [dealerAndBlinds, client]);*/
-
   if (client._ID === 'vacant')
     return;
 
@@ -163,7 +91,6 @@ function PlayerTableItems({
       className={styles.playerItems}
       style={{ justifyContent, gridRow: gridRow, gridColumn: gridCol }}
     >
-      {/*<Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />*/}
       <Cards
         client={client}
         isYourPlayer={isYourPlayer}

@@ -1,20 +1,13 @@
 import React, {useContext, useEffect, useState} from 'react';
 
 import Image from 'next/image';
-//import Link from 'next/link';
 import {useRouter} from 'next/router';
 
 import { Literata } from 'next/font/google';
-//import useSWRSubscription from 'swr/subscription';
-
-//import {CSSTransition } from 'react-transition-group';
 
 import {GameContext} from '@/GameContext';
-//import Tablenew from '@/components/Tablenew';
 
 import config from '@/serverConfig';
-
-//import { NETDATA, NetData } from '@/lib/libgopoker';
 
 import styles from '@/styles/Game.module.css';
 
@@ -23,8 +16,9 @@ const literata = Literata({
   weight: '500',
 });
 
-import { decode } from '@msgpack/msgpack';
 import UnsupportedDevice from './UnsupportedDevice';
+
+/*import { decode } from '@msgpack/msgpack';
 
 async function decodeAsync(stream) {
   const chunks = [];
@@ -42,13 +36,12 @@ async function decodeFromBlob(blob) {
   } else {
     return decode(await blob.arrayBuffer(), { useBigInt64: true });
   }
-}
+}*/
 
 const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   const [fetchCalled, setFetchCalled] = useState(false);
-  //const [roomURL, setRoomUrl] = useState('');
   const [error, setError] = useState('');
 
   const router = useRouter();

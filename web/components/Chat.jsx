@@ -29,9 +29,9 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
     }
   }, [socket, msg, netData]);
 
-  const handleChatMsgsMouseEnter = () => {
+  const handleChatMsgsMouseEnter = useCallback(() => {
     setChatMsgsStyle({ borderColor: 'black', borderWidth: '1px' });
-  };
+  }, [setChatMsgsStyle]);
 
   const scrollToBottomOfChatMsgs = useCallback(() => {
     if (chatMsgsRef.current)

@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
-import Image from 'next/image';
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
 
@@ -21,7 +20,7 @@ import '@/styles/globals.css'
 
 import homeStyles from '@/styles/Home.module.css';
 
-const MainContent = ({ Component, pageProps, router, isCompactRoom }) => {
+const MainContent = ({ Component, pageProps, isCompactRoom }) => {
   // confirm window exit
   useEffect(() => {
     const handleBeforeUnload = (e) => {

@@ -13,7 +13,7 @@ import homeStyles from '@/styles/Home.module.css';
 const mPlus = M_PLUS_Code_Latin({ subsets: ['latin'], weight: '700' });
 
 export default function Header({ isTableHeader }) {
-  const {gameOpts, setGameOpts} = useContext(GameContext);
+  const { gameOpts } = useContext(GameContext);
 
   const logoImgRef = useRef(null);
 
@@ -33,7 +33,7 @@ export default function Header({ isTableHeader }) {
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
 
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', handleResize);
 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -59,10 +59,7 @@ export default function Header({ isTableHeader }) {
   }, []);
 
   const toggleSpin = useCallback(() => {
-    if (logoImgRef.current?.classList.contains(homeStyles.pauseAnimation))
-      logoImgRef.current?.classList.remove(homeStyles.pauseAnimation);
-    else
-      logoImgRef.current?.classList.add(homeStyles.pauseAnimation);
+    logoImgRef.current?.classList.toggle(homeStyles.pauseAnimation);
   }, [logoImgRef]);
 
   useEffect(() => {

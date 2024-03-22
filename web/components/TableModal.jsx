@@ -20,8 +20,7 @@ import { GameContext } from '@/GameContext';
 import { NewClient } from '@/lib/libgopoker';
 
 const ModalContent = React.memo(({
-  modalType, modalTxt, modalOpen, setModalOpen, setShowGame, setFormData,
-  setGameOpts
+  modalType, modalTxt, setModalOpen, setFormData, setGameOpts
 }) => {
   const router = useRouter();
 
@@ -263,7 +262,7 @@ function TableModal({
   modalType, modalTxt, setModalTxt,
   modalOpen, setModalOpen, setShowGame, setFormData
 }) {
-  const {gameOpts, setGameOpts} = useContext(GameContext);
+  const { setGameOpts } = useContext(GameContext);
 
   useEffect(() => {
     if (!modalOpen)

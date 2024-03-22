@@ -1,7 +1,5 @@
 import Image from "next/image";
 
-import cx from 'classnames';
-
 import { Literata } from 'next/font/google';
 import { useRouter } from "next/router";
 

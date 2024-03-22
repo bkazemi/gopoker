@@ -22,8 +22,8 @@ function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, sock
         <div
           className={styles.community}
           style={{
-            opacity: tableState === TABLE_STATE.FLOP ?
-                                      (numCardsLoaded === 3 ? 1 : 0)
+            opacity: tableState === TABLE_STATE.FLOP
+                                      ? (numCardsLoaded === 3 ? 1 : 0)
                                       : 1
           }}
         >
@@ -34,7 +34,7 @@ function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, sock
                   key={idx}
                   src={cardToImagePath(c)}
                   height={100}
-                  width={66.66666667}
+                  width={66 + (2/3)}
                   alt={c.Name}
                   onLoad={() =>
                     tableState === TABLE_STATE.FLOP && setNumCardsLoaded(numCards => numCards % 3 + 1)

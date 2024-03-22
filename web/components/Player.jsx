@@ -1,4 +1,4 @@
-import React, {useCallback, useContext, useEffect, useRef, useState, useMemo} from 'react';
+import React, {useCallback, useEffect, useRef, useState, useMemo} from 'react';
 
 import Image from 'next/image';
 import { Literata } from 'next/font/google';
@@ -43,6 +43,10 @@ const YourPlayerActions = React.memo(({
         ['a', allInBtnRef],
       ])
     ), []);
+
+  const btnCursorStyle = useCallback((isBtnDisabled) => {
+    return { cursor: isBtnDisabled ? 'default' : 'pointer' };
+  }, []);
 
   const handleRaiseInput = useCallback((e) => {
     if (e.target.value === '') {
@@ -93,6 +97,9 @@ const YourPlayerActions = React.memo(({
       console.error(`Player: handleButton: BUG: ${btn} not in map`);
       return;
     }
+
+    if (btn === 'raise' && !raiseAmount)
+      return; // pressed raise btn with 0 chips/no bet input
 
     console.log(`sending ${btn} ${action}`);
 
@@ -190,7 +197,7 @@ const YourPlayerActions = React.memo(({
         <button
           ref={checkBtnRef}
           disabled={isCheckDisabled}
-          style={{ cursor: isCheckDisabled ? 'default' : 'pointer' }}
+          style={{ ...btnCursorStyle(isCheckDisabled), }}
           onClick={() => handleButton('check')}
         >
           check
@@ -198,7 +205,7 @@ const YourPlayerActions = React.memo(({
         <button
           ref={callBtnRef}
           disabled={isCallDisabled}
-          style={{ cursor: isCallDisabled ? 'default' : 'pointer' }}
+          style={{ ...btnCursorStyle(isCallDisabled), }}
           onClick={() => handleButton('call')}
         >
           call
@@ -206,7 +213,7 @@ const YourPlayerActions = React.memo(({
         <button
           ref={raiseBtnRef}
           disabled={isRaiseDisabled}
-          style={{ cursor: isRaiseDisabled ? 'default' : 'pointer' }}
+          style={{ ...btnCursorStyle(isRaiseDisabled), }}
           onClick={() => handleButton('raise')}
         >
           raise
@@ -214,7 +221,7 @@ const YourPlayerActions = React.memo(({
         <button
           ref={foldBtnRef}
           disabled={isFoldDisabled}
-          style={{ cursor: isFoldDisabled ? 'default' : 'pointer' }}
+          style={{ ...btnCursorStyle(isFoldDisabled), }}
           onClick={() => handleButton('fold')}
         >
           fold
@@ -222,7 +229,7 @@ const YourPlayerActions = React.memo(({
         <button
           ref={allInBtnRef}
           disabled={isAllinDisabled}
-          style={{ cursor: isAllinDisabled ? 'default' : 'pointer' }}
+          style={{ ...btnCursorStyle(isAllinDisabled), }}
           onClick={() => handleButton('allin')}
         >
           allin
@@ -306,7 +313,7 @@ function Player({
     dealer:     setIsDealer,
     smallBlind: setIsSmallBlind,
     bigBlind:   setIsBigBlind,
-  }), [])
+  }), []);
 
   const [style, setStyle] = useState({gridRow, gridCol});
 

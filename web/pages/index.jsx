@@ -1,10 +1,6 @@
-import { Exo } from 'next/font/google';
 import Image from 'next/image';
-import styles from '@/styles/Home.module.css';
 
-import React, { useCallback, useContext, useEffect, useState, useRef } from 'react';
-
-import { CSSTransition } from 'react-transition-group';
+import React, { useContext, useEffect, useState } from 'react';
 
 import { Tooltip } from 'react-tooltip';
 
@@ -12,8 +8,6 @@ import { GameContext } from '@/GameContext';
 
 import HomeGrid from '@/components/HomeGrid';
 import Game from '@/components/Game';
-
-const exo = Exo({ subsets: ['latin', 'latin-ext'] });
 
 const UnsupportedDeviceToolTip = ({ isUnsupportedDevice, showGame }) => {
   if (!isUnsupportedDevice || showGame)
@@ -57,7 +51,7 @@ const UnsupportedDeviceToolTip = ({ isUnsupportedDevice, showGame }) => {
 };
 
 export default function Home() {
-  const { _, setGameOpts } = useContext(GameContext);
+  const { setGameOpts } = useContext(GameContext);
 
   //const [newGameFormData, setNewGameFormData] = useState(null);
   const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(false);
@@ -79,10 +73,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (showGame && showGrid)
-      setShowGrid(false);
-    else if (!showGame && !showGrid)
-      setShowGrid(true);
+    setShowGrid(showGame === showGrid ? !showGrid : showGrid);
   }, [showGame, showGrid]);
 
   return (
