@@ -110,6 +110,7 @@ img, h2 {
   -moz-user-drag: none;
   -o-user-drag: none;
   user-drag: none;
+  user-select: none;
 
   transform-origin: center center;
 }
