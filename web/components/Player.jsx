@@ -412,7 +412,7 @@ function Player({
   if (client._ID) { // vacant seat
     return (
       <div
-        key={String(Math.random())}
+        key={client._ID}
         className={styles.player}
         style={style}
       >

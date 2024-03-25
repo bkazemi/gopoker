@@ -8,6 +8,8 @@ import dynamic from 'next/dynamic';
 const dmMono = DM_Mono({ subsets: [ 'latin', 'latin-ext' ], weight: '500' });
 const vt323 = VT323({ subsets: ['latin', 'latin-ext', 'vietnamese'], weight: '400' });
 
+import { v4 as uuidv4 } from 'uuid';
+
 import cx from 'classnames';
 
 import { NETDATA, NetData, NetDataToString, TABLE_LOCK, TABLE_STATE } from '@/lib/libgopoker';
@@ -58,11 +60,11 @@ const PlayerList = React.memo(({
 
           return innerTableItem
             ? <PlayerTableItems
-                key={idx}
+                key={client.ID || client._ID}
                 {...{client, isYourPlayer, dealerAndBlinds, side, gridRow, gridCol, tableState}}
               />
             : <Player
-                key={idx}
+                key={client.ID || client._ID}
                 {...{client, side, tableState, curPlayer, playerHead, gridRow, gridCol,
                      isYourPlayer, dealerAndBlinds, keyPressed, socket}}
               />
@@ -82,8 +84,13 @@ const nullPlayer = {
 const nullClient = {
   Player: nullPlayer,
   Name: 'vacant seat',
-  _ID: 'vacant',
 };
+
+const NewNullClient = () => ({
+  Player: nullPlayer,
+  Name: 'vacant seat',
+  _ID: uuidv4(),
+});
 
 const nullPot = {
   Total: 0,
@@ -112,7 +119,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
 
   const [players, setPlayers] = useState(
     Array.from({length: netData.Table?.NumSeats || 0}, (_, idx) => ({
-      ...nullClient,
+      ...NewNullClient(),
       Player: {...nullPlayer, TablePos: idx}
     }))
   );
@@ -221,7 +228,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       const pIdx = players.findIndex(c => c.ID === client.ID);
       if (pIdx !== -1) {
         const nullClientWithPos = nullClient ?
-          {...nullClient,
+          {...NewNullClient(),
            Player: {
             ...nullPlayer,
             TablePos: client.Player?.TablePos ?? players[pIdx].Player.TablePos // ELIMINATED resp does not include Player field
@@ -336,7 +343,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       break;
     case NETDATA.PLAYER_LEFT: {
       console.log(`player left: id: ${netData.Client.ID} n: ${netData.Client.Player.Name}`);
-      updatePlayer(netData.Client, nullClient);
+      updatePlayer(netData.Client, NewNullClient());
 
       setChatMsgs(msgs => [...msgs, `<server-msg> ${netData.Client.Player.Name} left the table`]);
       setNumPlayers(netData.Table.NumPlayers);
@@ -400,7 +407,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       //      PLAYER_LEFT, causing the players array to retain
       //      the eliminated player. if so, we will always remove them again
       //      from here for now.
-      updatePlayer(netData.Client, nullClient);
+      updatePlayer(netData.Client, NewNullClient());
       setChatMsgs(msgs => [...msgs, netData.Msg]);
       break;
     case NETDATA.FLOP:
@@ -467,7 +474,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         while (newPlayerArr.length < numSeats) {
           console.log('numSeats ue: TablePos:', Math.max(0, newPlayerArr.length))
           newPlayerArr.push({
-            ...nullClient,
+            ...NewNullClient(),
             Player: {
               ...nullPlayer,
               TablePos: Math.max(0, newPlayerArr.length)

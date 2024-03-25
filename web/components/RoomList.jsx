@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 
 import { useRouter } from 'next/router';
 import { Exo } from 'next/font/google';
@@ -70,7 +70,7 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
         justifyContent: 'space-between'
       }}
     >
-      <p style={{ opacity: '0.9' }}>
+      <p style={{ opacity: '0.9', whiteSpace: 'pre-wrap' }}>
       {
         searchRegex &&
         room.roomName
@@ -84,6 +84,7 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
             return acc;
           }, [])
           .map((part, idx) => {
+            searchRegex.lastIndex = 0;
             return (
               searchRegex.test(part) ?
               <span key={idx} className={styles.searchHighlight}>
@@ -129,6 +130,26 @@ function RoomList({ isVisible }) {
 
   const roomListRef = useRef(null);
 
+  const filteredRooms = useCallback(() => {
+    if (!roomList.length)
+      return <p className={exo.className}>there are currently no rooms</p>;
+
+    const rooms =
+      roomList
+        .filter(room => !searchRegex || searchRegex.test(room.roomName))
+        .map(room => {
+          return <RoomListItem
+                   key={room.roomName}
+                   {...{room, searchRegex, roomListRef}}
+                 />
+        });
+
+    if (!rooms.length)
+      return <p className={exo.className}>no rooms match your query</p>;
+
+    return rooms;
+  }, [roomList, searchRegex]);
+
   useEffect(() => {
     const fetchRoomList = async () => {
       try {
@@ -136,12 +157,10 @@ function RoomList({ isVisible }) {
         if (listRes.ok) {
           const roomList = (await listRes.json())
             .sort((a, b) => a.roomName.localeCompare(b.roomName))
-            .map(room => {
-              return {
-                ...room,
-                tableLock: TABLE_LOCK.toString(room.tableLock),
-              }
-          });
+            .map(room => ({
+              ...room,
+              tableLock: TABLE_LOCK.toString(room.tableLock),
+          }));
           setRoomList(roomList);
         } else {
           throw new Error();
@@ -174,7 +193,8 @@ function RoomList({ isVisible }) {
   }, [isVisible]);
 
   useEffect(() => {
-    setSearchRegex(searchValue ? new RegExp(`(${searchValue})`, 'gi') : null);
+    const escapedSearchVal = searchValue?.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    setSearchRegex(escapedSearchVal ? new RegExp(`(${escapedSearchVal})`, 'gi') : null);
   }, [searchValue]);
 
   if (!isVisible) {
@@ -209,26 +229,16 @@ function RoomList({ isVisible }) {
           search
         </label>
         <input
-          onChange={(e) => setSearchValue(e.target.value)}
+          value={searchValue}
+          onChange={e => setSearchValue(e.target.value)}
         />
       </div>
       <div
         ref={roomListRef}
         className={isVisible ? styles.roomList : 'hidden'}
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
       >
-      {
-        roomList.length &&
-        roomList
-          .filter(room => !searchRegex || searchRegex.test(room.roomName))
-          .map((room, idx) => {
-            return <RoomListItem
-                     key={idx}
-                     {...{room, searchRegex, roomListRef}}
-                   />
-          }) ||
-        <p className={exo.className}>there are currently no rooms</p>
-      }
+      { filteredRooms() }
       </div>
     </>
   );

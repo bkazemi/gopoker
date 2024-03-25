@@ -32,6 +32,14 @@ function HomeGrid({ isVisible }) {
     }
   }, []);
 
+  const toggleRoomList = useCallback(() => {
+    setShowRoomList(showRoomList => !showRoomList);
+  }, [setShowRoomList]);
+
+  const toggleNewGameForm = useCallback(() => {
+    setShowNewGameForm(showNewGameForm => !showNewGameForm);
+  }, [setShowNewGameForm]);
+
   useEffect(() => {
     toggleGrid(showNewGameForm, newGameRef);
     console.log(`showNewGameForm: ${showNewGameForm}`);
@@ -64,7 +72,7 @@ function HomeGrid({ isVisible }) {
     <div
       ref={roomListRef}
       className={styles.card}
-      onClick={() => setShowRoomList(!showRoomList)}
+      onClick={toggleRoomList}
       onKeyDown={(e) => {
         e.key === 'Enter' && e.target.click()
       }}
@@ -87,7 +95,7 @@ function HomeGrid({ isVisible }) {
     <div
       ref={newGameRef}
       className={styles.card}
-      onClick={() => setShowNewGameForm(!showNewGameForm)}
+      onClick={toggleNewGameForm}
       onKeyDown={(e) => {
         e.key === 'Enter' && e.target.click()
       }}

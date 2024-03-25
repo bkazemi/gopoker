@@ -327,35 +327,38 @@ function RoomPostDimCheck() {
   if (gameOpts.goHome)
     return;
 
+  const render = () => {
+    if (roomNotFound === undefined)
+      return <Spinner isCheckRoom={true} />;
+
+    if (roomNotFound)
+      return <RoomNotFound errMsg={checkRoomErr} router={router} />;
+
+    if (!roomURL)
+      return <NewGameForm isVisible={true} isDirectLink={true} />;
+
+    return <Connect roomID={roomID} />;
+  };
+
   return (
-      <CSSTransition
-        //in={showGame}
-        in={true}
-        timeout={500}
-        classNames={{
-          enter: homeStyles.fadeEnter,
-          enterActive: homeStyles.fadeEnterActive,
-          exit: homeStyles.fadeExit,
-          exitActive: homeStyles.fadeExitActive,
-        }}
-        unmountOnExit
-        onExited={() => {
-          setShowGame(false);
-          setShowGrid(true);
-        }}
-      >
-        {
-          (roomNotFound === undefined && <Spinner isCheckRoom={true} />) ||
-          (
-            (roomNotFound && <RoomNotFound errMsg={checkRoomErr} router={router} />) ||
-            (
-              !roomURL &&
-              <NewGameForm isVisible={true} isDirectLink={true} /> ||
-              <Connect roomID={roomID} />
-            )
-          )
-        }
-      </CSSTransition>
+    <CSSTransition
+      //in={showGame}
+      in={true}
+      timeout={500}
+      classNames={{
+        enter: homeStyles.fadeEnter,
+        enterActive: homeStyles.fadeEnterActive,
+        exit: homeStyles.fadeExit,
+        exitActive: homeStyles.fadeExitActive,
+      }}
+      unmountOnExit
+      onExited={() => {
+        setShowGame(false);
+        setShowGrid(true);
+      }}
+    >
+      { render() }
+    </CSSTransition>
   );
 }
 

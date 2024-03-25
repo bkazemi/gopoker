@@ -76,7 +76,7 @@ function PlayerTableItems({
   client, isYourPlayer, side,
   gridRow, gridCol, tableState
 }) {
-  if (client._ID === 'vacant')
+  if (client._ID)
     return;
 
   let justifyContent;
