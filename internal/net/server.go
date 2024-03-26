@@ -648,6 +648,10 @@ func (server *Server) handleReconnect(
     client.conn = conn
 
     room.connClientMap[conn] = client
+    // XXX race w/ WSClient defer, time to consider a mutex on Player
+    if client.reconnectTimer != nil {
+      client.reconnectTimer.Stop()
+    }
     client.isDisconnected = false
     netData.ClearData(client)
     netData.Response = NetDataPlayerReconnected
@@ -735,9 +739,12 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         delete(room.connClientMap, conn)
         server.closeConn(conn)
 
+        if client.reconnectTimer != nil {
+          client.reconnectTimer.Stop()
+        }
         // the 0 min gofunc is kinda dumb, but they're cheap and it eliminates
         // some redundancy
-        time.AfterFunc(minsToWait, func() {
+        client.reconnectTimer = time.AfterFunc(minsToWait, func() {
           if !client.isDisconnected {
             return
           }

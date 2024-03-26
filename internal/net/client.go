@@ -2,6 +2,7 @@ package net
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/bkazemi/gopoker/internal/poker"
 
@@ -19,6 +20,7 @@ type Client struct {
   conn           *websocket.Conn
   connType       string
   isDisconnected bool
+  reconnectTimer *time.Timer
 }
 
 func NewClient(settings *ClientSettings) *Client {
