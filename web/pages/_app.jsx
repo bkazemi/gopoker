@@ -80,6 +80,18 @@ const JSDisabled = () => (
   </div>
 );
 
+const toggleLogging = (turnOff, dontLog) => {
+  if (turnOff || console.debug === window._debug) {
+    if (!dontLog) console.log('%clogging turned off', 'font-style: italic');
+    console.debug = console.warn = console.log = () => {}; // keep console.error
+  } else {
+    console.debug = window._debug;
+    console.warn  = window._warn;
+    console.log   = window._log;
+    if (!dontLog) console.log('%clogging turned on', 'font-style: italic');
+  }
+};
+
 export default function App({ Component, pageProps, router }) {
   const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(undefined);
   const [isCompactRoom, setIsCompactRoom] = useState(false);
@@ -87,9 +99,33 @@ export default function App({ Component, pageProps, router }) {
 
   const [isReadyForRender, setIsReadyForRender] = useState(false);
 
-  if (!process.env.NEXT_PUBLIC_SHOW_LOG) {
-    console.debug = console.warn = console.log = () => {}; // keep console.error
-  }
+  // toggle logging for debugging
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (window._debug === undefined)
+        return;
+
+
+      if (event.ctrlKey && event.key === 'F7') {
+        toggleLogging();
+      }
+    };
+
+    if (window._debug === undefined) {
+      window._debug = console.debug;
+      window._warn  = console.warn;
+      window._log   = console.log;
+    }
+
+    if (!process.env.NEXT_PUBLIC_SHOW_LOG)
+      toggleLogging(true, true);
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // check for bare minimum screen width and a small screen size
   // (which if true will render a smaller game room stylesheet)
