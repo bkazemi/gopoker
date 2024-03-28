@@ -28,7 +28,7 @@ const Header = dynamic(() => import('@/components/Header'), {
 import styles from '@/styles/Tablenew.module.css';
 
 const PlayerList = React.memo(({
-  players, curPlayer, playerHead, dealerAndBlinds, yourClient, sideNum, innerTableItem,
+  players, curPlayer, curHand, playerHead, dealerAndBlinds, yourClient, sideNum, innerTableItem,
   tableState, keyPressed, socket
 }) => {
   let side;
@@ -61,7 +61,7 @@ const PlayerList = React.memo(({
           return innerTableItem
             ? <PlayerTableItems
                 key={client.ID || client._ID}
-                {...{client, isYourPlayer, dealerAndBlinds, side, gridRow, gridCol, tableState}}
+                {...{client, isYourPlayer, curHand, dealerAndBlinds, side, gridRow, gridCol, tableState}}
               />
             : <Player
                 key={client.ID || client._ID}
@@ -124,6 +124,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
     }))
   );
   const [curPlayer, setCurPlayer] = useState(null);
+  const [curHand, setCurHand] = useState(null);
   const [playerHead, setPlayerHead] = useState(null);
 
   const [dealer, setDealer] = useState(netData.Table?.Dealer || nullPlayer);
@@ -379,6 +380,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       break;
     case NETDATA.CUR_HAND:
       updatePlayer(netData.Client);
+      setCurHand(netData.Msg);
       break;
     case NETDATA.SHOW_HAND:
       updatePlayer(netData.Client);
@@ -395,6 +397,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       updateTable(netData);
       setPlayerHead(null);
       setCurPlayer(null);
+      setCurHand(null);
       break;
     case NETDATA.ELIMINATED:
       if (netData.Client.ID === yourClientID.current) {
@@ -589,7 +592,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* TOP OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, keyPressed, tableState}}
+            {...{players, curPlayer, curHand, playerHead, yourClient, keyPressed, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={2}
             innerTableItem={true}
@@ -604,7 +607,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* LEFT-SIDE OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, tableState}}
+            {...{players, curPlayer, curHand, playerHead, yourClient, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={1}
             innerTableItem={true}
@@ -631,7 +634,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* RIGHT-SIDE OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, tableState}}
+            {...{players, curPlayer, curHand, playerHead, yourClient, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={3}
             innerTableItem={true}
@@ -646,7 +649,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* BOTTOM OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, tableState}}
+            {...{players, curPlayer, curHand, playerHead, yourClient, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={0}
             innerTableItem={true}

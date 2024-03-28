@@ -27,8 +27,12 @@ type Player struct {
   ChipCount Chips
   Hole      *Hole
   Hand      *Hand
-  PreHand   Hand // XXX tmp
+  preHand   *Hand
   Action    Action
+}
+
+func (p *Player) PreHand() *Hand {
+  return p.preHand
 }
 
 func (p *Player) SetName(name string) {

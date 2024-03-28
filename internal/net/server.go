@@ -890,6 +890,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         room.table.NextTableAction()
 
         room.sendDeals()
+        room.sendCurHands()
         room.sendAllPlayerInfo(nil, false, true)
         room.sendPlayerTurnToAll()
         room.sendTable(nil)

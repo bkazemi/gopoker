@@ -423,7 +423,10 @@ func (room *Room) sendCurHands() {
   }
 
   for _, client := range room.playerClientMap {
+    poker.AssembleBestHand(true, room.table, client.Player)
+
     netData.Client = client
+    netData.Msg = client.Player.PreHand().RankName()
     netData.Send()
   }
 }
@@ -575,6 +578,7 @@ func (room *Room) newRound() {
   room.table.NextTableAction()
   room.checkBlindsAutoAllIn()
   room.sendDeals()
+  room.sendCurHands()
 
   // XXX
   room.table.Mtx().Lock()
@@ -751,8 +755,6 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
     room.table.ReorderPlayers()
     room.sendPlayerTurnToAll()
     room.sendPlayerHead(nil, true)
-    // let players know they should update their current hand after
-    // the community action
     room.sendCurHands()
   }
 }

@@ -73,7 +73,7 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
 Cards.displayName = 'Cards';
 
 function PlayerTableItems({
-  client, isYourPlayer, side,
+  client, isYourPlayer, curHand, side,
   gridRow, gridCol, tableState
 }) {
   if (client._ID)
@@ -91,6 +91,12 @@ function PlayerTableItems({
       className={styles.playerItems}
       style={{ justifyContent, gridRow: gridRow, gridColumn: gridCol }}
     >
+      {
+        isYourPlayer && curHand &&
+        <p className={styles.curHand}>
+          { curHand }
+        </p>
+      }
       <Cards
         client={client}
         isYourPlayer={isYourPlayer}

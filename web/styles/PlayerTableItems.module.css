@@ -5,6 +5,12 @@
   align-items: center;
 }
 
+.curHand {
+  font-style: italic;
+  padding-bottom: 3px;
+  font-family: system-ui;
+}
+
 .playerCards {
   display: flex;
   flex-direction: row;

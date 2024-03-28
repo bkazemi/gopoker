@@ -234,15 +234,6 @@ func (cli *CLI) updatePlayer(client *net.Client, table *poker.Table) {
   //postOut += fmt.Sprintf("updatePlayer(): %s ID is %s tvTitle %s\n", player.Name, clientID, textView.GetTitle())
 
   if client.ID == cli.yourClient.ID {
-    if table != nil {
-      poker.AssembleBestHand(true, table, client.Player)
-
-      preHand := client.Player.PreHand.RankName()
-      textViewSetLine(textView, 4, "current hand: " + preHand)
-
-      //return XXX update hand seperately
-    }
-
     textViewSetLine(textView, 1, "name: "           + client.Name)
     textViewSetLine(textView, 2, "current action: " + client.Player.ActionToString())
     textViewSetLine(textView, 3, "chip count: "     + client.Player.ChipCountToString())
@@ -995,6 +986,8 @@ func cliInputLoop(cli *CLI) {
       case net.NetDataUpdateTable:
         cli.updateInfoList("status", netData.Table)
       case net.NetDataCurHand:
+        textView := cli.playersTextViewMap[netData.Client.ID]
+        textViewSetLine(textView, 4, "current hand: " + netData.Msg)
         cli.updatePlayer(netData.Client, netData.Table)
       case net.NetDataShowHand:
         cli.updatePlayer(netData.Client, nil)

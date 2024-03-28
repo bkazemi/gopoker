@@ -1881,24 +1881,31 @@ func (table *Table) BestHand(players []*Player, sidePot *SidePot) []*Player {
 }
 
 // hand matching logic unoptimized
-func AssembleBestHand(preshow bool, table *Table, player *Player) {
-  var restoreHand Hand
-  if player.Hand != nil {
-    restoreHand = *player.Hand
-  } else {
-    restoreHand = Hand{}
-  }
-  defer func() {
-    // XXX TODO very temporary!
-    if preshow {
-      if player.Hand != nil {
-        player.PreHand = *player.Hand
-      } else {
-        player.PreHand = Hand{}
-      }
-      player.Hand = &restoreHand
+func AssembleBestHand(preShow bool, table *Table, player *Player) {
+  if preShow {
+    var restoreHand Hand
+    if player.Hand != nil {
+      restoreHand = *player.Hand
+    } else {
+      restoreHand = Hand{}
     }
-  }()
+
+    defer func() {
+      if preShow {
+        if table.State == TableStatePreFlop && len(player.Hole.Cards) == 2 {
+          player.preHand = &Hand{}
+          if player.Hole.Cards[0].NumValue == player.Hole.Cards[1].NumValue {
+            player.preHand.Rank = RankPair
+          }
+        } else if player.Hand != nil {
+          player.preHand = &*player.Hand
+        } else {
+          player.preHand = &Hand{}
+        }
+        player.Hand = &restoreHand
+      }
+    }()
+  }
 
   if table.State == TableStatePreFlop ||
      len(player.Hole.Cards) != 2 ||
