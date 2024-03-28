@@ -48,6 +48,10 @@ func NewRoom(name string, table *poker.Table, creatorToken string) *Room {
   }
 }
 
+func (room *Room) Table() *poker.Table {
+  return room.table.PublicInfo()
+}
+
 // wrap the mutex Lock() so that we can check if the lock is active
 // without acquiring it like TryLock() does.
 func (room *Room) Lock() {
@@ -145,7 +149,7 @@ func (room *Room) removeClient(client *Client) {
   netData := &NetData{
     Client:   client,
     Response: NetDataClientExited,
-    Table:    room.table,
+    Table:    room.Table(),
   }
 
   room.sendResponseToAll(netData, nil)
@@ -217,7 +221,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
     netData := &NetData{
       Client:     client,
       Response:   NetDataPlayerLeft,
-      Table:      table,
+      Table:      room.Table(),
     }
     exceptClient := client
     if movedToSpectator {
@@ -369,7 +373,7 @@ func (room *Room) sendPlayerActionToAll(player *poker.Player, client *Client) {
   netData := &NetData{
     Client:     room.publicClientInfo(c),
     Response:   NetDataPlayerAction,
-    Table:      room.table,
+    Table:      room.Table(),
   }
 
   room.sendResponseToAll(netData, c)
@@ -384,7 +388,7 @@ func (room *Room) sendDeals() {
   netData := &NetData{
     room: room,
     Response: NetDataDeal,
-    Table: room.table,
+    Table: room.Table(),
   }
 
   for _, player := range room.table.CurPlayers().ToPlayerArray() {
@@ -398,7 +402,7 @@ func (room *Room) sendHands() {
   netData := &NetData{
     room: room,
     Response: NetDataShowHand,
-    Table: room.table,
+    Table: room.Table(),
   }
 
   for _, player := range room.table.GetNonFoldedPlayers() {
@@ -415,7 +419,7 @@ func (room *Room) sendCurHands() {
   netData := &NetData{
     room: room,
     Response: NetDataCurHand,
-    Table: room.table,
+    Table: room.Table(),
   }
 
   for _, client := range room.playerClientMap {
@@ -433,7 +437,7 @@ func (room *Room) sendActivePlayers(client *Client) {
   netData := &NetData{
     room: room,
     Response: NetDataCurPlayers,
-    Table:    room.table,
+    Table:    room.Table(),
   }
 
   for _, player := range room.table.ActivePlayers().ToPlayerArray() {
@@ -482,7 +486,7 @@ func (room *Room) sendTable(client *Client) {
   netData := &NetData{
     Client:   client,
     Response: NetDataUpdateTable,
-    Table:    room.table,
+    Table:    room.Table(),
   }
 
   if client == nil {
@@ -496,7 +500,7 @@ func (room *Room) sendReset(winner *Client) {
   room.sendResponseToAll(&NetData{
     Client:   winner,
     Response: NetDataReset,
-    Table:    room.table,
+    Table:    room.Table(),
   }, nil)
 }
 
@@ -560,7 +564,7 @@ func (room *Room) makeAdmin(client *Client) {
     room: room,
     Client: client,
     Response: NetDataMakeAdmin,
-    Table: room.table,
+    Table: room.Table(),
   }
 
   netData.Send()
@@ -597,7 +601,7 @@ func (room *Room) roundOver() {
 
   netData := &NetData{
     Response: NetDataRoundOver,
-    Table:    room.table,
+    Table:    room.Table(),
     Msg:      room.table.WinInfo,
   }
 

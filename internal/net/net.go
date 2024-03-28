@@ -285,13 +285,6 @@ func (netData *NetData) SendToConn(conn *websocket.Conn, connType string) {
 
 // internal function that actually send the message to the websocket. do not call directly!
 func (netData *NetData) unwrappedSender(conn *websocket.Conn, connType string) {
-  // TODO: move this
-  // XXX modifies global table
-  /*if (data.Table != nil) {
-    data.Table.Dealer     = data.Table.PublicPlayerInfo(*data.Table.Dealer)
-    data.Table.SmallBlind = data.Table.PublicPlayerInfo(*data.Table.SmallBlind)
-    data.Table.BigBlind   = data.Table.PublicPlayerInfo(*data.Table.BigBlind)
-  }*/
   if connType == "cli" {
     var gobBuf bytes.Buffer
     enc := gob.NewEncoder(&gobBuf)

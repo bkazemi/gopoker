@@ -176,7 +176,7 @@ func NewTable(deck *Deck, numSeats uint8, lock TableLock, password string, CPUPl
     deck: deck,
     Ante: 10, // TODO: add knob
 
-    MainPot:  NewPot("mainpot", 0),
+    MainPot:  NewPot("mainpot", 0), // TODO: make .Players private
     sidePots: *NewSidePots(),
 
     players:        players,
@@ -357,6 +357,46 @@ func (table *Table) SmallBlindToString() string {
 
 func (table *Table) TableLockToString() string {
   return TableLockToString(table.Lock)
+}
+
+// NOTE: this should only be used to send information to frontends
+//       because PlayerNode structs are not fully preserved
+func (table *Table) PublicInfo() *Table {
+  pubTable := *table
+
+  if pubTable.Dealer != nil {
+    pubTable.Dealer = &PlayerNode{
+      Player: table.PublicPlayerInfo(*pubTable.Dealer.Player),
+    }
+  }
+  if pubTable.SmallBlind != nil {
+    pubTable.SmallBlind = &PlayerNode{
+      Player: table.PublicPlayerInfo(*pubTable.SmallBlind.Player),
+    }
+  }
+  if pubTable.BigBlind != nil {
+    pubTable.BigBlind = &PlayerNode{
+      Player: table.PublicPlayerInfo(*pubTable.BigBlind.Player),
+    }
+  }
+
+  if pubTable.MainPot != nil {
+    // deep copy MainPot.Players map
+    pubTable.MainPot.Players = make(map[string]*Player)
+    for name, player := range table.MainPot.Players {
+      pubTable.MainPot.Players[name] = table.PublicPlayerInfo(*player)
+    }
+  }
+
+  if pubTable.Winners != nil {
+    // deep copy Winners slice
+    pubTable.Winners = make([]*Player, len(pubTable.Winners))
+    for idx, winner := range table.Winners {
+      pubTable.Winners[idx] = table.PublicPlayerInfo(*winner)
+    }
+  }
+
+  return &pubTable
 }
 
 func (table *Table) PublicPlayerInfo(player Player) *Player {

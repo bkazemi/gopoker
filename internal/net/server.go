@@ -378,11 +378,11 @@ func (server *Server) removeRoom(room *Room) {
   defer server.mtx.Unlock()
 
   if _, found := server.rooms[room.name]; found {
-    fmt.Printf("Server.roomRoom: removing room '%s'\n", room.name)
+    fmt.Printf("Server.removeRoom(): removing room '%s'\n", room.name)
 
     delete(server.rooms, room.name)
   } else {
-    fmt.Printf("Server.roomRoom: room '%s' not found\n", room.name)
+    fmt.Printf("Server.removeRoom(): room '%s' not found\n", room.name)
   }
 }
 
@@ -653,9 +653,13 @@ func (server *Server) handleReconnect(
       client.reconnectTimer.Stop()
     }
     client.isDisconnected = false
-    netData.ClearData(client)
+
+    netData.ClearData(room.publicClientInfo(client))
     netData.Response = NetDataPlayerReconnected
-    room.sendResponseToAll(&netData, nil)
+    room.sendResponseToAll(&netData, client)
+
+    netData.Client = client
+    netData.Send()
 
     // make sure the client gets current game state
     room.sendAllPlayerInfo(client, false, false)
@@ -730,7 +734,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           if client.Player != nil {
             room.sendResponseToAll(&NetData{
               Response: NetDataPlayerReconnecting,
-              Client: client,
+              Client: room.publicClientInfo(client),
             }, client)
           }
           minsToWait = 1 * time.Minute
