@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -354,10 +355,12 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
   server.rooms[roomOpts.RoomName] = room
 
   res := struct{
-    URL string          `json:"URL"`
+    URL          string `json:"URL"`
+    RoomName     string `json:"roomName"`
     CreatorToken string `json:"creatorToken"`
   }{
-    URL: fmt.Sprintf("/room/%s", roomOpts.RoomName),
+    URL: fmt.Sprintf("/room/%s", url.QueryEscape(roomOpts.RoomName)),
+    RoomName: roomOpts.RoomName,
     CreatorToken: room.creatorToken,
   }
 

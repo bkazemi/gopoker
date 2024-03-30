@@ -88,7 +88,10 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
           }));
           window.roomURL = roomURL;
 
-          router.push(data.URL);
+          router.push({
+            pathname: '/room/[roomID]',
+            query: { roomID: data.roomName },
+          });
         } catch (err) {
           console.log(`couldn't POST to /api/new: ${err}`);
           setError(err);

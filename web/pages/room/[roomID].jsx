@@ -71,7 +71,7 @@ const createWebSocket = (key, roomID, websocketOpts, setSocket, socketRef, setCo
     if (!event.wasClean || event.code !== 1000) {
       console.log('websocket had an unclean exit. attempting to reconnect...');
       console.log('making sure the room still exists...')
-      const res = await fetch(`/api/check/${roomID}`);
+      const res = await fetch(`/api/check/${encodeURIComponent(roomID)}`);
       if (!res.ok) {
         const body = await res.text();
         next(
@@ -288,7 +288,7 @@ function RoomPostDimCheck() {
     const checkRoom = async () => {
       try {
         console.log('roomID:', roomID);
-        const res = await fetch(`/api/check/${roomID}`);
+        const res = await fetch(`/api/check/${encodeURIComponent(roomID)}`);
         if (res.ok)
           setRoomNotFound(false);
         else {
@@ -315,7 +315,7 @@ function RoomPostDimCheck() {
 
   useEffect(() => {
     if (!reset && websocketOpts && !roomURL) {
-      const roomURL = `${config.gopokerServerWSURL}/room/${roomID}/web`;
+      const roomURL = `${config.gopokerServerWSURL}/room/${encodeURIComponent(roomID)}/web`;
       setGameOpts(gameOpts => ({
         ...gameOpts,
         roomURL,

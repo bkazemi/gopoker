@@ -11,8 +11,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log(`/api/check: roomID: ${roomID}`);
-    const srvRes = await fetch(`${config.gopokerServerHTTPURL}/room/${roomID}`);
+    console.log(`/api/check: roomID: ${roomID} fetching ${config.gopokerServerHTTPURL}/room/${encodeURIComponent(roomID)}`);
+    const srvRes = await fetch(`${config.gopokerServerHTTPURL}/room/${encodeURIComponent(roomID)}`);
 
     if (!srvRes.ok) {
       console.log('status', srvRes.status, typeof(srvRes.status));

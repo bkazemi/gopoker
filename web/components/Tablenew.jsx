@@ -202,7 +202,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       if (newPath !== routerRef.asPath) {
         console.log(`newPath: ${newPath} router.asPath: ${router.asPath}`);
         console.log('replacing URL with:', newPath);
-        router.replace(newPath);
+        router.replace({ pathname: newPath });
       }
     }
   }, [routerRef]);

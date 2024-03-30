@@ -37,8 +37,6 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
 
   const router = useRouter();
 
-  const roomLink = `/room/${room.roomName}`;
-
   useEffect(() => {
     if (!roomListRef.current || !roomListItemRef.current)
       return;
@@ -103,7 +101,10 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
         }}
         onClick={(e) => {
           e.stopPropagation();
-          router.push(roomLink);
+          router.push({
+            pathname: '/room/[roomID]',
+            query: { roomID: room.roomName },
+          });
         }}
       >
         join
