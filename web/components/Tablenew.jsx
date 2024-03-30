@@ -743,7 +743,11 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         </div>
         <div className={cx(styles.tableInfoItems, vt323.className)}>
           <p>
-            name: { yourClient?.Name }
+            name: {
+              yourClient?.Name
+                ? yourClient.Name
+                : <span style={{ fontStyle: 'italic' }}>noname</span>
+            }
             <br />
             <span style={{ fontStyle: 'italic' }}>
               id: { yourClient?.ID }

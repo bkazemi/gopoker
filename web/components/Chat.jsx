@@ -10,6 +10,18 @@ import styles from '@/styles/Chat.module.css';
 
 const vt323 = VT323({ subsets: ['latin', 'latin-ext', 'vietnamese'], weight: '400' });
 
+const formattedMsg = (msg) => {
+  if (!msg.startsWith('{ '))
+    return msg;
+
+  return (
+    <>
+      <span style={{ fontStyle: 'italic' }}>{'{noname '}</span>
+      { msg.substring(2) }
+    </>
+  );
+};
+
 function Chat({ socket, yourClient, msgs, chatInputRef }) {
   const chatMsgsRef = useRef(null);
 
@@ -96,7 +108,7 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
                     whiteSpace: 'pre-wrap',
                   }}
                 >
-                  { msg }
+                  { formattedMsg(msg) }
                 </div>
               );
             })
