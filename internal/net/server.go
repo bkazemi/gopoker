@@ -24,6 +24,14 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+var invalidRoomNames map[string]bool
+func init() {
+  invalidRoomNames = map[string]bool{
+    ".": true,
+    "..": true,
+  }
+}
+
 // TODO: important: need to ensure these pointers
 // will be consistent throughout the program (mainly Player pointers)
 type Server struct {
@@ -297,6 +305,22 @@ func (server *Server) listRooms(w http.ResponseWriter, req *http.Request) {
   w.Write(jsonBody)
 }
 
+func (server *Server) randRoomName() string {
+  name := ""
+
+  for {
+    name = poker.RandString(10) // 62^10 is plenty ;)
+    if _, found := server.rooms[name]; found {
+      fmt.Printf("Server.createNewRoom(): WARNING: possible bug: roomName '%s' already found in rooms\n",
+                 name)
+    } else {
+      break
+    }
+  }
+
+  return name
+}
+
 func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
   server.mtx.Lock()
   defer server.mtx.Unlock()
@@ -311,20 +335,15 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
 
   fmt.Printf("Server.createNewRoom(): roomOpts: %v\n", roomOpts)
 
-  if roomOpts.RoomName == "" || server.rooms[roomOpts.RoomName] != nil {
-    if server.rooms[roomOpts.RoomName] != nil {
-      fmt.Printf("Server.createNewRoom(): roomName %s already taken\n", roomOpts.RoomName)
-    }
-
-    for {
-      roomOpts.RoomName = poker.RandString(10) // 62^10 is plenty ;)
-      if _, found := server.rooms[roomOpts.RoomName]; found {
-        fmt.Printf("Server.createNewRoom(): WARNING: possible bug: roomName '%s' already found in rooms\n",
-                   roomOpts.RoomName)
-      } else {
-        break
-      }
-    }
+  if roomOpts.RoomName == "" {
+    fmt.Printf("Server.createNewRoom(): empty roomName given\n")
+    roomOpts.RoomName = server.randRoomName()
+  } else if invalidRoomNames[roomOpts.RoomName] {
+    fmt.Printf("Server.createNewRoom(): roomName %s is invalid\n", roomOpts.RoomName)
+    roomOpts.RoomName = server.randRoomName()
+  } else if server.rooms[roomOpts.RoomName] != nil {
+    fmt.Printf("Server.createNewRoom(): roomName %s already taken\n", roomOpts.RoomName)
+    roomOpts.RoomName = server.randRoomName()
   }
 
   if roomOpts.NumSeats < 2 || roomOpts.NumSeats > 7 {
