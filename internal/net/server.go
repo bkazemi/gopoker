@@ -126,7 +126,8 @@ func NewServer(addr string) *Server {
   }
 
   server.http.SetKeepAlivesEnabled(true)
-  router.HandleFunc("/status", server.status).Methods("GET")
+  router.HandleFunc("/health", healthCheck).Methods("GET")
+  router.HandleFunc("/status", status).Methods("GET")
   router.HandleFunc("/new", server.createNewRoom).Methods("POST")
   router.HandleFunc("/roomCount", server.roomCount).Methods("GET")
   router.HandleFunc("/rooms", server.listRooms).Methods("GET")
@@ -138,7 +139,11 @@ func NewServer(addr string) *Server {
   return server
 }
 
-func (server *Server) status(w http.ResponseWriter, req *http.Request) {
+func healthCheck(w http.ResponseWriter, req *http.Request) {
+  w.WriteHeader(http.StatusOK)
+}
+
+func status(w http.ResponseWriter, req *http.Request) {
   res := struct{
     Status string `json:"status"`
   }{
@@ -157,8 +162,8 @@ func (server *Server) status(w http.ResponseWriter, req *http.Request) {
   w.Write(jsonBody)
 }
 
-func (server *Server) closeConn(conn *websocket.Conn) {
-  fmt.Printf("Server.closeConn(): <= closing conn to %s\n", conn.RemoteAddr().String())
+func closeConn(conn *websocket.Conn) {
+  fmt.Printf("Server closeConn(): <= closing conn to %s\n", conn.RemoteAddr().String())
   conn.Close()
 }
 
@@ -776,7 +781,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         }
 
         delete(room.connClientMap, conn)
-        server.closeConn(conn)
+        closeConn(conn)
 
         if client.reconnectTimer != nil {
           client.reconnectTimer.Stop()
