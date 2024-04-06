@@ -1,4 +1,4 @@
-import React, { useState} from 'react';
+import React, { useEffect, useState} from 'react';
 
 import Image from 'next/image';
 
@@ -6,10 +6,24 @@ import styles from '@/styles/PlayerTableItems.module.css';
 
 import { TABLE_STATE, cardToImagePath, PLAYERSTATE } from '@/lib/libgopoker';
 
+const lrCardStyle = (side) => (
+  side === 'left' || side === 'right'
+  ? {
+    'position': 'relative',
+    'right': '32.5px'
+  }
+  : {}
+);
+
 const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
   // we want the cards to be displayed at the same time,
   // so we make sure both card images are loaded before displaying them
   const [numCardsLoaded, setNumCardsLoaded] = useState(0);
+  const [style, setStyle] = useState(lrCardStyle(side));
+
+  useEffect(() => {
+    setStyle(lrCardStyle(side));
+  }, [side]);
 
   if (
     tableState === TABLE_STATE.NOT_STARTED ||
@@ -19,17 +33,12 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
     return;
   }
 
-  let style = {};
-  if (side === 'left' || side === 'right')
-    style = {
-      'position': 'relative',
-      'right': '32.5px',
-    }
+  const holeLen = client?.Player?.Hole?.Cards.length || 0;
 
-  if (!isYourPlayer && !client?.Player?.Hole?.Cards)
+  if (!isYourPlayer && !holeLen)
     return <div
              className={styles.playerCards}
-             style={{ opacity: (numCardsLoaded === 2) ? 1 : 0 }}
+             style={{ opacity: numCardsLoaded === 2 ? 1 : 0 }}
            >
             <Image
               src={'/cards/cardBack_blue5.png'}
@@ -50,7 +59,7 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
   else
     return <div
              className={styles.playerCards}
-             style={{ opacity: (numCardsLoaded === client?.Player?.Hole?.Cards?.length) ? 1 : 0 }}
+             style={{ opacity: numCardsLoaded === holeLen ? 1 : 0 }}
            >
       {
         client?.Player?.Hole?.Cards
@@ -62,7 +71,7 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
               width={65}
               alt={`[${c.Name}]`}
               onLoad={() => setNumCardsLoaded(numCards =>
-                numCards % client?.Player?.Hole?.Cards?.length + 1
+                numCards % holeLen + 1
               )}
             />;
         }) || null
@@ -98,10 +107,7 @@ function PlayerTableItems({
         </p>
       }
       <Cards
-        client={client}
-        isYourPlayer={isYourPlayer}
-        side={side}
-        tableState={tableState}
+        {...{client, isYourPlayer, side, tableState}}
       />
     </div>
   );
