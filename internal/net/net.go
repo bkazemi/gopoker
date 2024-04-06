@@ -107,6 +107,10 @@ func (netData *NetData) WithClient(client *Client) *NetData {
   return netData
 }*/
 
+func (netData *NetData) HasClient() bool {
+  return netData.Client != nil
+}
+
 // clear all fields besides the client.
 // used when recycling a netData instance
 func (netData *NetData) ClearData(client *Client) {

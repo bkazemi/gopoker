@@ -296,8 +296,9 @@ const ReconnectOverlay = React.memo(() => (
 ReconnectOverlay.displayName = 'ReconnectOverlay';
 
 function Player({
-  client, socket, tableState, curPlayer,
-  playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer, keyPressed
+  client, yourClient, socket, tableState, curPlayer,
+  playerHead, dealerAndBlinds, side, gridRow, gridCol, isYourPlayer,
+  isSpectator, keyPressed
 }) {
   const [name, setName] = useState(client.Name);
   const [curAction, setCurAction] = useState(client.Player?.Action || {});
@@ -409,6 +410,11 @@ function Player({
       });
   }, [dealerAndBlinds, client, posSetStateMap]);
 
+  const handleJoinSeat = useCallback(() => {
+    yourClient.Settings.SeatPos = client.Player.TablePos + 1;
+    socket.send((new NetData(yourClient, NETDATA.NEW_PLAYER)).toMsgPack());
+  }, [socket, client, yourClient]);
+
   if (client._ID) { // vacant seat
     return (
       <div
@@ -419,6 +425,15 @@ function Player({
         <div className={styles.nameContainer}>
           <p className={styles.name}>{name}</p>
         </div>
+        {
+          isSpectator &&
+          <button
+            style={{ padding: '5px' }}
+            onClick={handleJoinSeat}
+          >
+            join here
+          </button>
+        }
         <Image
           src={'/seat.png'}
           height={85}

@@ -20,7 +20,7 @@ import { GameContext } from '@/GameContext';
 import { NewClient } from '@/lib/libgopoker';
 
 const ModalContent = React.memo(({
-  modalType, modalTxt, setModalOpen, setFormData, setGameOpts
+  modalType, modalTxt, setModalOpen, setFormData, setGameOpts, setIsSpectator
 }) => {
   const router = useRouter();
 
@@ -39,15 +39,7 @@ const ModalContent = React.memo(({
   };
 
   const spectate = () => {
-    setGameOpts(opts => {
-      if (opts.websocketOpts.Client.Settings.IsSpectator)
-        return opts;
-
-      const newOpts = {...opts};
-      newOpts.websocketOpts.Client.Settings.IsSpectator = true;
-
-      return newOpts;
-    });
+    setIsSpectator(true);
   };
 
   switch (modalType) {
@@ -258,11 +250,11 @@ const ModalContent = React.memo(({
 
 ModalContent.displayName = 'ModalContent';
 
-function TableModal({
-  modalType, modalTxt, setModalTxt,
-  modalOpen, setModalOpen, setShowGame, setFormData
-}) {
-  const { setGameOpts } = useContext(GameContext);
+function TableModal(props) {
+
+  const { modalType, modalOpen, setModalOpen, setModalTxt } = props;
+
+  props.setGameOpts = useContext(GameContext).setGameOpts;
 
   useEffect(() => {
     if (!modalOpen)
@@ -306,8 +298,7 @@ function TableModal({
         )}
       >
         <ModalContent
-          {...{modalType, modalTxt, modalOpen, setModalOpen, setShowGame,
-               setFormData, setGameOpts}}
+          {...props}
         />
       </div>
     </Modal>

@@ -241,6 +241,11 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
       }
     }
 
+    if client.Name == player.DefaultName() {
+      // client had an empty/invalid name prior to becoming a player
+      client.SetName("")
+    }
+
     if table.NumPlayers < 2 {
       reset = true
       if table.NumPlayers == 0 {
@@ -774,7 +779,7 @@ func (room *Room) postPlayerAction(client *Client, netData *NetData) {
     netData.Response = NetDataRoundOver
     netData.Table = room.table
     netData.Msg = room.table.Winners[0].Name + " wins by folds"
-    if netData.Client != nil { // XXX ?
+    if netData.HasClient() { // XXX ?
       netData.Client.Player = nil
     }
 
@@ -808,6 +813,8 @@ type ClientSettings struct {
 
   Name     string
   Password string
+
+  SeatPos  uint8
 
   Admin struct {
     RoomName string

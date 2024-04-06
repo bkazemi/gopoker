@@ -74,6 +74,7 @@ type CLI struct {
 
   tableInfoList      *tview.List
 
+  joinModal,
   spectateModal,
   exitModal,
   errorModal         *tview.Modal
@@ -137,6 +138,9 @@ func (cli *CLI) handleButton(btn string) {
     msg = cli.chatMsg
 
     cli.chatMsg = ""
+  case "join":
+    cli.switchToPage("join")
+    return
   case "spectate":
     cli.switchToPage("spectate")
     return
@@ -161,7 +165,7 @@ func (cli *CLI) handleButton(btn string) {
   }
 
   if req, ok := buttonLabelRequestMap[btn]; ok {
-    if req & net.NetActionNeedsActionBitMask != 0 && cli.yourClient.Player != nil {
+    if req & net.NetActionNeedsActionBitMask != 0 && cli.yourClient.IsPlayer() {
       cli.yourClient.Player.Action.Action = net.NetActionToPlayerState(req)
       cli.yourClient.Player.Action.Amount = cli.bet
     }
@@ -260,29 +264,78 @@ func (cli *CLI) clearPlayerScreens() {
   }
 }
 
-func (cli *CLI) makeSpectator() {
-  if !cli.isSpectator {
-    cli.isSpectator = true
-
-    if spectatorBtnIdx := cli.actionsForm.GetButtonIndex("spectate");
-       spectatorBtnIdx != -1 {
-      cli.actionsForm.RemoveButton(spectatorBtnIdx)
-    }
-
+func (cli *CLI) joinTable() {
+  if cli.isSpectator {
     cli.outputChan <- &net.NetData{
-      Request: net.NetDataPlayerLeft,
+      Request: net.NetDataNewPlayer,
       Client: &cli.yourClient,
     }
   }
 }
 
-func (cli *CLI) unmakeAdmin() {
+func (cli *CLI) makeSpectator(sendPlayerLeft bool) {
+  if !cli.isSpectator {
+    needRefocus := false
+
+    if spectateBtnIdx := cli.actionsForm.GetButtonIndex("spectate");
+       spectateBtnIdx != -1 {
+      needRefocus = cli.actionsForm.GetButton(spectateBtnIdx) == cli.app.GetFocus()
+      cli.actionsForm.RemoveButton(spectateBtnIdx)
+    }
+    cli.actionsForm.AddButton("join", func () {
+      cli.handleButton("join")
+    })
+
+    if needRefocus {
+      cli.app.SetFocus(cli.actionsForm)
+    }
+
+    cli.unmakeAdmin(false)
+
+    if sendPlayerLeft {
+      cli.outputChan <- &net.NetData{
+        Request: net.NetDataPlayerLeft,
+        Client: &cli.yourClient,
+      }
+    }
+
+    cli.isSpectator = true
+  }
+}
+
+func (cli *CLI) unmakeSpectator() {
+  if cli.isSpectator {
+    needRefocus := false
+
+    if joinBtnIdx := cli.actionsForm.GetButtonIndex("join");
+       joinBtnIdx != -1 {
+      needRefocus = cli.actionsForm.GetButton(joinBtnIdx) == cli.app.GetFocus()
+      cli.actionsForm.RemoveButton(joinBtnIdx)
+    }
+    cli.actionsForm.AddButton("spectate", func () {
+      cli.handleButton("spectate")
+    })
+
+    // need to refocus if the removed button was focused prim
+    if needRefocus {
+      cli.app.SetFocus(cli.actionsForm)
+    }
+
+    cli.isSpectator = false
+  }
+}
+
+func (cli *CLI) unmakeAdmin(lock bool) {
   if cli.isTableAdmin {
+    needRefocus := false
+
     if startGameBtnIdx := cli.actionsForm.GetButtonIndex("start game");
        startGameBtnIdx != -1 {
+      needRefocus = cli.actionsForm.GetButton(startGameBtnIdx) == cli.app.GetFocus()
       cli.actionsForm.RemoveButton(startGameBtnIdx)
     }
 
+    // TODO: check if we need to refocus on RemoveFormItem()
     if adminHeaderIdx := cli.settingsForm.GetFormItemIndex("admin options");
        adminHeaderIdx != -1 {
       cli.settingsForm.RemoveFormItem(adminHeaderIdx)
@@ -296,6 +349,10 @@ func (cli *CLI) unmakeAdmin() {
     if passwordIdx := cli.settingsForm.GetFormItemIndex("table password");
        passwordIdx != -1 {
       cli.settingsForm.RemoveFormItem(passwordIdx)
+    }
+
+    if needRefocus {
+      cli.app.SetFocus(cli.actionsForm)
     }
 
     cli.isTableAdmin = false // XXX
@@ -347,6 +404,7 @@ func (cli *CLI) Init() error {
   cli.app           = tview.NewApplication()
   cli.pages         = tview.NewPages()
   cli.gameGrid      = tview.NewGrid()
+  cli.joinModal     = tview.NewModal()
   cli.spectateModal = tview.NewModal()
   cli.exitModal     = tview.NewModal()
   cli.errorModal    = tview.NewModal()
@@ -355,6 +413,10 @@ func (cli *CLI) Init() error {
   cli.outputChan = make(chan *net.NetData)
   cli.finish     = make(chan error, 1)
   cli.err        = make(chan error, 1)
+
+  // clients technically join as a spectator until the server makes them
+  // a player
+  cli.isSpectator = true
 
   newTextView := func(title string, border bool) *tview.TextView {
     ret := tview.NewTextView().SetTextAlign(tview.AlignCenter).
@@ -524,7 +586,11 @@ func (cli *CLI) Init() error {
     }).
     AddButton("settings", func() {
       cli.switchToPage("settings")
+    }).
+    AddButton("join", func() {
+      cli.handleButton("join")
     })
+
   cli.actionsForm.SetBorder(false).
     SetInputCapture(func(eventKey *tcell.EventKey) *tcell.EventKey {
      switch eventKey.Key() {
@@ -663,6 +729,7 @@ func (cli *CLI) Init() error {
           'C': "call",
           'r': "raise",
           'f': "fold",
+          'j': "join",
           's': "start game",
           'S': "spectate",
           '.': "settings",
@@ -706,12 +773,24 @@ func (cli *CLI) Init() error {
       return eventKey
   })
 
+  cli.joinModal.SetText("do you want to join the table?").
+    AddButtons([]string{"join", "cancel"}).
+    SetDoneFunc(func(btnIdx int, btnLabel string) {
+      switch btnLabel {
+      case "join":
+        cli.joinTable()
+        fallthrough
+      case "cancel":
+        cli.switchToPage("game")
+      }
+  })
+
   cli.spectateModal.SetText("do you want to become a spectator?").
     AddButtons([]string{"spectate", "cancel"}).
     SetDoneFunc(func(btnIdx int, btnLabel string) {
       switch btnLabel {
       case "spectate":
-        cli.makeSpectator()
+        cli.makeSpectator(true)
         fallthrough
       case "cancel":
         cli.switchToPage("game")
@@ -752,6 +831,7 @@ func (cli *CLI) Init() error {
   cli.focusList.prev.next = cli.focusList
 
   cli.pages.AddPage("game",     cli.gameGrid,      true, true)
+  cli.pages.AddPage("join",     cli.joinModal,     true, false)
   cli.pages.AddPage("spectate", cli.spectateModal, true, false)
   cli.pages.AddPage("exit",     cli.exitModal,     true, false)
   cli.pages.AddPage("error",    cli.errorModal,    true, false)
@@ -761,6 +841,7 @@ func (cli *CLI) Init() error {
   //       properly back when i was learning the library. check back
   cli.pagesToPrimFocus = map[string]tview.Primitive{
     "game":          cli.gameGrid,
+    "join":          cli.joinModal,
     "spectate":      cli.spectateModal,
     "exit":          cli.exitModal,
     "error":         cli.errorModal,
@@ -830,8 +911,8 @@ func cliInputLoop(cli *CLI) {
           fmt.Sprintf("%s: netData.Table == nil", netData.NetActionToString()))
       }
       if netData.NeedsPlayer() {
-        poker.Assert(netData.Client.Player != nil,
-          fmt.Sprintf("%s: Client.Player == nil", netData.NetActionToString()))
+        poker.Assert(netData.Client.IsPlayer(),
+          fmt.Sprintf("%s: Client.IsPlayer() == false", netData.NetActionToString()))
         // players always have an ID as well
         poker.Assert(netData.Client.ID != "",
           fmt.Sprintf("%v %s: ID empty", netData.Response,
@@ -861,7 +942,7 @@ func cliInputLoop(cli *CLI) {
         nameInputField := cli.settingsForm.GetFormItem(0).(*tview.InputField)
         nameInputField.SetText(cli.settings.Name)
 
-        if cli.yourClient.Player != nil {
+        if cli.yourClient.IsPlayer() {
           cli.playersTextViewMap[cli.yourClient.ID] = cli.yourInfoView
           cli.updatePlayer(&cli.yourClient, nil)
         }
@@ -870,10 +951,7 @@ func cliInputLoop(cli *CLI) {
           cli.updateInfoList("# players", netData.Table)
         }
 
-        cli.isSpectator = false
-        cli.actionsForm.AddButton("spectate", func () {
-          cli.handleButton("spectate")
-        })
+        cli.unmakeSpectator()
 
         cli.yourClient = *netData.Client
         cli.settings = *cli.yourClient.Settings
@@ -1000,7 +1078,7 @@ func cliInputLoop(cli *CLI) {
         //  cli.updatePlayer(netData.Client, nil)
         //}
       case net.NetDataReset:
-        if netData.Client != nil && netData.Client.Player != nil {
+        if netData.HasClient() && netData.Client.IsPlayer() {
           for name, textView := range cli.playersTextViewMap {
             if name != netData.Client.Name {
               cli.otherPlayersFlex.RemoveItem(textView)
@@ -1015,13 +1093,14 @@ func cliInputLoop(cli *CLI) {
         cli.updateInfoList("all", netData.Table)
       case net.NetDataEliminated:
         if netData.Client.ID == cli.yourClient.ID {
-          cli.unmakeAdmin()
+          cli.unmakeAdmin(true)
           cli.errorModal.SetText("you were eliminated")
           cli.yourInfoView.Clear()
           cli.holeView.Clear()
           cli.clearPlayerScreens()
           //textViewSetLine(cli.yourInfoView, 1, "name: " + cli.yourClient.Name)
           cli.yourInfoView.SetText("name: " + cli.yourClient.Name)
+          cli.makeSpectator(false)
           cli.switchToPage("error")
         }
 

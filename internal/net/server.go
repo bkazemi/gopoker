@@ -474,14 +474,16 @@ func (server *Server) handleNewConn(
     }
 
     if !netData.Client.Settings.IsSpectator {
-      if player := room.table.GetOpenSeat(); player != nil {
+      seatPos := netData.Client.Settings.SeatPos
+
+      if player := room.table.GetSeat(seatPos); player != nil {
         client.Player = player
         room.playerClientMap[player] = client
 
         processClient()
 
-        fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s'\n",
-                   room.name, client.ID, &conn, client.Name, player.Name)
+        fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s' tPos '%v'\n",
+                   room.name, client.ID, &conn, client.Name, player.Name, player.TablePos)
 
         player.Action.Action = playerState.FirstAction
         room.table.CurPlayers().AddPlayer(player)
@@ -511,7 +513,7 @@ func (server *Server) handleNewConn(
         netData.Response = NetDataYourPlayer
         netData.Send()
       } else { // sanity check
-        panic(fmt.Sprintf("Server.handleNewConn(): {%s}: GetOpenSeats() failed for a room creator", room.name))
+        panic(fmt.Sprintf("Server.handleNewConn(): {%s}: GetSeat(%v) failed for a room creator", room.name, seatPos))
       }
 
       room.makeAdmin(client)
@@ -580,13 +582,19 @@ func (server *Server) handleNewConn(
       netData.Msg = "This table is not allowing new players. " +
                     "You have been added as a spectator."
       netData.Send()
-    } else if player := room.table.GetOpenSeat(); player != nil {
+
+      netData.ClearData(nil)
+      // send NetDataClientSettings so frontend can update isSpectator
+      client.Settings.IsSpectator = true
+      netData.Response = NetDataClientSettings
+      netData.Send()
+    } else if player := room.table.GetSeat(client.Settings.SeatPos); player != nil {
       client.Player = player
       room.playerClientMap[player] = client
 
       room.applyClientSettings(client, netData.Client.Settings)
-      fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s'\n",
-                 room.name, client.ID, &conn, client.Name, player.Name)
+      fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s' tPos '%v'\n",
+                 room.name, client.ID, &conn, client.Name, player.Name, player.TablePos)
 
       if room.table.State == poker.TableStateNotStarted {
         player.Action.Action = playerState.FirstAction
@@ -628,7 +636,12 @@ func (server *Server) handleNewConn(
     } else {
       netData.Response = NetDataServerMsg
       netData.Msg = "No open seats available. You have been added as a spectator"
+      netData.Send()
 
+      netData.ClearData(nil)
+      // send NetDataClientSettings so frontend can update isSpectator
+      client.Settings.IsSpectator = true
+      netData.Response = NetDataClientSettings
       netData.Send()
     }
   }
@@ -826,6 +839,84 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       return
     case NetDataPlayerLeft: // NOTE: used when a player moves to spectator
       playerCleanup(client, false)
+    case NetDataNewPlayer:
+      if !room.TryLock() {
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        netData.Msg = "can't join as player right now. try again later"
+        netData.Send()
+        return
+      }
+      defer room.Unlock()
+
+      if room.table.Lock == poker.TableLockAll ||
+         room.table.Lock == poker.TableLockPlayers {
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        netData.Msg = "this table is currently not accepting new players"
+
+        netData.Send()
+        return
+      }
+
+      seatPos := uint8(0)
+      if netData.Client.Settings != nil {
+        fmt.Printf("Server.handleAsyncRequest(): NewPlayer: SeatPos: %v\n", netData.Client.Settings.SeatPos)
+        seatPos = netData.Client.Settings.SeatPos
+      } else {
+        fmt.Println("Server.handleAsyncRequest(): NewPlayer: Settings was nil")
+      }
+
+      netData.ClearData(client)
+
+      if player := room.table.GetSeat(seatPos); player != nil {
+        client.Player = player
+        room.playerClientMap[player] = client
+        client.Settings.IsSpectator = false
+        player.SetName(client.Name)
+        client.SetName(player.Name)
+
+        fmt.Printf("Server.handleAsyncRequest(): NewPlayer: {%s}: adding <%s> (%p) (%s) as player '%s' tPos '%v'\n",
+                   room.name, client.ID, &conn, client.Name, player.Name, player.TablePos)
+
+        if room.table.State == poker.TableStateNotStarted {
+          player.Action.Action = playerState.FirstAction
+          room.table.CurPlayers().AddPlayer(player)
+        } else {
+          player.Action.Action = playerState.MidroundAddition
+        }
+        room.table.ActivePlayers().AddPlayer(player)
+
+        if room.table.CurPlayer() == nil {
+          room.table.SetCurPlayer(room.table.CurPlayers().Head)
+        }
+
+        if room.table.Dealer == nil {
+          room.table.Dealer = room.table.ActivePlayers().Head
+        } else if room.table.SmallBlind == nil {
+          room.table.SmallBlind = room.table.Dealer.Next()
+        } else if room.table.BigBlind == nil {
+          room.table.BigBlind = room.table.SmallBlind.Next()
+        }
+
+        netData.Client = room.publicClientInfo(client)
+        netData.Response = NetDataNewPlayer
+        netData.Table = room.table
+
+        room.sendResponseToAll(&netData, client)
+
+        netData.Client = client
+        netData.Response = NetDataYourPlayer
+        netData.Send()
+
+        if room.tableAdminID == "" {
+          room.makeAdmin(client)
+        }
+      } else {
+        netData.Response = NetDataServerMsg
+        netData.Msg = "failed to join at this seat"
+        netData.Send()
+      }
     case NetDataClientSettings: // TODO: check pointers
       if !room.TryLock() {
         netData.ClearData(client)
@@ -1075,7 +1166,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           return
         }
 
-        if netData.Client != nil {
+        if netData.HasClient() {
           if netData.Client.conn == nil {
             netData.Client.conn = conn
           }
@@ -1083,7 +1174,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
             netData.Client.Settings = &ClientSettings{}
           }
         } else {
-          fmt.Printf("Server.WSClient(): {%s}: web: WARNING: (%p) netData.Client == nil\n", room.name, conn)
+          fmt.Printf("Server.WSClient(): {%s}: web: WARNING: (%p) netData.HasClient() == false\n", room.name, conn)
         }
 
         fmt.Printf("Server.WSClient(): {%s}: web: recv msgpack: %v nd.Request == %v\n",

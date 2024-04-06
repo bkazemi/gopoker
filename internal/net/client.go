@@ -60,3 +60,7 @@ func (client *Client) SetConnType(connType string) *Client {
 
   return client
 }
+
+func (client *Client) IsPlayer() bool {
+  return client.Player != nil
+}

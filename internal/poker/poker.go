@@ -545,6 +545,32 @@ func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
   return chipLeader, secondChipLeader
 }
 
+func (table *Table) GetSeat(_pos uint8) *Player {
+  fmt.Printf("Table.GetSeat(): _pos %v\n", _pos)
+  // treat 0 index as a call to GetOpenSeat()
+  // for easier integration with existing codebase
+  if _pos == 0 {
+    return table.GetOpenSeat()
+  }
+
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
+
+  pos := int(_pos) - 1
+
+  if pos > len(table.players) - 1 || !table.players[pos].IsVacant {
+    fmt.Printf("Table.GetSeat(): requested OOB or occupied seat %v\n", pos)
+    return nil
+  }
+
+  seat := table.players[pos]
+  seat.IsVacant = false
+  seat.TablePos = uint(pos)
+  table.NumPlayers++
+
+  return seat
+}
+
 func (table *Table) GetOpenSeat() *Player {
   table.mtx.Lock()
   defer table.mtx.Unlock()

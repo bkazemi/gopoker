@@ -28,8 +28,8 @@ const Header = dynamic(() => import('@/components/Header'), {
 import styles from '@/styles/Tablenew.module.css';
 
 const PlayerList = React.memo(({
-  players, curPlayer, curHand, playerHead, dealerAndBlinds, yourClient, sideNum, innerTableItem,
-  tableState, keyPressed, socket
+  players, curPlayer, curHand, playerHead, dealerAndBlinds, yourClient,
+  isSpectator, sideNum, innerTableItem, tableState, keyPressed, socket
 }) => {
   let side;
   sideNum === 0 && (side = 'bottom');
@@ -65,8 +65,8 @@ const PlayerList = React.memo(({
               />
             : <Player
                 key={client.ID || client._ID}
-                {...{client, side, tableState, curPlayer, playerHead, gridRow, gridCol,
-                     isYourPlayer, dealerAndBlinds, keyPressed, socket}}
+                {...{client, yourClient, side, tableState, curPlayer, playerHead, gridRow, gridCol,
+                     isYourPlayer, isSpectator, dealerAndBlinds, keyPressed, socket}}
               />
       })
     }
@@ -86,8 +86,11 @@ const nullClient = {
   Name: 'vacant seat',
 };
 
-const NewNullClient = () => ({
-  Player: nullPlayer,
+const NewNullClient = (tablePos) => ({
+  Player: {
+    ...nullPlayer,
+    TablePos: tablePos
+  },
   Name: 'vacant seat',
   _ID: uuidv4(),
 });
@@ -106,9 +109,9 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
   const routerRef = useRef(router);
 
   const [yourClient, setYourClient] = useState(null);
-  const yourClientID = useRef(null);
+  const yourClientRef = useRef(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isSpectator, setIsSpectator] = useState(gameOpts?.websocketOpts?.Client?.Settings?.IsSpectator);
+  const [isSpectator, setIsSpectator] = useState(!!gameOpts?.websocketOpts?.Client?.Settings?.IsSpectator);
   const [numSeats, setNumSeats] = useState(netData.Table?.NumSeats || 0);
   const [numPlayers, setNumPlayers] = useState(netData.Table?.NumPlayers || 0);
   const [numConnected, setNumConnected] = useState(netData.Table?.NumConnected || 0);
@@ -119,8 +122,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
 
   const [players, setPlayers] = useState(
     Array.from({length: netData.Table?.NumSeats || 0}, (_, idx) => ({
-      ...NewNullClient(),
-      Player: {...nullPlayer, TablePos: idx}
+      ...NewNullClient(idx),
     }))
   );
   const [curPlayer, setCurPlayer] = useState(null);
@@ -229,12 +231,9 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       const pIdx = players.findIndex(c => c.ID === client.ID);
       if (pIdx !== -1) {
         const nullClientWithPos = nullClient ?
-          {...NewNullClient(),
-           Player: {
-            ...nullPlayer,
-            TablePos: client.Player?.TablePos ?? players[pIdx].Player.TablePos // ELIMINATED resp does not include Player field
-          }}
-          : undefined;
+          {...NewNullClient(
+            client.Player?.TablePos ?? players[pIdx].Player.TablePos // ELIMINATED resp does not include Player field
+          )} : undefined;
         console.log(`updating ${players[pIdx].Name} to`, nullClientWithPos ?? client);
         const newClients = [...players];
         newClients[pIdx] = nullClientWithPos ?? client;
@@ -249,7 +248,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
 
   useEffect(() => {
     console.log('yourClient is ', yourClient);
-    yourClientID.current = yourClient?.ID;
+    setIsSpectator(!!yourClient?.Settings?.IsSpectator);
+    yourClientRef.current = yourClient;
   }, [yourClient]);
 
   useEffect(() => {
@@ -278,7 +278,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
           updateTable(netData);
       break;
     case NETDATA.CLIENT_EXITED:
-      if (netData.Client?.ID !== yourClientID.current) // XXX
+      if (netData.Client?.ID !== yourClientRef.current?.ID) // XXX
         setChatMsgs(msgs => [...msgs, `<${netData.Client.Name} id: ${netData.Client.ID}> left the room`]);
       setNumConnected(netData.Table.NumConnected);
       break;
@@ -291,7 +291,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       break;
     case NETDATA.CLIENT_SETTINGS:
       setYourClient(netData.Client);
-      updatePlayer(netData.Client);
+      if (netData.Client.Player)
+        updatePlayer(netData.Client);
       break;
     case NETDATA.YOUR_PLAYER: {
       if (netData.Table)
@@ -300,10 +301,18 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       setYourClient(netData.Client);
       setPlayers(clients => {
         const newClients = [...clients];
-        const vacantSeatIdx = clients.findIndex(c => c.Name === nullClient.Name)
+
+        let vacantSeatIdx = newClients.findIndex(c => c.Player.TablePos === netData.Client.Player.TablePos);
+        if (vacantSeatIdx === -1)
+          vacantSeatIdx = clients.findIndex(c => c._ID);
+
         if (vacantSeatIdx !== -1) {
-          console.log(`yp: setting c[${vacantSeatIdx}] => ${netData.Client.Name}`)
-          newClients[vacantSeatIdx] = netData.Client;
+          if (!newClients[vacantSeatIdx]._ID)
+            console.error(`yp: tried to set ${netData.Client.Name} to occupied seat: c[${vacantSeatIdx}]`);
+          else {
+            console.log(`yp: setting c[${vacantSeatIdx}] => ${netData.Client.Name}`)
+            newClients[vacantSeatIdx] = netData.Client;
+          }
         } else {
           console.error(`your_player: couldnt find vacant seat idx ${vacantSeatIdx} [${clients.map(c => c.Name)}] nc.c ${nullClient.Name}`);
         }
@@ -317,16 +326,27 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
     case NETDATA.CUR_PLAYERS:
       setNumPlayers(netData.Table.NumPlayers);
 
-      console.log(`${netData.Response === NETDATA.NEW_PLAYER ? 'new_players' : 'cur_players'} recv p: ${netData.Client.Name}`);
+      const pfx = netData.Response === NETDATA.NEW_PLAYER ? 'new_players' : 'cur_players';
+
+      console.log(`${pfx} recv p: ${netData.Client.Name}`);
 
       setPlayers(clients => {
         const newClients = [...clients];
-        const vacantSeatIdx = clients.findIndex(c => c.Name === nullClient.Name);
+
+        let vacantSeatIdx = newClients.findIndex(c => c.Player.TablePos === netData.Client.Player.TablePos);
+        if (vacantSeatIdx === -1)
+          vacantSeatIdx = clients.findIndex(c => c._ID);
+
         if (vacantSeatIdx !== -1) {
-          console.log(`nc: setting c[${vacantSeatIdx}] => ${netData.Client.Name}`)
-          newClients[vacantSeatIdx] = netData.Client;
-        } else
-          console.error('new_player or cur_players: couldnt find vacant seat idx');
+          if (!newClients[vacantSeatIdx]._ID)
+            console.error(`${pfx}: tried to set ${netData.Client.Name} to occupied seat: c[${vacantSeatIdx}]`);
+          else {
+            console.log(`${pfx}: setting c[${vacantSeatIdx}] => ${netData.Client.Name}`)
+            newClients[vacantSeatIdx] = netData.Client;
+          }
+        } else {
+          console.error(`${pfx}: couldnt find vacant seat idx ${vacantSeatIdx} [${clients.map(c => c.Name)}] nc.c ${nullClient.Name}`);
+        }
 
         return newClients;
       });
@@ -338,7 +358,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
     case NETDATA.PLAYER_RECONNECTED:
       netData.Client.Player.isDisconnected = false;
       updatePlayer(netData.Client);
-      if (netData.Client.ID === yourClientID.current)
+      if (netData.Client.ID === yourClientRef.current.ID)
         setModalOpen(false);
 
       break;
@@ -346,10 +366,11 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       console.log(`player left: id: ${netData.Client.ID} n: ${netData.Client.Player.Name}`);
       updatePlayer(netData.Client, NewNullClient());
 
+      // TODO: log more specific name info
       setChatMsgs(msgs => [...msgs, `<server-msg> ${netData.Client.Player.Name} left the table`]);
       setNumPlayers(netData.Table.NumPlayers);
 
-      if (netData.Client.ID === yourClientID.current)
+      if (netData.Client.ID === yourClientRef.current.ID)
         setIsAdmin(false);
 
       break;
@@ -400,8 +421,9 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       setCurHand(null);
       break;
     case NETDATA.ELIMINATED:
-      if (netData.Client.ID === yourClientID.current) {
+      if (netData.Client.ID === yourClientRef.current.ID) {
         setIsAdmin(false);
+        setIsSpectator(true);
         setModalType('');
         setModalTxt(arr => [...arr, 'you have been eliminated']);
         setModalOpen(true);
@@ -468,20 +490,24 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
   // My only guess is that it is a useSWRSubscription optimization.
   //
   // updatePlayer, updateRoom, etc. don't actually trigger rerenders.
-  }, [netData._noShallowCompare, yourClientID, updatePlayer, updateRoom, updateTable]);
+  }, [netData._noShallowCompare, yourClientRef, updatePlayer, updateRoom, updateTable]);
 
   useEffect(() => {
     if (numSeats) {
       setPlayers(players => {
         const newPlayerArr = players.filter(p => !p._ID);
+        const playerPosSet = new Set(newPlayerArr.map(c => c.Player.TablePos));
+
+        console.log('numSeats ue: playerPosSet:', playerPosSet);
+
+        let curTablePos = 0;
         while (newPlayerArr.length < numSeats) {
-          console.log('numSeats ue: TablePos:', Math.max(0, newPlayerArr.length))
+          console.log(`numSeats ue: curTablePos before map: ${curTablePos}`);
+          while (playerPosSet.has(curTablePos))
+            curTablePos++;
+          console.log(`numSeats ue: curTablePos after map: ${curTablePos}`);
           newPlayerArr.push({
-            ...NewNullClient(),
-            Player: {
-              ...nullPlayer,
-              TablePos: Math.max(0, newPlayerArr.length)
-            }
+            ...(NewNullClient(curTablePos++)),
           });
         }
 
@@ -525,17 +551,16 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
   }, [isAdmin, setGameOpts, gameOpts.creatorToken]);
 
   useEffect(() => {
-    if (gameOpts?.websocketOpts?.Client?.Settings?.IsSpectator === true && !isSpectator) {
-      socket?.send((new NetData(yourClient, NETDATA.PLAYER_LEFT)).toMsgPack());
-      setIsSpectator(true);
-    }
-  }, [gameOpts?.websocketOpts?.Client?.Settings?.IsSpectator, isSpectator, yourClient, socket]);
+    console.log(`isspec: ${isSpectator} ${yourClient}`);
+    if (isSpectator && yourClientRef.current?.Player)
+      socket?.send((new NetData(yourClientRef.current, NETDATA.PLAYER_LEFT)).toMsgPack());
+  }, [isSpectator, yourClientRef, socket]);
 
   return (
     //!isPaused &&
     <>
     <TableModal
-      {...{modalType, modalTxt, setModalTxt, modalOpen, setModalOpen, setShowGame}}
+      {...{modalType, modalTxt, setModalTxt, modalOpen, setModalOpen, setShowGame, setIsSpectator}}
       setFormData={setSettingsFormData}
     />
     <div
@@ -562,7 +587,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
         {/* TOP-SIDE PLAYERS */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
+            {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={2}
           />
@@ -577,7 +602,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       >
         {/* LEFT-SIDE PLAYERS */}
         <PlayerList
-          {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
+          {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
           dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
           sideNum={1}
         />
@@ -665,7 +690,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       >
         {/* RIGHT-SIDE PLAYERS */}
         <PlayerList
-          {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
+          {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
           dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
           sideNum={3}
         />
@@ -685,7 +710,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* BOTTOM-SIDE PLAYERS */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, keyPressed, socket, tableState}}
+            {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
             dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
             sideNum={0}
           />

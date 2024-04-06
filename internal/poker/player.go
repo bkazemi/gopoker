@@ -31,6 +31,10 @@ type Player struct {
   Action    Action
 }
 
+func (p *Player) DefaultName() string {
+  return p.defaultName
+}
+
 func (p *Player) PreHand() *Hand {
   return p.preHand
 }
