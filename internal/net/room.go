@@ -723,6 +723,7 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
       netData.Response = commState2NetDataResponse(room)
 
       room.sendResponseToAll(netData, nil)
+      room.sendCurHands()
 
       time.Sleep(2500 * time.Millisecond)
     }
