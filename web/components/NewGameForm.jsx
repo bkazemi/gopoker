@@ -1,14 +1,15 @@
 import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
 
-import Select from 'react-select';
-
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 import { Literata } from 'next/font/google';
 
+import Select from 'react-select';
+
 import { GameContext } from '@/GameContext';
-import styles from '@/styles/NewGameForm.module.css';
 import { NETDATA, TABLE_LOCK, NetData, NewClient } from '@/lib/libgopoker';
+
+import styles from '@/styles/NewGameForm.module.css';
 
 const literata = Literata({
   subsets: ['latin'],
@@ -211,11 +212,10 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
       return isSettings ? {...newOpts, settingsChange: true} : newOpts;
     });
 
-    setModalOpen && setModalOpen(false);
+    if (setModalOpen) setModalOpen(false);
 
-    if (!isSettings && !isDirectLink) {
+    if (!isSettings && !isDirectLink)
       gameOpts.setShowGame(true);
-    }
   };
 
   useEffect(() => {
@@ -245,7 +245,6 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
       className={isVisible ? styles.newGameForm : 'hidden'}
       onClick={(e) => e.stopPropagation()}
     >
-      {/*<form action="/new" method="post" className={literata.className}>*/}
       <form
         className={literata.className}
         onSubmit={handleSubmit}

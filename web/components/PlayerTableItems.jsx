@@ -2,9 +2,9 @@ import React, { useEffect, useState} from 'react';
 
 import Image from 'next/image';
 
-import styles from '@/styles/PlayerTableItems.module.css';
-
 import { TABLE_STATE, cardToImagePath, PLAYERSTATE } from '@/lib/libgopoker';
+
+import styles from '@/styles/PlayerTableItems.module.css';
 
 const lrCardStyle = (side) => (
   side === 'left' || side === 'right'

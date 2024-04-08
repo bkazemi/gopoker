@@ -1,6 +1,6 @@
-import Image from 'next/image';
-
 import React, { useContext, useEffect, useState } from 'react';
+
+import Image from 'next/image';
 
 import { Tooltip } from 'react-tooltip';
 

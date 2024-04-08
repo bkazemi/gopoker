@@ -18,7 +18,7 @@ function TableCenter({ isAdmin, tableState, community, mainPot, yourClient, sock
   return (
     <div>
       {
-        community.length &&
+        community?.length &&
         <div
           className={styles.community}
           style={{

@@ -1,8 +1,8 @@
 import React, {useState, useCallback, useEffect, useRef} from 'react';
 
-import cx from 'classnames';
-
 import { VT323 } from 'next/font/google';
+
+import cx from 'classnames';
 
 import { NETDATA, NetData } from '@/lib/libgopoker';
 

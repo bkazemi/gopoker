@@ -1,22 +1,18 @@
 import React, {useContext, useEffect, useState} from 'react';
 
-import Image from 'next/image';
 import {useRouter} from 'next/router';
-
 import { Literata } from 'next/font/google';
 
 import {GameContext} from '@/GameContext';
+import UnsupportedDevice from './UnsupportedDevice';
+import Spinner from '@/components/Spinner';
 
 import config from '@/serverConfig';
-
-import styles from '@/styles/Game.module.css';
 
 const literata = Literata({
   subsets: ['latin', 'latin-ext'],
   weight: '500',
 });
-
-import UnsupportedDevice from './UnsupportedDevice';
 
 /*import { decode } from '@msgpack/msgpack';
 
@@ -132,14 +128,7 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
     );
 
   return (
-    <div className={styles.spinner}>
-      <p className={literata.className}>creating new room...</p>
-      <Image
-        src='/pokerchip3.png'
-        width={100} height={100}
-        alt='spinner'
-      />
-    </div>
+    <Spinner msg={'creating new room...'} />
   );
 });
 

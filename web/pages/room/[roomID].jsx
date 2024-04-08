@@ -1,10 +1,9 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 
 import { useRouter } from 'next/router';
-import Image from 'next/image';
 import Link from 'next/link';
-import { Literata } from 'next/font/google';
 import dynamic from 'next/dynamic';
+import { Literata } from 'next/font/google';
 
 import useSWRSubscription from 'swr/subscription';
 
@@ -12,10 +11,12 @@ import {CSSTransition } from 'react-transition-group';
 
 import { cloneDeep } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
+import { decode } from '@msgpack/msgpack';
 
 import { GameContext } from '@/GameContext';
 import NewGameForm from '@/components/NewGameForm';
 import Tablenew from '@/components/Tablenew';
+import Spinner from '@/components/Spinner';
 
 const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice'), {
   ssr: false,
@@ -26,14 +27,11 @@ import config from '@/serverConfig';
 import { NETDATA, NetData } from '@/lib/libgopoker';
 
 import homeStyles from '@/styles/Home.module.css';
-import gameStyles from '@/styles/Game.module.css';
 
 const literata = Literata({
   subsets: ['latin'],
   weight: '500',
 });
-
-import { decode } from '@msgpack/msgpack';
 
 const createWebSocket = (key, roomID, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt) => {
   if (tryCnt > 2) {
@@ -204,16 +202,8 @@ const Connect = ({ roomID }) => {
       </div>
     );
 
-  if (!data) return (
-    <div className={gameStyles.spinner}>
-      <p className={literata.className}>connecting to server...</p>
-      <Image
-        src='/pokerchip3.png'
-        width={100} height={100}
-        alt='spinner'
-      />
-    </div>
-  );
+  if (!data)
+    return <Spinner msg={'connecting to server...'} />;
 
   return (
    <Tablenew
@@ -222,17 +212,6 @@ const Connect = ({ roomID }) => {
    />
   );
 }
-
-const Spinner = ({ isCheckRoom }) => (
-  <div className={gameStyles.spinner}>
-    { isCheckRoom && <p className={literata.className}>checking if room exists...</p> }
-    <Image
-      src='/pokerchip3.png'
-      width={100} height={100}
-      alt='spinner'
-    />
-  </div>
-);
 
 const RoomNotFound = ({ errMsg, router }) => (
   <div
@@ -329,7 +308,7 @@ function RoomPostDimCheck() {
 
   const render = () => {
     if (roomNotFound === undefined)
-      return <Spinner isCheckRoom={true} />;
+      return <Spinner msg={'checking if room exists...'} />;
 
     if (roomNotFound)
       return <RoomNotFound errMsg={checkRoomErr} router={router} />;

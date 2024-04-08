@@ -11,13 +11,11 @@ import { GameProvider } from '@/GameContext';
 const Header = dynamic(() => import('@/components/Header'), {
   ssr: false,
 });
-
 const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice'), {
   ssr: false,
 });
 
-import '@/styles/globals.css'
-
+import '@/styles/globals.css';
 import homeStyles from '@/styles/Home.module.css';
 
 const MainContent = ({ Component, pageProps, isCompactRoom }) => {
@@ -104,7 +102,6 @@ export default function App({ Component, pageProps, router }) {
     const handleKeyDown = (event) => {
       if (window._debug === undefined)
         return;
-
 
       if (event.ctrlKey && event.key === 'F7') {
         toggleLogging();

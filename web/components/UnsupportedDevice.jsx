@@ -1,16 +1,15 @@
 import React, { useCallback, useContext } from 'react';
 
 import { useRouter } from 'next/router';
-
 import { Literata } from 'next/font/google';
 
 import cx from 'classnames';
 
-const literata = Literata({ subsets: ['latin'], weight: '500' })
-
 import { GameContext } from '@/GameContext';
 
 import styles from '@/styles/UnsupportedDevice.module.css';
+
+const literata = Literata({ subsets: ['latin'], weight: '500' });
 
 function UnsupportedDevice({ isVisible, showHomeBtn }) {
   const router = useRouter();

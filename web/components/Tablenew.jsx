@@ -9,7 +9,6 @@ const dmMono = DM_Mono({ subsets: [ 'latin', 'latin-ext' ], weight: '500' });
 const vt323 = VT323({ subsets: ['latin', 'latin-ext', 'vietnamese'], weight: '400' });
 
 import { v4 as uuidv4 } from 'uuid';
-
 import cx from 'classnames';
 
 import { NETDATA, NetData, NetDataToString, TABLE_LOCK, TABLE_STATE } from '@/lib/libgopoker';
@@ -44,19 +43,14 @@ const PlayerList = React.memo(({
     {
       players
         .filter(client => client.Player.TablePos % 4 === sideNum)
-        .map((client, idx) => {
-          //console.log(`${side} inner: ${!!innerTableItem} map: idx: ${idx} name: ${c.Name}`)
+        .map(client => {
           const isYourPlayer = client.ID && client.ID === yourClient?.ID;
-          //if (isYourPlayer)
-          //  console.log(`PlayerList: yourPlayer found: id: ${client.ID}`);
 
           if (side === 'left' || side === 'right')
             gridRow = (~~(client.Player.TablePos / 4) % 3) + 1; // modulo 3 is max number
                                                                 // of players on a given side
           else
             gridCol = (~~(client.Player.TablePos / 4) % 3) + 1;
-
-          //console.log(`PlayerList: sideNum: ${sideNum} .TablePos: ${client.Player.TablePos} gridRow: ${gridRow} gridCol: ${gridCol}`)
 
           return innerTableItem
             ? <PlayerTableItems
@@ -100,8 +94,6 @@ const nullPot = {
 };
 
 export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
-  //const [isPaused, setIsPaused] = useState(false);
-
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   // need this ref so that server response useEffect doesn't trigger when router changes
@@ -440,15 +432,6 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
     case NETDATA.RIVER:
       setCommunity(netData.Table.Community);
       updateTable(netData);
-      // we need to pause when there are new community cards
-      // because for example when curPlayers are all in, the
-      // server loops thru all the rounds automatically.
-      // NOTE: this isn't really feasible. i've added this to
-      // the backend for now.
-      /*setIsPaused(true);
-      setTimeout(() => {
-        setIsPaused(false);
-      }, 3000)*/
       break;
     case NETDATA.BAD_REQUEST:
     case NETDATA.SERVER_MSG:
@@ -556,8 +539,25 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       socket?.send((new NetData(yourClientRef.current, NETDATA.PLAYER_LEFT)).toMsgPack());
   }, [isSpectator, yourClientRef, socket]);
 
+  const dealerAndBlinds = {dealer, smallBlind, bigBlind};
+
+  const playerListPlayersProps = {
+    players, curPlayer, playerHead, yourClient,
+    isSpectator, keyPressed, socket, tableState,
+
+    dealerAndBlinds,
+  };
+
+  const playerListSideProps = {
+    players, curPlayer, curHand, playerHead,
+    yourClient, keyPressed, tableState,
+
+    dealerAndBlinds,
+
+    innerTableItem: true,
+  };
+
   return (
-    //!isPaused &&
     <>
     <TableModal
       {...{modalType, modalTxt, setModalTxt, modalOpen, setModalOpen, setShowGame, setIsSpectator}}
@@ -587,8 +587,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
         {/* TOP-SIDE PLAYERS */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
-            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+            {...playerListPlayersProps}
             sideNum={2}
           />
         </div>
@@ -602,8 +601,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       >
         {/* LEFT-SIDE PLAYERS */}
         <PlayerList
-          {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
-          dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+          {...playerListPlayersProps}
           sideNum={1}
         />
       </div>
@@ -617,10 +615,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* TOP OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, curHand, playerHead, yourClient, keyPressed, tableState}}
-            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+            {...playerListSideProps}
             sideNum={2}
-            innerTableItem={true}
           />
         </div>
         <div
@@ -632,10 +628,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* LEFT-SIDE OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, curHand, playerHead, yourClient, tableState}}
-            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+            {...playerListSideProps}
             sideNum={1}
-            innerTableItem={true}
           />
         </div>
         <div
@@ -659,10 +653,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* RIGHT-SIDE OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, curHand, playerHead, yourClient, tableState}}
-            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+            {...playerListSideProps}
             sideNum={3}
-            innerTableItem={true}
           />
         </div>
         <div
@@ -674,10 +666,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* BOTTOM OF TABLE */}
           <PlayerList
-            {...{players, curPlayer, curHand, playerHead, yourClient, tableState}}
-            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+            {...playerListSideProps}
             sideNum={0}
-            innerTableItem={true}
           />
         </div>
       </div>
@@ -690,8 +680,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       >
         {/* RIGHT-SIDE PLAYERS */}
         <PlayerList
-          {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
-          dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+          {...playerListPlayersProps}
           sideNum={3}
         />
       </div>
@@ -710,8 +699,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         >
           {/* BOTTOM-SIDE PLAYERS */}
           <PlayerList
-            {...{players, curPlayer, playerHead, yourClient, isSpectator, keyPressed, socket, tableState}}
-            dealerAndBlinds={{ dealer, smallBlind, bigBlind }}
+            {...playerListPlayersProps}
             sideNum={0}
           />
         </div>

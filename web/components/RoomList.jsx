@@ -4,12 +4,12 @@ import { useRouter } from 'next/router';
 import { Exo } from 'next/font/google';
 import { Literata } from 'next/font/google';
 
-const exo = Exo({ subsets: ['latin', 'latin-ext'], });
-const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
-
 import { TABLE_LOCK } from '@/lib/libgopoker';
 
 import styles from '@/styles/RoomList.module.css';
+
+const exo = Exo({ subsets: ['latin', 'latin-ext'], });
+const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
 
 const RoomInfo = React.memo(({ isVisible, room }) => {
   if (!isVisible)

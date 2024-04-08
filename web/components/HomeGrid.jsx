@@ -1,13 +1,12 @@
-import Image from 'next/image';
-
 import React, {useState, useEffect, useCallback, useRef } from 'react';
 
+import Image from 'next/image';
 import { Exo } from 'next/font/google';
-
-import styles from '@/styles/Home.module.css'; // XXX tmp until i move stuff
 
 import RoomList from '@/components/RoomList';
 import NewGameForm from '@/components/NewGameForm';
+
+import styles from '@/styles/Home.module.css'; // XXX tmp until i move stuff
 
 const exo = Exo({ subsets: ['latin', 'latin-ext'] });
 
@@ -49,21 +48,6 @@ function HomeGrid({ isVisible }) {
     toggleGrid(showRoomList, roomListRef);
     console.log(`showRoomList: ${showRoomList}`);
   }, [showRoomList, toggleGrid]);
-
-  /*useEffect(() => {
-    console.log('HomeGrid: gameOpts.websocketOpts useEffect');
-
-    if (gameOpts.websocketOpts)
-      setShowGrid(false);
-  }, [gameOpts.showGame]);*/
-
-  // unmount cleanup to ensure grid items are not open
-  // when user returns to grid from deeper components
-  /*useEffect(() => {
-    return () => {
-      setShowNewGameForm(false);
-    };
-  }, []);*/
 
   if (!isVisible)
     return;

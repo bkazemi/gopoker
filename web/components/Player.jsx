@@ -103,8 +103,7 @@ const YourPlayerActions = React.memo(({
 
     console.log(`sending ${btn} ${action}`);
 
-    const newClient = {...client};
-    newClient.Player = cloneDeep(client.Player);
+    const newClient = {...client, Player: cloneDeep(client.Player)};
 
     newClient.Player.Action.Action = NetDataToPlayerState(action);
     newClient.Player.Action.Amount = raiseAmount;
@@ -398,14 +397,12 @@ function Player({
   useEffect(() => {
     [...Object.entries(dealerAndBlinds)]
       .filter(([name, seat]) => {
-        //console.log(`dSB ${name} name: ${seat?.Player?.Name} cid ${client?._ID}  cname ${client?.Player?.Name}`);
         if (seat?.Player?.Name === client?.Player?.Name)
           return true;
         else
           posSetStateMap[name](false);
       })
       .map(([name]) => {
-        //console.log(`MAP ${client.Player.Name} ${name}`);
         posSetStateMap[name](true);
       });
   }, [dealerAndBlinds, client, posSetStateMap]);
@@ -449,6 +446,8 @@ function Player({
     );
   }
 
+  const reconnBlur = {filter: !isYourPlayer && isReconnecting ? 'blur(1.5px)' : ''};
+
   return (
     <div
       className={styles.player}
@@ -456,19 +455,19 @@ function Player({
     >
       <div
         className={styles.nameContainer}
-        style={{ filter: !isYourPlayer && isReconnecting ? 'blur(1.5px)' : '' }}
+        style={reconnBlur}
       >
         <p className={styles.name}>{name}{isYourPlayer && <span style={{fontStyle: 'italic'}}> (You)</span>}</p>
         <Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />
       </div>
       <p
-        style={{ filter: !isYourPlayer && isReconnecting ? 'blur(1.5px)' : '' }}
+        style={reconnBlur}
       >
         current action: { PlayerStateToString(curAction) }
       </p>
       <div
         className={styles.chipCountContainer}
-        style={{ filter: !isYourPlayer && isReconnecting ? 'blur(1.5px)' : '' }}
+        style={reconnBlur}
       >
         <p>chip count: { chipCount.toLocaleString() }</p>
         <Image
