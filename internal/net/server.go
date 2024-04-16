@@ -37,8 +37,9 @@ func init() {
 type Server struct {
   rooms map[string]*Room
 
-  MaxConnBytes  int64
-  MaxChatMsgLen int32
+  MaxConnBytes   int64
+  MaxChatMsgLen  int32
+  MaxRoomNameLen int32
 
   router *mux.Router
 
@@ -56,6 +57,7 @@ func NewServer(addr string) *Server {
   const (
     MaxConnBytes = 10e3
     MaxChatMsgLen = 256
+    MaxRoomNameLen = 50
     IdleTimeout = 0
     ReadTimeout = 0
   )
@@ -67,6 +69,7 @@ func NewServer(addr string) *Server {
 
     MaxConnBytes: MaxConnBytes,
     MaxChatMsgLen: MaxChatMsgLen,
+    MaxRoomNameLen: MaxRoomNameLen,
 
     errChan: make(chan error),
     panicked: false,
@@ -348,6 +351,11 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
     roomOpts.RoomName = server.randRoomName()
   } else if server.rooms[roomOpts.RoomName] != nil {
     fmt.Printf("Server.createNewRoom(): roomName %s already taken\n", roomOpts.RoomName)
+    roomOpts.RoomName = server.randRoomName()
+  } else if int32(len(roomOpts.RoomName)) > server.MaxRoomNameLen {
+    roomOpts.RoomName = roomOpts.RoomName[:server.MaxRoomNameLen+1] + "..."
+    fmt.Printf("Server.createNewRoom(): roomName %s is too long %v > %v, clamping\n",
+               roomOpts.RoomName, len(roomOpts.RoomName), server.MaxRoomNameLen)
     roomOpts.RoomName = server.randRoomName()
   }
 

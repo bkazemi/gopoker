@@ -558,6 +558,14 @@ func (room *Room) sendBadAuth(conn *websocket.Conn, connType string) {
   time.Sleep(1 * time.Second)
 }
 
+func (room *Room) getAdminSettings() AdminSettings {
+  return AdminSettings{
+    RoomName: room.name,
+    NumSeats: room.table.NumSeats,
+    Lock: room.table.Lock,
+  }
+}
+
 func (room *Room) makeAdmin(client *Client) {
   if client == nil {
     fmt.Printf("Room.makeAdmin(): {%s}: client is nil, unsetting tableAdmin\n", room.name)
@@ -566,6 +574,9 @@ func (room *Room) makeAdmin(client *Client) {
   } else {
     fmt.Printf("Room.makeAdmin(): {%s}: making <%s> (%s) table admin\n", room.name, client.ID, client.Name)
     room.tableAdminID = client.ID
+    if client.Settings != nil {
+      client.Settings.Admin = room.getAdminSettings()
+    }
   }
 
   netData := &NetData{
@@ -809,6 +820,13 @@ func (room *Room) publicClientInfo(client *Client) *Client {
   return &pubClient
 }
 
+type AdminSettings struct {
+  RoomName string
+  NumSeats uint8
+  Lock     poker.TableLock
+  Password string
+}
+
 type ClientSettings struct {
   IsSpectator bool
 
@@ -817,12 +835,7 @@ type ClientSettings struct {
 
   SeatPos  uint8
 
-  Admin struct {
-    RoomName string
-    NumSeats uint8
-    Lock     poker.TableLock
-    Password string
-  }
+  Admin AdminSettings
 }
 
 func NewClientSettings() *ClientSettings {

@@ -369,6 +369,13 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
     }
     case NETDATA.MAKE_ADMIN:
       setIsAdmin(true);
+      setGameOpts(opts => ({
+        ...opts,
+        websocketOpts: {
+          ...opts.websocketOpts,
+          Client: netData.Client,
+        }
+      }));
       break;
     case NETDATA.DEAL:
       //setTableState(netData.Table.State);
@@ -524,12 +531,10 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
   }, [gameOpts.settingsChange, gameOpts.websocketOpts, setGameOpts, socket]);
 
   useEffect(() => {
-    if (isAdmin && gameOpts.creatorToken)
-      setGameOpts(opts => ({...opts, creatorToken: ''}));
-
     setGameOpts(opts => ({
       ...opts,
       isAdmin,
+      creatorToken: isAdmin && gameOpts.creatorToken ? '' : opts.creatorToken,
     }));
   }, [isAdmin, setGameOpts, gameOpts.creatorToken]);
 
