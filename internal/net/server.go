@@ -188,49 +188,47 @@ func (server *Server) handleRoomSettings(room *Room, client *Client, settings *C
   if client == nil {
     fmt.Println("Server.handleRoomSettings(): called with a nil parameter")
 
-    return "", errors.New("room.handleRoomSettings(): BUG: client == nil")
+    return "", errors.New("BUG: client == nil")
   } else if settings == nil {
     fmt.Println("Server.handleRoomSettings(): called with a nil parameter")
 
-    return "", errors.New("Server.handleRoomSettings(): BUG: settings == nil")
+    return "", errors.New("BUG: settings == nil")
   }
 
   server.mtx.Lock()
   defer server.mtx.Unlock()
 
+  defer func() {
+    settings.Admin.RoomName = room.name
+    settings.Admin.NumSeats = room.table.NumSeats
+  }()
+
   msg := "room changes:\n\n"
   errs := ""
 
-  if settings.Admin.RoomName != "" && settings.Admin.RoomName != room.name {
-    if false {
-      fmt.Printf("Server.handleRoomSettings(): %p requested invalid room name '%v'\n",
-                 client.conn, settings.Admin.RoomName)
-      errs += "room name: invalid name requested\n"
-    } else if server.hasRoom(settings.Admin.RoomName) {
-      fmt.Printf("Server.handleRoomSettings(): %p requested unavailable room name '%v'\n",
-                 client.conn, settings.Admin.RoomName)
-
-      msg += "room name: requested name already taken\n"
-    } else {
-      server.renameRoom(room, settings.Admin.RoomName)
-      msg += "room name: changed\n"
-    }
+  renameRoomOk, renameRoomErr := server.renameRoom(room, settings.Admin.RoomName)
+  if renameRoomOk {
+    msg += "room name: changed"
+  } else if renameRoomErr != nil {
+    errs += "room name: " + renameRoomErr.Error()
   } else {
-    msg += "room name: unchanged\n"
+    msg += "room name: unchanged"
   }
+  msg += "\n"
 
   if settings.Admin.NumSeats != room.table.NumSeats {
     if err := room.table.SetNumSeats(settings.Admin.NumSeats); err != nil {
-      errs += "num seats: " + err.Error() + "\n"
+      errs += "num seats: " + err.Error()
     } else {
-      msg += "num seats: changed\n"
+      msg += "num seats: changed"
     }
   } else {
     msg += "num seats: unchanged"
   }
+  msg += "\n"
 
   if errs != "" {
-    return "", errors.New(errs)
+    return msg, errors.New("errors: \n" + errs)
   }
 
   return msg, nil
@@ -422,10 +420,31 @@ func (server *Server) removeRoom(room *Room) {
 }
 
 // NOTE: caller needs to handle server locking
-func (server *Server) renameRoom(room *Room, newName string) {
+func (server *Server) renameRoom(room *Room, newName string) (bool, error) {
+  if newName == "" || room.name == newName {
+    return false, nil
+  }
+
+  if false {
+    return false, errors.New("invalid name requested")
+  }
+
+  if server.hasRoom(newName) {
+    return false, errors.New(fmt.Sprintf("requested name '%v' already taken",
+                                         newName))
+  }
+
+  if int32(len(newName)) > server.MaxRoomNameLen {
+    fmt.Printf("Server.createNewRoom(): roomName %s is too long (%v > %v), using random name\n",
+               newName[:server.MaxRoomNameLen+1] + "...", len(newName), server.MaxRoomNameLen)
+    newName = server.randRoomName()
+  }
+
   delete(server.rooms, room.name)
   room.name = newName
   server.rooms[newName] = room
+
+  return true, nil
 }
 
 func (server *Server) handleNewConn(
@@ -958,7 +977,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         } else {
           netData.ClearData(client)
           netData.Response = NetDataServerMsg
-          netData.Msg = err.Error()
+          netData.Msg = msg + err.Error()
           netData.Send()
         }
       }
