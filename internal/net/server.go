@@ -199,8 +199,11 @@ func (server *Server) handleRoomSettings(room *Room, client *Client, settings *C
   defer server.mtx.Unlock()
 
   defer func() {
+    // TODO: decouple AdminSettings from ClientSettings() funcs
     settings.Admin.RoomName = room.name
     settings.Admin.NumSeats = room.table.NumSeats
+    client.Settings.Admin.RoomName = room.name
+    client.Settings.Admin.NumSeats = room.table.NumSeats
   }()
 
   msg := "room changes:\n\n"
@@ -960,10 +963,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         return
       }
 
-      settings := *netData.Client.Settings
+      settings := netData.Client.Settings
 
       if client.ID == room.tableAdminID {
-        msg, err := server.handleRoomSettings(room, client, netData.Client.Settings)
+        msg, err := server.handleRoomSettings(room, client, settings)
         if err == nil {
           netData.ClearData(nil)
           netData.Response = NetDataRoomSettings
@@ -982,9 +985,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         }
       }
 
-      netData.Client.Settings = &settings
-
-      msg, err := room.handleClientSettings(client, netData.Client.Settings)
+      msg, err := room.handleClientSettings(client, settings)
       if err == nil {
         room.applyClientSettings(client, netData.Client.Settings)
 

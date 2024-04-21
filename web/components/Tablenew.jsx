@@ -280,11 +280,25 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       break;
     case NETDATA.ROOM_SETTINGS:
       updateRoom(netData.Client);
+      setGameOpts(opts => ({
+        ...opts,
+        websocketOpts: {
+          ...opts.websocketOpts,
+          Client: netData.Client,
+        }
+      }));
       break;
     case NETDATA.CLIENT_SETTINGS:
       setYourClient(netData.Client);
       if (netData.Client.Player)
         updatePlayer(netData.Client);
+      setGameOpts(opts => ({
+        ...opts,
+        websocketOpts: {
+          ...opts.websocketOpts,
+          Client: netData.Client,
+        }
+      }));
       break;
     case NETDATA.YOUR_PLAYER: {
       if (netData.Table)
