@@ -572,7 +572,7 @@ func (room *Room) makeAdmin(client *Client) {
     room.tableAdminID = ""
     return
   } else {
-    fmt.Printf("Room.makeAdmin(): {%s}: making <%s> (%s) table admin\n", room.name, client.ID, client.Name)
+    fmt.Printf("Room.makeAdmin(): {%s}: making <%s> table admin\n", room.name, client.FullName(false))
     room.tableAdminID = client.ID
     if client.Settings != nil {
       client.Settings.Admin = room.getAdminSettings()
@@ -844,7 +844,15 @@ func NewClientSettings() *ClientSettings {
   }
 }
 
-func (room *Room) handleClientSettings(client *Client, settings *ClientSettings) (string, error) {
+func (room *Room) handleClientSettings(client *Client, settings *ClientSettings) (m string, err error) {
+  defer func(){
+    if err != nil {
+      return // log err in caller to keep this defer small and clean
+    }
+
+    fmt.Printf("Room.handleClientSettings(): <%s> %s\n", client.FullName(false), m)
+  }()
+
   msg := ""
   errs := ""
 
@@ -853,30 +861,21 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
     MaxPassLen uint8 = 50
   )
 
-  if client == nil {
-    fmt.Println("Room.handleClientSettings(): called with a nil parameter")
-
+  if client == nil { // NOTE: this is currently an impossible condition because the callers access client.ID beforehand
     return "", errors.New("room.handleClientSettings(): BUG: client == nil")
   } else if settings == nil {
-    fmt.Println("Room.handleClientSettings(): called with a nil parameter")
-
     return "", errors.New("Room.handleClientSettings(): BUG: settings == nil")
   }
-
-  //fmt.Printf("Room.handleClientSettings(): <%s> settings: %v\n", client.Name, settings)
 
   settings.Name = strings.TrimSpace(settings.Name)
   if settings.Name != "" {
     if len(settings.Name) > int(MaxNameLen) {
-      fmt.Printf("Room.handleClientSettings(): %p requested a name that was longer " +
-                 "than %v characters. using a default name\n", client.conn, MaxNameLen)
       msg += fmt.Sprintf("You've requested a name that was longer than %v characters. " +
               "Using a default name.\n\n", MaxNameLen)
       settings.Name = ""
     } else {
       if player := client.Player; player != nil {
         if player.Name == settings.Name {
-          fmt.Println("Room.handleClientSettings(): name unchanged")
           msg += "name: unchanged\n\n"
         } else {
           _, found := room.nameClientMap[settings.Name]
@@ -888,8 +887,6 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
               }
             }
           } else {
-            fmt.Printf("%p requested the name `%s` which is reserved or already taken\n",
-                       client.conn, settings.Name)
             msg += fmt.Sprintf("Name '%s' already in use. Current name unchanged.\n\n",
                                 settings.Name)
           }
@@ -897,8 +894,6 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
       } else {
         for _, player := range *room.table.Players() {
           if settings.Name == player.Name {
-            fmt.Printf("%p requested the name `%s` which is reserved or already taken. " +
-                       "using a default name\n", client.conn, settings.Name)
             msg += fmt.Sprintf("Name '%s' already in use. Using a default name.\n\n",
                                 settings.Name)
             settings.Name = ""
@@ -913,11 +908,8 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
 
     lock := poker.TableLockToString(settings.Admin.Lock)
     if lock == "" {
-      fmt.Printf("Room.handleClientSettings(): %p requested invalid table lock '%v'\n",
-                 client.conn, settings.Admin.Lock)
       errs += fmt.Sprintf("invalid table lock: '%v'\n", settings.Admin.Lock)
     } else if settings.Admin.Lock == room.table.Lock {
-      fmt.Println("Room.handleClientSettings(): table lock unchanged")
       msg += "table lock: unchanged\n"
     } else {
       msg += "table lock: changed\n"
@@ -934,7 +926,6 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
         msg += "changed\n"
       }
     } else {
-      fmt.Println("Room.handleClientSettings(): table password unchanged")
       msg += "table password: unchanged\n"
     }
   }

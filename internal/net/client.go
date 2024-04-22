@@ -36,6 +36,20 @@ func NewClient(settings *ClientSettings) *Client {
   return client
 }
 
+func (client *Client) FullName(includeConn bool) string {
+  name := client.Name
+  if name == "" {
+    name = "noname"
+  }
+
+  conn := ""
+  if includeConn {
+    conn = fmt.Sprintf(" (%p)", &client.conn)
+  }
+
+  return fmt.Sprintf("%s (%s)%s", name, client.ID, conn)
+}
+
 func (client *Client) SetName(name string) *Client {
   if len(name) > MaxClientNameLen {
     fmt.Printf("Client.SetName(): requested name too long. rejecting\n")

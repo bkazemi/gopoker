@@ -184,15 +184,19 @@ func (server *Server) serverError(err error, room *Room) {
   server.panicked = true
 }
 
-func (server *Server) handleRoomSettings(room *Room, client *Client, settings *ClientSettings) (string, error) {
-  if client == nil {
-    fmt.Println("Server.handleRoomSettings(): called with a nil parameter")
+func (server *Server) handleRoomSettings(room *Room, client *Client, settings *ClientSettings) (m string, err error) {
+  defer func() {
+    if err != nil {
+      return // log err in caller to keep this defer small and clean
+    }
 
-    return "", errors.New("BUG: client == nil")
+    fmt.Printf("Server.handleRoomSettings(): <%s> %s\n", client.FullName(false), m)
+  }()
+
+  if client == nil { // NOTE: this is currently an impossible condition because the callers access client.ID beforehand
+    return "", errors.New("Server.handleRoomSettings(): BUG: client == nil")
   } else if settings == nil {
-    fmt.Println("Server.handleRoomSettings(): called with a nil parameter")
-
-    return "", errors.New("BUG: settings == nil")
+    return "", errors.New("Server.handleRoomSettings(): BUG: settings == nil")
   }
 
   server.mtx.Lock()
@@ -355,7 +359,7 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
     roomOpts.RoomName = server.randRoomName()
   } else if int32(len(roomOpts.RoomName)) > server.MaxRoomNameLen {
     roomOpts.RoomName = roomOpts.RoomName[:server.MaxRoomNameLen+1] + "..."
-    fmt.Printf("Server.createNewRoom(): roomName %s is too long %v > %v, clamping\n",
+    fmt.Printf("Server.createNewRoom(): roomName %s is too long (%v > %v), clamping\n",
                roomOpts.RoomName, len(roomOpts.RoomName), server.MaxRoomNameLen)
     roomOpts.RoomName = server.randRoomName()
   }
@@ -556,8 +560,8 @@ func (server *Server) handleNewConn(
       processClient()
     }
 
-    fmt.Printf("Server.handleNewConn(): {%s}: %v (%v) used creatorToken (%v), removing token\n",
-               room.name, client.Name, client.ID, room.creatorToken)
+    fmt.Printf("Server.handleNewConn(): {%s}: <%s> used creatorToken (%v), removing token\n",
+               room.name, client.FullName(false), room.creatorToken)
 
     room.creatorToken = "" // token gets invalidated after first use
 
@@ -585,6 +589,8 @@ func (server *Server) handleNewConn(
   client := room.newClient(conn, connType, netData.Client.Settings)
 
   if _, err := room.handleClientSettings(client, netData.Client.Settings); err != nil {
+    fmt.Printf("Room.handleClientSettings(): <%s> err: %v\n", client.FullName(false), err)
+
     (&NetData{
       room: room,
       Response: NetDataBadRequest,
@@ -661,7 +667,7 @@ func (server *Server) handleNewConn(
       netData.Response = NetDataYourPlayer
       netData.Send()
 
-      if room.tableAdminID == "" {
+      if room.creatorToken == "" && room.tableAdminID == "" {
         room.makeAdmin(client)
       }
     } else if room.table.Lock == poker.TableLockSpectators {
@@ -799,7 +805,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         client.isDisconnected = true
 
         if !cleanExit {
-          fmt.Printf("Server.WSClient: <%s> unclean exit, waiting 1 min for reconnect until cleanup\n", client.ID)
+          fmt.Printf("Server.WSClient: <%s> unclean exit, waiting 1 min for reconnect until cleanup\n", client.FullName(true))
 
           if client.Player != nil {
             room.sendResponseToAll(&NetData{
@@ -825,7 +831,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
           // if IsLocked is true then there must be at least one other client
           if !room.IsLocked && room.table.NumConnected == 1 {
-            fmt.Printf("Server.WSClient(): <%s> defer(): {%s}: last client left, skipping player & client cleanup\n", client.ID, room.name)
+            fmt.Printf("Server.WSClient(): <%s> defer(): {%s}: last client left, skipping player & client cleanup\n", client.FullName(true), room.name)
             server.removeRoom(room)
             return
           }
@@ -911,8 +917,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         player.SetName(client.Name)
         client.SetName(player.Name)
 
-        fmt.Printf("Server.handleAsyncRequest(): NewPlayer: {%s}: adding <%s> (%p) (%s) as player '%s' tPos '%v'\n",
-                   room.name, client.ID, &conn, client.Name, player.Name, player.TablePos)
+        fmt.Printf("Server.handleAsyncRequest(): NewPlayer: {%s}: adding <%s> as player '%s' tPos '%v'\n",
+                   room.name, client.FullName(true), player.Name, player.TablePos)
 
         if room.table.State == poker.TableStateNotStarted {
           player.Action.Action = playerState.FirstAction
@@ -978,6 +984,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           netData.Msg = msg
           netData.Send()
         } else {
+          fmt.Printf("Server.handleRoomSettings(): <%s> err: %v\n", client.FullName(false), err)
           netData.ClearData(client)
           netData.Response = NetDataServerMsg
           netData.Msg = msg + err.Error()
@@ -1008,6 +1015,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         netData.Msg = msg
         netData.Send()
       } else {
+        fmt.Printf("Room.handleClientSettings(): <%s> err: %v\n", client.FullName(false), err)
+
         netData.ClearData(client)
         netData.Response = NetDataServerMsg
         netData.Msg = err.Error()
@@ -1063,8 +1072,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       room.sendResponseToAll(&netData, nil)
     case NetDataAllIn, NetDataBet, NetDataCall, NetDataCheck, NetDataFold:
       if room.IsLocked {
-        fmt.Printf("<%s> (%p) (%s) tried to send action while room mtx was locked.\n",
-                   client.ID, &client.conn, client.Name)
+        fmt.Printf("<%s> tried to send action while room mtx was locked.\n",
+                   client.FullName(true))
         netData.ClearData(client)
         netData.Response = NetDataBadRequest
         netData.Msg = "that action is not valid at this time"

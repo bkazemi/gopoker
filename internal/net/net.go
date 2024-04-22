@@ -262,7 +262,7 @@ func (netData *NetData) SendTo(client *Client) {
   } else if client.conn == nil {
     // avoid a dedicated branch to circumvent race condition in Server.handleReconnect()
     if client.isDisconnected {
-      fmt.Fprintf(os.Stderr, "NetData.SendTo(): <%s> isDisconnected, skipping send\n", client.ID)
+      fmt.Fprintf(os.Stderr, "NetData.SendTo(): <%s> isDisconnected, skipping send\n", client.FullName(false))
       return
     }
     panic("NetData.SendTo(): client.conn == nil")
