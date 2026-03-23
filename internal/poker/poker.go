@@ -1909,9 +1909,20 @@ func (table *Table) BestHand(players []*Player, sidePot *SidePot) []*Player {
 // hand matching logic unoptimized
 func AssembleBestHand(preShow bool, table *Table, player *Player) {
   if preShow {
+    cloneHand := func(hand *Hand) Hand {
+      if hand == nil {
+        return Hand{}
+      }
+
+      cloned := *hand
+      cloned.Cards = append(Cards(nil), hand.Cards...)
+
+      return cloned
+    }
+
     var restoreHand Hand
     if player.Hand != nil {
-      restoreHand = *player.Hand
+      restoreHand = cloneHand(player.Hand)
     } else {
       restoreHand = Hand{}
     }
@@ -1924,7 +1935,8 @@ func AssembleBestHand(preShow bool, table *Table, player *Player) {
             player.preHand.Rank = RankPair
           }
         } else if player.Hand != nil {
-          player.preHand = &*player.Hand
+          previewHand := cloneHand(player.Hand)
+          player.preHand = &previewHand
         } else {
           player.preHand = &Hand{}
         }
@@ -2128,13 +2140,21 @@ func AssembleBestHand(preShow bool, table *Table, player *Player) {
       return
     }
 
-    if isFlush, _ := gotFlush(cards, player, true); isFlush {
-      return
-    }
-
     // check for A to 5
     if !isStraight && cards[len(cards)-1].NumValue == CardAce {
       gotStraight(&cards, player, 3, true)
+    }
+
+    if player.Hand.Rank == RankRoyalFlush ||
+      player.Hand.Rank == RankStraightFlush {
+      return
+    }
+
+    if isFlush, _ := gotFlush(cards, player, false); isFlush {
+      // replace any previously assembled straight cards before storing flush cards.
+      player.Hand.Cards = player.Hand.Cards[:0]
+      gotFlush(cards, player, true)
+      return
     }
 
     if player.Hand.Rank == RankStraight {
@@ -2177,11 +2197,25 @@ func AssembleBestHand(preShow bool, table *Table, player *Player) {
   // NOTE: we check for a fullhouse before a straight flush because it's
   // impossible to have both at the same time and searching for the fullhouse
   // first saves some cycles+space
-  if matchHands.trips != nil && matchHands.pairs != nil {
+  if matchHands.trips != nil && (matchHands.pairs != nil || len(matchHands.trips) > 1) {
     player.Hand.Rank = RankFullHouse
 
-    pairIdx := int(matchHands.pairs[len(matchHands.pairs)-1])
     tripsIdx := int(matchHands.trips[len(matchHands.trips)-1])
+    pairIdx := -1
+
+    // Choose the best available pair component for the full house:
+    // a second trips can supply the pair, but a higher actual pair should win.
+    if len(matchHands.trips) > 1 {
+      pairIdx = int(matchHands.trips[len(matchHands.trips)-2])
+    }
+    if matchHands.pairs != nil {
+      highestPairIdx := int(matchHands.pairs[len(matchHands.pairs)-1])
+      if pairIdx == -1 || cards[highestPairIdx].NumValue > cards[pairIdx].NumValue {
+        pairIdx = highestPairIdx
+      }
+    }
+
+    Assert(pairIdx != -1, "fullhouse: pairIdx == -1")
 
     player.Hand.Cards = append(player.Hand.Cards, cards[pairIdx:pairIdx+2]...)
     player.Hand.Cards = append(player.Hand.Cards, cards[tripsIdx:tripsIdx+3]...)
@@ -2253,12 +2287,19 @@ func AssembleBestHand(preShow bool, table *Table, player *Player) {
     }
 
     if !isStraight && uniqueCards[uniqueBestCard-1].NumValue == CardAce &&
-      gotStraight(&uniqueCards, player, 4, true) {
+      gotStraight(&uniqueCards, player, 3, true) {
       Assert(len(player.Hand.Cards) == 5, fmt.Sprintf("%d", len(player.Hand.Cards)))
+    }
+
+    if player.Hand.Rank == RankRoyalFlush ||
+      player.Hand.Rank == RankStraightFlush {
+      return
     }
   }
 
   if haveFlush {
+    // replace any previously assembled straight cards before storing flush cards.
+    player.Hand.Cards = player.Hand.Cards[:0]
     gotFlush(cards, player, true)
 
     Assert(player.Hand.Rank == RankFlush, "player should have a flush")
