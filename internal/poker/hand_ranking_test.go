@@ -314,6 +314,8 @@ func TestBestHandRanksAllCategories(t *testing.T) {
 			name := fmt.Sprintf("%s loses to %s", lower.name, higher.name)
 			t.Run(name, func(t *testing.T) {
 				table := &Table{}
+				// Pass a non-nil side pot so BestHand compares the prebuilt Hand values
+				// directly instead of trying to assemble/log from missing hole cards.
 				sidePot := NewSidePot(0)
 				players := []*Player{
 					mustPlayerWithHand(t, "lower", lower.rank, lower.cards),
@@ -348,7 +350,7 @@ func TestBestHandTieBreakers(t *testing.T) {
 		{
 			name:      "pair uses kickers after pair rank",
 			community: "5c 5d 9h Jc 2d",
-			players:   []*Player{mustPlayerWithHole(t, "alice", "Ah Kc"), mustPlayerWithHole(t, "bob", "Ah Qc")},
+			players:   []*Player{mustPlayerWithHole(t, "alice", "Ah Kc"), mustPlayerWithHole(t, "bob", "Ad Qc")},
 			want:      []string{"alice"},
 		},
 		{
@@ -360,7 +362,7 @@ func TestBestHandTieBreakers(t *testing.T) {
 		{
 			name:      "trips compares kickers",
 			community: "9c 9d 9h 2c 3d",
-			players:   []*Player{mustPlayerWithHole(t, "alice", "As Kc"), mustPlayerWithHole(t, "bob", "As Qc")},
+			players:   []*Player{mustPlayerWithHole(t, "alice", "As Kc"), mustPlayerWithHole(t, "bob", "Ad Qc")},
 			want:      []string{"alice"},
 		},
 		{
@@ -397,6 +399,12 @@ func TestBestHandTieBreakers(t *testing.T) {
 			name:      "board-made royal flush splits",
 			community: "Th Jh Qh Kh Ah",
 			players:   []*Player{mustPlayerWithHole(t, "alice", "2c 3d"), mustPlayerWithHole(t, "bob", "4c 5d")},
+			want:      []string{"alice", "bob"},
+		},
+		{
+			name:      "board-made straight splits",
+			community: "6h 7d 8c 9s Td",
+			players:   []*Player{mustPlayerWithHole(t, "alice", "Ac 2d"), mustPlayerWithHole(t, "bob", "Kh 3c")},
 			want:      []string{"alice", "bob"},
 		},
 		{
