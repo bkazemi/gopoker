@@ -994,7 +994,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
       msg, err := room.handleClientSettings(client, settings)
       if err == nil {
-        room.applyClientSettings(client, netData.Client.Settings)
+        room.applyClientSettings(client, settings)
 
         netData.ClearData(client)
         if client.Player != nil { // send updated player info to other clients
