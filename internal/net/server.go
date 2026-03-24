@@ -32,8 +32,6 @@ func init() {
   }
 }
 
-// TODO: important: need to ensure these pointers
-// will be consistent throughout the program (mainly Player pointers)
 type Server struct {
   rooms map[string]*Room
 
@@ -102,7 +100,7 @@ func NewServer(addr string) *Server {
     roomName := vars["roomName"]
 
     if room, found := server.rooms[roomName]; found {
-      if room.isLocked() {
+      if room.isTableLocked() {
         w.WriteHeader(http.StatusForbidden)
       } else {
         w.WriteHeader(http.StatusOK)
@@ -790,19 +788,25 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
   // TODO: move me
   playerCleanup := func(client *Client, isClientExit bool) {
-    if client != nil && client.Player != nil {
-      player := client.Player
-
-      if room.table.ActivePlayers().Len > 1 &&
-         room.table.CurPlayer() != nil &&
-         room.table.CurPlayer().Player.Name == player.Name {
-        room.table.CurPlayer().Player.Action.Action = playerState.Fold
-        room.table.SetNextPlayerTurn()
-        room.sendPlayerTurnToAll()
-      }
-
-      room.removePlayer(client, isClientExit, !isClientExit)
+    if client == nil {
+      return
     }
+    // Snapshot: client.Player may be nilled concurrently by another
+    // removePlayer call (e.g. from a different goroutine's cleanup path).
+    player := client.Player
+    if player == nil {
+      return
+    }
+
+    if room.table.ActivePlayers().Len > 1 &&
+       room.table.CurPlayer() != nil &&
+       room.table.CurPlayer().Player.Name == player.Name {
+      player.Action.Action = playerState.Fold
+      room.table.SetNextPlayerTurn()
+      room.sendPlayerTurnToAll()
+    }
+
+    room.removePlayer(client, isClientExit, !isClientExit)
   }
 
   cleanExit := false
@@ -859,7 +863,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           }
 
           // if IsLocked is true then there must be at least one other client
-          if !room.IsLocked && room.table.NumConnected == 1 {
+          if !room.IsLocked() && room.table.NumConnected == 1 {
             fmt.Printf("Server.WSClient(): <%s> defer(): {%s}: last client left, skipping player & client cleanup\n", client.FullName(true), room.name)
             server.removeRoom(room)
             return
@@ -1092,17 +1096,17 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         netData.Msg = netData.Msg[:server.MaxChatMsgLen] + "(snipped)"
       }
 
-      if client.Player != nil {
+      if client.Player != nil { // only chooses bracket style, never dereferenced
         netData.Msg = fmt.Sprintf("[%s id: %s]: %s", client.Name,
-                                  netData.Client.ID[:7], netData.Msg)
+                                  client.ID[:7], netData.Msg)
       } else {
         netData.Msg = fmt.Sprintf("{%s id: %s}: %s", client.Name,
-                                  netData.Client.ID[:7], netData.Msg)
+                                  client.ID[:7], netData.Msg)
       }
 
       room.sendResponseToAll(&netData, nil)
     case NetDataAllIn, NetDataBet, NetDataCall, NetDataCheck, NetDataFold:
-      if room.IsLocked {
+      if room.IsLocked() {
         fmt.Printf("<%s> tried to send action while room mtx was locked.\n",
                    client.FullName(true))
         netData.ClearData(client)
@@ -1115,7 +1119,11 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         return
       }
 
-      if client.Player == nil {
+      // Snapshot player pointer: removePlayer may concurrently nil
+      // client.Player. Capturing it once prevents a TOCTOU race where
+      // the nil-check passes but a later dereference crashes.
+      player := client.Player
+      if player == nil {
         netData.ClearData(client)
         netData.Response = NetDataBadRequest
         netData.Msg = "you are not a player"
@@ -1137,7 +1145,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         return
       }
 
-      if client.Player.Name != room.table.CurPlayer().Player.Name {
+      if player.Name != room.table.CurPlayer().Player.Name {
         netData.ClearData(client)
         netData.Response = NetDataBadRequest
         netData.Msg = "it's not your turn"
@@ -1150,7 +1158,18 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
       room.Lock()
 
-      if err := room.table.PlayerAction(client.Player, netData.Client.Player.Action);
+      // Revalidate under the lock: the snapshot may be stale if
+      // removePlayer ran (clearing the seat) or the client left and
+      // rejoined on a different seat. Pointer identity confirms this
+      // is still the same player-seat binding.
+      if client.Player != player || player.IsVacant {
+        room.Unlock()
+
+        returnFromInputLoop <- false
+        return
+      }
+
+      if err := room.table.PlayerAction(player, netData.Client.Player.Action);
          err != nil {
         netData.ClearData(client)
         netData.Response = NetDataBadRequest

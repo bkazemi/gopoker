@@ -1608,8 +1608,8 @@ func (table *Table) NextTableAction() {
     fmt.Printf("Table.NextTableAction(): game over!\n")
 
   default:
-    fmt.Printf("Table.NextTableAction(): BUG: called with improper state (" +
-               table.TableStateToString() + ")")
+    fmt.Printf("Table.NextTableAction(): BUG: called with improper state (%s)\n",
+               table.TableStateToString())
   }
 }
 

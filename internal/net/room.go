@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bkazemi/gopoker/internal/playerState"
@@ -12,8 +13,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// TODO: important: need to ensure these pointers
-// will be consistent throughout the program (mainly Player pointers)
 type Room struct {
   name string
 
@@ -24,7 +23,7 @@ type Room struct {
 
   creatorToken string
 
-  IsLocked bool
+  isLocked atomic.Bool
   mtx sync.Mutex
 }
 
@@ -44,16 +43,14 @@ func (room *Room) Table() *poker.Table {
   return room.table.PublicInfo()
 }
 
-// wrap the mutex Lock() so that we can check if the lock is active
-// without acquiring it like TryLock() does.
 func (room *Room) Lock() {
   room.mtx.Lock()
-  room.IsLocked = true
+  room.isLocked.Store(true)
 }
 
 func (room *Room) TryLock() bool {
   if room.mtx.TryLock() {
-    room.IsLocked = true
+    room.isLocked.Store(true)
 
     return true
   }
@@ -62,8 +59,12 @@ func (room *Room) TryLock() bool {
 }
 
 func (room *Room) Unlock() {
-  room.IsLocked = false
+  room.isLocked.Store(false)
   room.mtx.Unlock()
+}
+
+func (room *Room) IsLocked() bool {
+  return room.isLocked.Load()
 }
 
 func (room *Room) sendResponseToAll(netData *NetData, except *Client) {
@@ -198,17 +199,36 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
   table := room.table
 
   if player := client.Player; player != nil { // else client was a spectator
-    fmt.Printf("Room.removePlayer(): {%s}: removing %s\n", room.name, player.Name)
+    playerName := player.Name
+    hadDefaultName := client.Name == player.DefaultName()
+
+    fmt.Printf("Room.removePlayer(): {%s}: removing %s\n", room.name, playerName)
 
     table.ActivePlayers().RemovePlayer(player)
     table.CurPlayers().RemovePlayer(player)
 
-    player.Clear()
-
     table.NumPlayers--
 
+    // use pointer identity — player and Dealer/SB/BB.Player point into
+    // the same fixed seat pool, so address comparison is authoritative
+    // and doesn't depend on name state (which Clear() resets)
+    if table.Dealer != nil && player == table.Dealer.Player {
+      table.Dealer = nil
+    }
+    if table.SmallBlind != nil && player == table.SmallBlind.Player {
+      table.SmallBlind = nil
+    }
+    if table.BigBlind != nil && player == table.BigBlind.Player {
+      table.BigBlind = nil
+    }
+
+    // wipe cards before building the notification — publicClientInfo
+    // delegates to PublicPlayerInfo which skips redaction during
+    // showdown, but a departing player's cards should never be broadcast
+    player.NewCards()
+
     netData := &NetData{
-      Client:     client,
+      Client:     room.publicClientInfo(client),
       Response:   NetDataPlayerLeft,
       Table:      room.Table(),
     }
@@ -218,8 +238,10 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
     }
     room.sendResponseToAll(netData, exceptClient)
 
+    // Sever client<->player link and clear the seat.
     room.clients.ClearPlayer(client)
     client.Player = nil
+    player.Clear()
 
     if client.ID == room.tableAdminID {
       if table.ActivePlayers().Len == 0 {
@@ -230,7 +252,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
       }
     }
 
-    if client.Name == player.DefaultName() {
+    if hadDefaultName {
       // client had an empty/invalid name prior to becoming a player
       client.SetName("")
     }
@@ -242,19 +264,6 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
         room.tableAdminID = ""
       }
       return
-    }
-
-    if table.Dealer != nil &&
-       player.Name == table.Dealer.Player.Name {
-      table.Dealer = nil
-    }
-    if table.SmallBlind != nil &&
-       player.Name == table.SmallBlind.Player.Name {
-      table.SmallBlind = nil
-    }
-    if table.BigBlind != nil &&
-       player.Name == table.BigBlind.Player.Name {
-      table.BigBlind = nil
     }
   }
 }
@@ -1004,7 +1013,7 @@ func (room *Room) newClient(conn *websocket.Conn, connType string, clientSetting
   return client
 }
 
-func (room *Room) isLocked() bool {
+func (room *Room) isTableLocked() bool {
   room.table.Mtx().Lock()
   defer room.table.Mtx().Unlock()
 

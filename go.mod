@@ -1,6 +1,6 @@
 module github.com/bkazemi/gopoker
 
-go 1.18
+go 1.26
 
 require (
 	github.com/gdamore/tcell/v2 v2.6.0
