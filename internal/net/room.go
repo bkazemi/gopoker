@@ -17,11 +17,7 @@ import (
 type Room struct {
   name string
 
-  connClientMap map[*websocket.Conn]*Client
-  playerClientMap map[*poker.Player]*Client
-  IDClientMap map[string]*Client
-  privIDClientMap map [string]*Client
-  nameClientMap map[string]*Client
+  clients *Clients
 
   table *poker.Table
   tableAdminID string
@@ -36,11 +32,7 @@ func NewRoom(name string, table *poker.Table, creatorToken string) *Room {
   return &Room{
     name: name,
 
-    connClientMap: make(map[*websocket.Conn]*Client),
-    playerClientMap: make(map[*poker.Player]*Client),
-    IDClientMap: make(map[string]*Client),
-    privIDClientMap: make(map[string]*Client),
-    nameClientMap: make(map[string]*Client),
+    clients: NewClients(),
 
     creatorToken: creatorToken,
 
@@ -79,7 +71,7 @@ func (room *Room) sendResponseToAll(netData *NetData, except *Client) {
     netData.room = room
   }
 
-  for _, client := range room.connClientMap {
+  for _, client := range room.clients.All() {
     if except == nil || client.ID != except.ID {
       netData.SendTo(client)
     }
@@ -92,12 +84,12 @@ func (room *Room) getPlayerClient(player *poker.Player) *Client {
     return nil
   }
 
-  if client, ok := room.playerClientMap[player]; ok {
+  if client, ok := room.clients.ByPlayer(player); ok {
     return client
   }
   fmt.Printf("Room.getPlayerClient(): {%s}: WARNING: player (%s) not found in playerClientMap\n", room.name, player.Name)
 
-  for _, client := range room.connClientMap {
+  for _, client := range room.clients.All() {
     if client.Player != nil && client.Player.Name == player.Name {
       return client
     }
@@ -113,14 +105,14 @@ func (room *Room) getPlayerConn(player *poker.Player) *websocket.Conn {
     return nil
   }
 
-  if client, ok := room.playerClientMap[player]; ok {
+  if client, ok := room.clients.ByPlayer(player); ok {
     return client.conn
   }
   fmt.Printf("Room.getPlayerConn(): {%s}: WARNING: player (%s) not found in playerClientMap\n", room.name, player.Name)
 
-  for conn, client := range room.connClientMap {
+  for _, client := range room.clients.All() {
     if client.Player != nil && client.Player.Name == player.Name {
-      return conn
+      return client.conn
     }
   }
   fmt.Printf("Room.getPlayerConn(): {%s}: WARNING: player %s not found in connClientMap\n", room.name, player.Name)
@@ -137,10 +129,7 @@ func (room *Room) removeClient(client *Client) {
     return
   }
 
-  delete(room.nameClientMap, client.Name)
-  delete(room.IDClientMap, client.ID)
-  delete(room.playerClientMap, client.Player)
-  delete(room.privIDClientMap, client.privID)
+  room.clients.Remove(client)
 
   // NOTE: connections that don't become clients (e.g. in the case of a lock)
   //       never increment NumConnected
@@ -229,8 +218,8 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
     }
     room.sendResponseToAll(netData, exceptClient)
 
+    room.clients.ClearPlayer(client)
     client.Player = nil
-    delete(room.playerClientMap, player)
 
     if client.ID == room.tableAdminID {
       if table.ActivePlayers().Len == 0 {
@@ -427,7 +416,7 @@ func (room *Room) sendCurHands() {
     Table: room.Table(),
   }
 
-  for _, client := range room.playerClientMap {
+  for _, client := range room.clients.Players() {
     poker.AssembleBestHand(true, room.table, client.Player)
 
     netData.Client = client
@@ -878,7 +867,7 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
         if player.Name == settings.Name {
           msg += "name: unchanged\n\n"
         } else {
-          _, found := room.nameClientMap[settings.Name]
+          _, found := room.clients.ByName(settings.Name)
           if !found {
             for _, defaultName := range room.table.DefaultPlayerNames() {
               if settings.Name == defaultName {
@@ -988,15 +977,13 @@ func (room *Room) newClient(conn *websocket.Conn, connType string, clientSetting
     ID = poker.RandString(10)
     privID = poker.RandString(10)
 
-    _, foundID := room.IDClientMap[ID]
-    _, foundPrivID := room.privIDClientMap[privID]
+    _, foundID := room.clients.ByID(ID)
+    _, foundPrivID := room.clients.ByPrivID(privID)
     if !foundID && !foundPrivID {
       client.ID = ID
       client.privID = privID
 
-      room.IDClientMap[ID] = client
-      room.privIDClientMap[privID] = client
-      room.connClientMap[conn] = client
+      room.clients.Register(client, conn)
 
       break
     } else {
@@ -1011,7 +998,7 @@ func (room *Room) newClient(conn *websocket.Conn, connType string, clientSetting
 
   client.SetName(clientSettings.Name)
   if client.Name != "" {
-    room.nameClientMap[client.Name] = client
+    room.clients.SetName(client, client.Name)
   }
 
   return client

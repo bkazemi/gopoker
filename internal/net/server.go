@@ -174,7 +174,7 @@ func closeConn(conn *websocket.Conn) {
 func (server *Server) serverError(err error, room *Room) {
   fmt.Println("server panicked")
 
-  for conn := range room.connClientMap {
+  for _, conn := range room.clients.Conns() {
     conn.WriteMessage(websocket.CloseMessage,
       websocket.FormatCloseMessage(websocket.CloseInternalServerErr,
         err.Error()))
@@ -469,7 +469,7 @@ func (server *Server) handleNewConn(
     return
   }
 
-  if client := room.connClientMap[conn]; client != nil {
+  if client, ok := room.clients.ByConn(conn); ok {
     netData.Client = client
     netData.Response = NetDataServerMsg
     netData.Msg = "you are already connected to the room."
@@ -491,7 +491,7 @@ func (server *Server) handleNewConn(
   // check if this connection was the room creator
   if room.creatorToken != "" &&
      netData.Client.Settings.Password == room.creatorToken {
-    room.connClientMap[conn] = &Client{}
+    room.clients.ReserveConn(conn)
 
     client := room.newClient(conn, connType, netData.Client.Settings)
 
@@ -517,7 +517,7 @@ func (server *Server) handleNewConn(
 
       if player := room.table.GetSeat(seatPos); player != nil {
         client.Player = player
-        room.playerClientMap[player] = client
+        room.clients.SetPlayer(client, player)
 
         processClient()
 
@@ -584,7 +584,7 @@ func (server *Server) handleNewConn(
   // set this to a nonnil value so that the guard at the top of this block
   // works if newClient is waiting on the room lock
   // XXX: I have to check if is actually necessary. probably not
-  room.connClientMap[conn] = &Client{}
+  room.clients.ReserveConn(conn)
 
   client := room.newClient(conn, connType, netData.Client.Settings)
 
@@ -631,7 +631,7 @@ func (server *Server) handleNewConn(
       netData.Send()
     } else if player := room.table.GetSeat(client.Settings.SeatPos); player != nil {
       client.Player = player
-      room.playerClientMap[player] = client
+      room.clients.SetPlayer(client, player)
 
       room.applyClientSettings(client, netData.Client.Settings)
       fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s' tPos '%v'\n",
@@ -707,7 +707,7 @@ func (server *Server) handleReconnect(
     return
   }
 
-  if client := room.connClientMap[conn]; client != nil {
+  if client, ok := room.clients.ByConn(conn); ok {
     netData.ClearData(client)
     netData.Response = NetDataServerMsg
     netData.Msg = "reconnect attempted while connected to server"
@@ -720,11 +720,11 @@ func (server *Server) handleReconnect(
   // We put the private ID in the Msg member so we don't need to add an extra
   // member to the struct. An extra member would almost never be used and is
   // more likely be leaked to others via programmer error.
-  if client, ok := room.privIDClientMap[netData.Msg]; ok {
+  if client, ok := room.clients.ByPrivID(netData.Msg); ok {
     client.mtx.Lock()
 
     // timer callback already ran cleanup — client is gone
-    if _, stillValid := room.privIDClientMap[client.privID]; !stillValid {
+    if _, stillValid := room.clients.ByPrivID(client.privID); !stillValid {
       client.mtx.Unlock()
 
       (&NetData{
@@ -741,7 +741,7 @@ func (server *Server) handleReconnect(
     }
 
     client.conn = conn
-    room.connClientMap[conn] = client
+    room.clients.SetConn(conn, client)
     client.isDisconnected = false
     client.mtx.Unlock()
 
@@ -814,7 +814,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
     if err := recover(); err != nil {
       server.serverError(poker.PanicRetToError(err), room)
     } else { // not a room panic()
-      if client, ok := room.connClientMap[conn]; ok {
+      if client, ok := room.clients.ByConn(conn); ok {
         minsToWait := 0 * time.Minute
 
         client.mtx.Lock()
@@ -823,7 +823,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         // this is a stale cleanup for the old connection — skip it.
         if client.conn != conn {
           client.mtx.Unlock()
-          delete(room.connClientMap, conn)
+          room.clients.RemoveConn(conn)
           closeConn(conn)
           return
         }
@@ -842,7 +842,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           minsToWait = 1 * time.Minute
         }
 
-        delete(room.connClientMap, conn)
+        room.clients.RemoveConn(conn)
         closeConn(conn)
 
         if client.reconnectTimer != nil {
@@ -943,7 +943,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
       if player := room.table.GetSeat(seatPos); player != nil {
         client.Player = player
-        room.playerClientMap[player] = client
+        room.clients.SetPlayer(client, player)
         client.Settings.IsSpectator = false
         player.SetName(client.Name)
         client.SetName(player.Name)
@@ -1264,7 +1264,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       } else if netData.Request == NetDataPlayerReconnecting {
         server.handleReconnect(room, netData, conn, connType)
       } else {
-        client := room.connClientMap[conn]
+        client, _ := room.clients.ByConn(conn)
         go handleAsyncRequest(client, netData)
       } // else{} end
     } // returnFromInputLoop select end
