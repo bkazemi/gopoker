@@ -721,14 +721,29 @@ func (server *Server) handleReconnect(
   // member to the struct. An extra member would almost never be used and is
   // more likely be leaked to others via programmer error.
   if client, ok := room.privIDClientMap[netData.Msg]; ok {
-    client.conn = conn
+    client.mtx.Lock()
 
-    room.connClientMap[conn] = client
-    // XXX race w/ WSClient defer, time to consider a mutex on Player
+    // timer callback already ran cleanup — client is gone
+    if _, stillValid := room.privIDClientMap[client.privID]; !stillValid {
+      client.mtx.Unlock()
+
+      (&NetData{
+        Client:   &Client{conn: conn, connType: connType},
+        Response: NetDataBadRequest,
+        Msg:      "failed to reconnect: session expired during reconnect",
+      }).Send()
+
+      return
+    }
+
     if client.reconnectTimer != nil {
       client.reconnectTimer.Stop()
     }
+
+    client.conn = conn
+    room.connClientMap[conn] = client
     client.isDisconnected = false
+    client.mtx.Unlock()
 
     netData.ClearData(room.publicClientInfo(client))
     netData.Response = NetDataPlayerReconnected
@@ -802,6 +817,17 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       if client, ok := room.connClientMap[conn]; ok {
         minsToWait := 0 * time.Minute
 
+        client.mtx.Lock()
+
+        // If the client already reconnected on a new socket,
+        // this is a stale cleanup for the old connection — skip it.
+        if client.conn != conn {
+          client.mtx.Unlock()
+          delete(room.connClientMap, conn)
+          closeConn(conn)
+          return
+        }
+
         client.isDisconnected = true
 
         if !cleanExit {
@@ -825,6 +851,9 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         // the 0 min gofunc is kinda dumb, but they're cheap and it eliminates
         // some redundancy
         client.reconnectTimer = time.AfterFunc(minsToWait, func() {
+          client.mtx.Lock()
+          defer client.mtx.Unlock()
+
           if !client.isDisconnected {
             return
           }
@@ -839,6 +868,8 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           playerCleanup(client, true)
           room.removeClient(client)
         })
+
+        client.mtx.Unlock()
       } else {
         fmt.Printf("Server.WSClient(): defer(): {%s}: couldn't find conn %p in connClientMap\n", room.name, conn)
       }

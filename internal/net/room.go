@@ -982,7 +982,7 @@ func (room *Room) newClient(conn *websocket.Conn, connType string, clientSetting
   room.Lock()
   defer room.Unlock()
 
-  client, ID, privID := &Client{conn: conn, connType: connType}, "", ""
+  client, ID, privID := &Client{conn: conn, connType: connType, mtx: &sync.Mutex{}}, "", ""
   for {
     // 62^10 is plenty ;)
     ID = poker.RandString(10)

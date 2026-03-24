@@ -2,6 +2,7 @@ package net
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/bkazemi/gopoker/internal/poker"
@@ -19,6 +20,7 @@ type Client struct {
   privID         string // used for reconnecting
   conn           *websocket.Conn
   connType       string
+  mtx            *sync.Mutex
   isDisconnected bool
   reconnectTimer *time.Timer
 }
@@ -31,6 +33,7 @@ func NewClient(settings *ClientSettings) *Client {
 
   client := &Client{
     Settings: settings,
+    mtx:      &sync.Mutex{},
   }
 
   return client
