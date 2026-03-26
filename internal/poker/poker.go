@@ -1951,7 +1951,8 @@ func AssembleBestHand(preShow bool, table *Table, player *Player) {
     return
   }
 
-  cards := append(table.Community, player.Hole.Cards...)
+  cards := append(Cards{}, table.Community...)
+  cards = append(cards, player.Hole.Cards...)
   cardsSort(&cards)
   bestCard := len(cards)
 
