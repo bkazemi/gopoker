@@ -331,10 +331,14 @@ func (room *Room) sendPlayerTurnToAll() {
 func (room *Room) sendPlayerHead(client *Client, clear bool) {
   if clear {
     fmt.Printf("Room.sendPlayerHead(): {%s}: sending clear player head\n", room.name)
-    room.sendResponseToAll(
-      &NetData{
-        Response: NetDataPlayerHead,
-      }, nil)
+    netData := &NetData{
+      Response: NetDataPlayerHead,
+    }
+    if client == nil {
+      room.sendResponseToAll(netData, nil)
+    } else {
+      netData.SendTo(client)
+    }
 
     return
   }
@@ -345,9 +349,11 @@ func (room *Room) sendPlayerHead(client *Client, clear bool) {
      playerHeadNode.Player.Name != curPlayerNode.Player.Name {
     playerHead := playerHeadNode.Player
     playerHeadClient := room.getPlayerClient(playerHead)
-    if playerHead == nil {
-      panic(fmt.Sprintf("Room.sendPlayerTurnToAll(): {%s}: BUG: playerHead <%s> " +
-                        "not found in any maps\n", room.name, playerHead.Name))
+    if playerHeadClient == nil {
+      fmt.Printf("Room.sendPlayerHead(): {%s}: playerHead client not found for <%s>, clearing player head\n",
+                 room.name, playerHead.Name)
+      room.sendPlayerHead(client, true)
+      return
     }
 
     netData := &NetData {
@@ -556,11 +562,12 @@ func (room *Room) sendBadAuth(conn *websocket.Conn, connType string) {
   time.Sleep(1 * time.Second)
 }
 
-func (room *Room) getAdminSettings() AdminSettings {
-  return AdminSettings{
+func (room *Room) getRoomSettings() *RoomSettings {
+  return &RoomSettings{
     RoomName: room.name,
     NumSeats: room.table.NumSeats,
     Lock: room.table.Lock,
+    Password: room.table.Password,
   }
 }
 
@@ -572,14 +579,12 @@ func (room *Room) makeAdmin(client *Client) {
   } else {
     fmt.Printf("Room.makeAdmin(): {%s}: making <%s> table admin\n", room.name, client.FullName(false))
     room.tableAdminID = client.ID
-    if client.Settings != nil {
-      client.Settings.Admin = room.getAdminSettings()
-    }
   }
 
   netData := &NetData{
     room: room,
     Client: client,
+    RoomSettings: room.getRoomSettings(),
     Response: NetDataMakeAdmin,
     Table: room.Table(),
   }
@@ -775,7 +780,10 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
 }
 
 func (room *Room) postPlayerAction(client *Client, netData *NetData) {
-  player := client.Player
+  var player *poker.Player
+  if client != nil {
+    player = client.Player
+  }
 
   if room.table.State == poker.TableStateDoneBetting {
     room.postBetting(player, netData, client)
@@ -818,7 +826,7 @@ func (room *Room) publicClientInfo(client *Client) *Client {
   return &pubClient
 }
 
-type AdminSettings struct {
+type RoomSettings struct {
   RoomName string
   NumSeats uint8
   Lock     poker.TableLock
@@ -832,8 +840,6 @@ type ClientSettings struct {
   Password string
 
   SeatPos  uint8
-
-  Admin AdminSettings
 }
 
 func NewClientSettings() *ClientSettings {
@@ -852,11 +858,9 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
   }()
 
   msg := ""
-  errs := ""
 
   const (
     MaxNameLen uint8 = 15
-    MaxPassLen uint8 = 50
   )
 
   if client == nil { // NOTE: this is currently an impossible condition because the callers access client.ID beforehand
@@ -901,39 +905,59 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
       }
     }
   }
-  if client.ID == room.tableAdminID {
-    msg += "admin settings:\n\n"
+  msg = "server response: settings changes:\n\n" + msg
 
-    lock := poker.TableLockToString(settings.Admin.Lock)
-    if lock == "" {
-      errs += fmt.Sprintf("invalid table lock: '%v'\n", settings.Admin.Lock)
-    } else if settings.Admin.Lock == room.table.Lock {
-      msg += "table lock: unchanged\n"
-    } else {
-      msg += "table lock: changed\n"
+  return msg, nil
+}
+
+func (room *Room) handleRoomSettings(client *Client, settings *RoomSettings) (m string, err error) {
+  defer func() {
+    if err != nil {
+      return
     }
 
-    if settings.Admin.Password != room.table.Password {
-      msg += "table password: "
-      if settings.Admin.Password == "" {
-        msg += "removed\n"
-      } else if len(settings.Admin.Password) > int(MaxPassLen) {
-        return "", errors.New(fmt.Sprintf("Your password is too long. Please choose a " +
-                                          "password that is less than %v characters.", MaxPassLen))
-      } else {
-        msg += "changed\n"
-      }
+    fmt.Printf("Room.handleRoomSettings(): <%s> %s\n", client.FullName(false), m)
+  }()
+
+  const MaxPassLen uint8 = 50
+
+  if client == nil {
+    return "", errors.New("room.handleRoomSettings(): BUG: client == nil")
+  } else if settings == nil {
+    return "", errors.New("Room.handleRoomSettings(): BUG: settings == nil")
+  } else if client.ID != room.tableAdminID {
+    return "", errors.New("only the table admin can do that")
+  }
+
+  msg := ""
+  errs := ""
+
+  lock := poker.TableLockToString(settings.Lock)
+  if lock == "" {
+    errs += fmt.Sprintf("invalid table lock: '%v'\n", settings.Lock)
+  } else if settings.Lock == room.table.Lock {
+    msg += "table lock: unchanged\n"
+  } else {
+    msg += "table lock: changed\n"
+  }
+
+  if settings.Password != room.table.Password {
+    msg += "table password: "
+    if settings.Password == "" {
+      msg += "removed\n"
+    } else if len(settings.Password) > int(MaxPassLen) {
+      return "", errors.New(fmt.Sprintf("Your password is too long. Please choose a " +
+                                        "password that is less than %v characters.", MaxPassLen))
     } else {
-      msg += "table password: unchanged\n"
+      msg += "changed\n"
     }
+  } else {
+    msg += "table password: unchanged\n"
   }
 
   if errs != "" {
-    errs = "server response: unable to complete request due to following errors:\n\n" + errs
     return "", errors.New(errs)
   }
-
-  msg = "server response: settings changes:\n\n" + msg
 
   return msg, nil
 }
@@ -956,24 +980,27 @@ func commState2NetDataResponse(room *Room) NetAction {
 func (room *Room) applyClientSettings(client *Client, settings *ClientSettings) {
   if settings == nil {
     fmt.Printf("Room.applyClientSettings(): %s had nil ClientSettings, using defaults\n", client.Name)
-    client.Settings = NewClientSettings()
-  } else {
-    client.Settings = settings
+    settings = NewClientSettings()
   }
+  client.Settings = settings
 
   if player := client.Player; player != nil {
     player.SetName(settings.Name)
     client.SetName(player.Name)
-
-    if client.ID == room.tableAdminID {
-      room.table.Mtx().Lock()
-      room.table.Lock = settings.Admin.Lock
-      room.table.Password = settings.Admin.Password
-      room.table.Mtx().Unlock()
-    }
   } else {
     client.SetName(settings.Name)
   }
+}
+
+func (room *Room) applyRoomSettings(settings *RoomSettings) {
+  if settings == nil {
+    return
+  }
+
+  room.table.Mtx().Lock()
+  room.table.Lock = settings.Lock
+  room.table.Password = settings.Password
+  room.table.Mtx().Unlock()
 }
 
 func (room *Room) newClient(conn *websocket.Conn, connType string, clientSettings *ClientSettings) *Client {

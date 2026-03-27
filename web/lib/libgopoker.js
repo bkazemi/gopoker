@@ -26,46 +26,47 @@ export const NETDATA = {
   PLAYER_RECONNECTED:  1n << 9n,
   CLIENT_EXITED:       1n << 10n,
   CLIENT_SETTINGS:     1n << 11n,
-  RESET:               1n << 12n,
+  ADMIN_SETTINGS:      1n << 12n,
+  RESET:               1n << 13n,
 
-  SERVER_CLOSED:       1n << 13n,
+  SERVER_CLOSED:       1n << 14n,
 
-  TABLE_LOCKED:        1n << 14n,
-  BAD_AUTH:            1n << 15n,
-  MAKE_ADMIN:          1n << 16n,
-  START_GAME:          1n << 17n,
+  TABLE_LOCKED:        1n << 15n,
+  BAD_AUTH:            1n << 16n,
+  MAKE_ADMIN:          1n << 17n,
+  START_GAME:          1n << 18n,
 
-  CHAT_MSG:            1n << 18n,
+  CHAT_MSG:            1n << 19n,
 
-  PLAYER_ACTION:       1n << 19n,
-  PLAYER_TURN:         1n << 20n,
-  PLAYER_HEAD:         1n << 21n,
-  ALLIN:               1n << 22n,
-  BET:                 1n << 23n,
-  CALL:                1n << 24n,
-  CHECK:               1n << 25n,
-  RAISE:               1n << 26n,
-  FOLD:                1n << 27n,
+  PLAYER_ACTION:       1n << 20n,
+  PLAYER_TURN:         1n << 21n,
+  PLAYER_HEAD:         1n << 22n,
+  ALLIN:               1n << 23n,
+  BET:                 1n << 24n,
+  CALL:                1n << 25n,
+  CHECK:               1n << 26n,
+  RAISE:               1n << 27n,
+  FOLD:                1n << 28n,
 
-  CUR_HAND:            1n << 28n,
-  SHOW_HAND:           1n << 29n,
+  CUR_HAND:            1n << 29n,
+  SHOW_HAND:           1n << 30n,
 
-  FIRST_ACTION:        1n << 30n,
-  MIDROUND_ADDITION:   1n << 31n,
-  ELIMINATED:          1n << 32n,
-  VACANT_SEAT:         1n << 33n,
+  FIRST_ACTION:        1n << 31n,
+  MIDROUND_ADDITION:   1n << 32n,
+  ELIMINATED:          1n << 33n,
+  VACANT_SEAT:         1n << 34n,
 
-  DEAL:                1n << 34n,
-  FLOP:                1n << 35n,
-  TURN:                1n << 36n,
-  RIVER:               1n << 37n,
-  BEST_HAND:           1n << 38n,
-  ROUND_OVER:          1n << 39n,
+  DEAL:                1n << 35n,
+  FLOP:                1n << 36n,
+  TURN:                1n << 37n,
+  RIVER:               1n << 38n,
+  BEST_HAND:           1n << 39n,
+  ROUND_OVER:          1n << 40n,
 
-  SERVER_MSG:          1n << 40n,
-  BAD_REQUEST:         1n << 41n,
+  SERVER_MSG:          1n << 41n,
+  BAD_REQUEST:         1n << 42n,
 
-  ROOM_SETTINGS:       1n << 42n,
+  ROOM_SETTINGS:       1n << 43n,
 };
 
 const NetDataPlayerStateMap = new Map([
@@ -194,13 +195,7 @@ TABLE_STATE.toString = (state) => {
 };
 
 export function NewClient(settings) {
-  const { IsSpectator, RoomName, Name, Password, SeatPos, TableLock, TablePass, TableNumSeats } = settings;
-
-  const haveAdminSettings = (
-    RoomName !== undefined || TableLock !== undefined || TablePass !== undefined
-      || TableNumSeats !== undefined
-  );
-  console.log('NewClient: TableNumSeats:', TableNumSeats);
+  const { IsSpectator, Name, Password, SeatPos } = settings;
 
   return {
     Settings: {
@@ -208,20 +203,25 @@ export function NewClient(settings) {
       Name,
       Password,
       SeatPos,
-
-      Admin: haveAdminSettings ? ({
-        RoomName,
-        Lock: TableLock,
-        Password: TablePass,
-        NumSeats: TableNumSeats,
-      }) : null,
     },
   };
 }
 
+export function NewRoomSettings(settings) {
+  const { RoomName, Lock, Password, NumSeats } = settings;
+
+  return {
+    RoomName,
+    Lock,
+    Password,
+    NumSeats,
+  };
+}
+
 export class NetData {
-  constructor(client, request, msg = "", table = null) {
+  constructor(client, request, msg = "", table = null, roomSettings = null) {
     this.Client = client;
+    this.RoomSettings = roomSettings;
     this.Request = BigInt(request);
     this.Msg = String(msg);
     this.Table = table;
@@ -230,6 +230,7 @@ export class NetData {
   toJSON() {
     return {
       Client: this.Client,
+      RoomSettings: this.RoomSettings,
       Request: this.Request,
       Msg: String(this.Msg),
       Table: this.Table,

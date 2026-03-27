@@ -28,6 +28,8 @@ const ModalContent = React.memo(({
     setGameOpts(opts => ({
       ...opts,
       client: NewClient({}),
+      websocketOpts: undefined,
+      roomSettings: undefined,
       roomURL: '',
       reset: true,
       goHome: true,

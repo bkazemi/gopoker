@@ -7,7 +7,7 @@ import { Literata } from 'next/font/google';
 import Select from 'react-select';
 
 import { GameContext } from '@/GameContext';
-import { NETDATA, TABLE_LOCK, NetData, NewClient } from '@/lib/libgopoker';
+import { NETDATA, TABLE_LOCK, NetData, NewClient, NewRoomSettings } from '@/lib/libgopoker';
 
 import styles from '@/styles/NewGameForm.module.css';
 
@@ -35,7 +35,7 @@ const maxPlayerOpts = [
 const RequiredFields = React.memo(({
   goHome,
   isSettings, isDirectLink, isAdmin, isSpectatorChecked,
-  roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
+  roomName, name, passwordLabel, tablePwd, tableLock, maxPlayers, tablePwdRef,
   handleSubmit, setModalOpen, setRoomName, setName, setTablePwd, setTableLock,
   setMaxPlayers, setIsSpectatorChecked
 }) => (
@@ -65,7 +65,7 @@ const RequiredFields = React.memo(({
       value={name}
       onChange={(e) => setName(e.target.value)}
     />
-    <label htmlFor='tablePwd'>password</label>
+    <label htmlFor='tablePwd'>{ passwordLabel }</label>
     <div
       style={{
         display: 'grid',
@@ -156,8 +156,10 @@ RequiredFields.displayName = 'RequiredFields';
 function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
-  const { Name, Password } = gameOpts.websocketOpts?.Client?.Settings || {Name: '', Password: ''};
-  const { RoomName, Lock, NumSeats } = gameOpts.websocketOpts?.Client?.Settings?.Admin || {RoomName: '', Lock: null, NumSeats: 7};
+  const clientSettings = gameOpts.websocketOpts?.Client?.Settings || {Name: '', Password: ''};
+  const roomSettings = gameOpts.roomSettings || {RoomName: '', Lock: null, NumSeats: 7, Password: ''};
+  const { Name } = clientSettings;
+  const { RoomName, Lock, NumSeats } = roomSettings;
 
   const router = useRouter();
 
@@ -166,12 +168,19 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
 
   const [roomName, setRoomName] = useState(RoomName);
   const [name, setName] = useState(Name);
-  const [tablePwd , setTablePwd] = useState(Password);
+  const [tablePwd , setTablePwd] = useState(
+    isDirectLink || (isSettings && !gameOpts.isAdmin)
+      ? (clientSettings.Password || '')
+      : (roomSettings.Password || '')
+  );
   const [tableLock, setTableLock] = useState(lockOpts.find(opt => opt.value === Lock) || lockOpts[0]);
   const [maxPlayers, setMaxPlayers] = useState(maxPlayerOpts.find(opt => opt.value === NumSeats) || maxPlayerOpts[0]);
   const [isSpectatorChecked, setIsSpectatorChecked] = useState(false);
 
   const isAdmin = !!gameOpts.isAdmin;
+  const passwordLabel = (!isDirectLink && !isSettings) || (isSettings && isAdmin)
+    ? 'table password'
+    : 'password';
 
   const goHome = useCallback(() => {
     console.log('goHome()');
@@ -192,22 +201,41 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
     const Password = tablePwd;
     const TableLock = tableLock.value;
     const TableNumSeats = maxPlayers.value;
+    const nextRoomSettings = NewRoomSettings({
+      RoomName,
+      Lock: TableLock,
+      NumSeats: TableNumSeats,
+      Password: isDirectLink || (isSettings && !isAdmin) ? roomSettings.Password : Password,
+    });
 
+    let clientPassword = '';
+    if (isDirectLink || (isSettings && !isAdmin))
+      clientPassword = Password;
+    else if (isSettings && isAdmin)
+      clientPassword = clientSettings.Password || '';
+
+    const client = NewClient({
+      IsSpectator,
+      Name,
+      Password: clientPassword,
+    });
     const data = new NetData(
-      NewClient({
-        IsSpectator,
-        Name,
-        Password,
-        RoomName,
-        TableLock,
-        TableNumSeats,
-        TablePass: Password,
-      }),
-      isSettings ? NETDATA.CLIENT_SETTINGS : NETDATA.NEWCONN,
+      client,
+      isSettings
+        ? (isAdmin ? NETDATA.ADMIN_SETTINGS : NETDATA.CLIENT_SETTINGS)
+        : NETDATA.NEWCONN,
+      "",
+      null,
+      isSettings && isAdmin ? nextRoomSettings : null,
     );
 
     setGameOpts(opts => {
-      const newOpts = {...opts, websocketOpts: data, reset: false};
+      const newOpts = {
+        ...opts,
+        websocketOpts: data,
+        roomSettings: !isDirectLink && !isSettings ? nextRoomSettings : opts.roomSettings,
+        reset: false,
+      };
 
       return isSettings ? {...newOpts, settingsChange: true} : newOpts;
     });
@@ -234,7 +262,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
       setName('');
       setTablePwd('');
       setTableLock(lockOpts[0]);
-      setMaxPlayers(7);
+      setMaxPlayers(maxPlayerOpts[maxPlayerOpts.length - 1]);
       setIsSpectatorChecked(false);
     }
   }, [gameOpts.reset]);
@@ -254,7 +282,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
           {...{
             goHome,
             isSettings, isDirectLink, isAdmin, isSpectatorChecked, handleSubmit,
-            roomName, name, tablePwd, tableLock, maxPlayers, tablePwdRef,
+            roomName, name, passwordLabel, tablePwd, tableLock, maxPlayers, tablePwdRef,
             setModalOpen, setRoomName, setName, setTablePwd, setTableLock,
             setMaxPlayers, setIsSpectatorChecked
           }}

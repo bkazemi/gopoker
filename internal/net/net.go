@@ -32,6 +32,7 @@ const (
   NetDataPlayerReconnected
   NetDataClientExited
   NetDataClientSettings
+  NetDataAdminSettings
   NetDataReset
 
   NetDataServerClosed
@@ -87,6 +88,7 @@ const NetActionNeedsBitMask = (NetActionNeedsTableBitMask | NetActionNeedsPlayer
 // data that gets sent between client and server
 type NetData struct {
   Client   *Client
+  RoomSettings *RoomSettings
   Request  NetAction
   Response NetAction
   Msg      string // server msg or client chat msg
@@ -118,6 +120,7 @@ func (netData *NetData) ClearData(client *Client) {
   netData.Response = 0
   netData.Msg = ""
   netData.Table = nil
+  netData.RoomSettings = nil
 
   // we pass a client with NetData structs that clients send
   // to ensure that the client member is valid (not modified by the client)
@@ -129,6 +132,7 @@ func (netData *NetData) ClearData(client *Client) {
 func (netData *NetData) Clone() *NetData {
   return &NetData{
     Client: netData.Client,
+    RoomSettings: netData.RoomSettings,
     Request: netData.Request,
     Response: netData.Response,
     Msg: netData.Msg,
@@ -178,6 +182,7 @@ func (netData *NetData) NetActionToString() string {
     NetDataPlayerReconnected:  "NetDataPlayerReconnected",
     NetDataClientExited:       "NetDataClientExited",
     NetDataClientSettings:     "NetDataClientSettings",
+    NetDataAdminSettings:      "NetDataAdminSettings",
     NetDataReset:              "NetDataReset",
 
     NetDataServerClosed: "NetDataServerClosed",

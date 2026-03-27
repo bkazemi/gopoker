@@ -141,14 +141,29 @@ func (table *Table) SetBetter(player *Player) {
   table.better = player
 }
 
-func (table *Table) SetNumSeats(numSeats uint8) error {
-  table.mtx.Lock()
-  defer table.mtx.Unlock()
-
+func (table *Table) validateNumSeats(numSeats uint8) error {
   if numSeats < 2 || numSeats > 7 {
     return errors.New("numSeats must be between 2 and 7")
   } else if numSeats < table.NumPlayers {
     return errors.New("numSeats must be greater than the current number of players")
+  }
+
+  return nil
+}
+
+func (table *Table) ValidateNumSeats(numSeats uint8) error {
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
+
+  return table.validateNumSeats(numSeats)
+}
+
+func (table *Table) SetNumSeats(numSeats uint8) error {
+  table.mtx.Lock()
+  defer table.mtx.Unlock()
+
+  if err := table.validateNumSeats(numSeats); err != nil {
+    return err
   }
 
   table.NumSeats = numSeats

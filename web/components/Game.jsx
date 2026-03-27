@@ -53,9 +53,9 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
 
   useEffect(() => {
     if (isVisible &&
-        gameOpts.websocketOpts?.Client?.Settings?.Admin && !fetchCalled) {
+        gameOpts.roomSettings && !fetchCalled) {
       const createNewRoom = async () => {
-        const { RoomName, Lock, Password, NumSeats } = gameOpts.websocketOpts.Client.Settings.Admin;
+        const { RoomName, Lock, Password, NumSeats } = gameOpts.roomSettings;
         // eslint-disable-next-line
         console.log('before createNewRoom: gameOpts', gameOpts);
         try {
@@ -96,7 +96,7 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
 
       createNewRoom();
     }
-  }, [isVisible, fetchCalled, gameOpts.websocketOpts?.Client?.Settings?.Admin,
+  }, [isVisible, fetchCalled, gameOpts.roomSettings,
       router, setGameOpts, setShowGame]);
 
   if (!isVisible)

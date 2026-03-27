@@ -61,6 +61,7 @@ type CLI struct {
   settingsForm       *tview.Form
   settingsFlex       *tview.Flex
   settings           net.ClientSettings
+  roomSettings       net.RoomSettings
 
   betInputField      *tview.InputField
   actionsFlex        *tview.Flex
@@ -175,6 +176,10 @@ func (cli *CLI) handleButton(btn string) {
 
     if req == net.NetDataClientSettings { // requested settings update
       netData.Client.Settings = &cli.settings
+      if cli.isTableAdmin {
+        netData.Request = net.NetDataAdminSettings
+        netData.RoomSettings = &cli.roomSettings
+      }
     }
 
     cli.outputChan <- netData
@@ -946,6 +951,10 @@ func cliInputLoop(cli *CLI) {
           cli.playersTextViewMap[cli.yourClient.ID] = cli.yourInfoView
           cli.updatePlayer(&cli.yourClient, nil)
         }
+      case net.NetDataRoomSettings:
+        if netData.RoomSettings != nil {
+          cli.roomSettings = *netData.RoomSettings
+        }
       case net.NetDataYourPlayer:
         if netData.Table != nil {
           cli.updateInfoList("# players", netData.Table)
@@ -972,6 +981,10 @@ func cliInputLoop(cli *CLI) {
         cli.updateChat(nil, fmt.Sprintf("<server-msg> %s left the table",
                                        netData.Client.Player.Name))
       case net.NetDataMakeAdmin:
+        if netData.RoomSettings != nil {
+          cli.roomSettings = *netData.RoomSettings
+        }
+
         cli.actionsForm.AddButton("start game", func() {
           cli.handleButton("start game")
         })
@@ -987,16 +1000,16 @@ func cliInputLoop(cli *CLI) {
         }
 
         cli.settingsForm.AddTextView("admin options", "", 0, 1, false, false).
-        AddDropDown("table lock", tableLockOpts, int(netData.Table.Lock),
+        AddDropDown("table lock", tableLockOpts, int(cli.roomSettings.Lock),
           func(opt string, optIdx int) {
             lock := poker.TableLock(optIdx)
             if _, ok := poker.TableLockNameMap[lock]; ok {
-              cli.settings.Admin.Lock = lock
+              cli.roomSettings.Lock = lock
             }
         }).
-        AddInputField("table password", netData.Table.Password, 0, nil,
+        AddInputField("table password", cli.roomSettings.Password, 0, nil,
           func(pass string) {
-            cli.settings.Admin.Password = pass
+            cli.roomSettings.Password = pass
         })
 
         cli.settingsForm.GetFormItemByLabel("admin options").

@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"time"
 
@@ -182,7 +183,10 @@ func (server *Server) serverError(err error, room *Room) {
   server.panicked = true
 }
 
-func (server *Server) handleRoomSettings(room *Room, client *Client, settings *ClientSettings) (m string, err error) {
+// NOTE: caller must hold room.Lock() while invoking this helper.
+// Room-scoped validation and apply steps rely on that lock for serialization;
+// server.mtx is only used here for the global room-name registry.
+func (server *Server) handleRoomSettings(room *Room, client *Client, settings *RoomSettings) (roomSettings *RoomSettings, m string, err error) {
   defer func() {
     if err != nil {
       return // log err in caller to keep this defer small and clean
@@ -192,51 +196,103 @@ func (server *Server) handleRoomSettings(room *Room, client *Client, settings *C
   }()
 
   if client == nil { // NOTE: this is currently an impossible condition because the callers access client.ID beforehand
-    return "", errors.New("Server.handleRoomSettings(): BUG: client == nil")
+    return nil, "", errors.New("Server.handleRoomSettings(): BUG: client == nil")
   } else if settings == nil {
-    return "", errors.New("Server.handleRoomSettings(): BUG: settings == nil")
+    return nil, "", errors.New("Server.handleRoomSettings(): BUG: settings == nil")
   }
+
+  msg := "server response: room settings changes:\n\n"
+  errs := ""
+
+  roomMsg, roomErr := room.handleRoomSettings(client, settings)
+  msg += roomMsg
 
   server.mtx.Lock()
   defer server.mtx.Unlock()
 
-  defer func() {
-    // TODO: decouple AdminSettings from ClientSettings() funcs
-    settings.Admin.RoomName = room.name
-    settings.Admin.NumSeats = room.table.NumSeats
-    client.Settings.Admin.RoomName = room.name
-    client.Settings.Admin.NumSeats = room.table.NumSeats
-  }()
+  validatedRoomName, renameRoomOk, renameRoomErr := server.validateRoomRename(room, settings.RoomName)
+  if roomErr != nil {
+    errs += roomErr.Error()
+    if !strings.HasSuffix(errs, "\n") {
+      errs += "\n"
+    }
+  }
+  if roomErr == nil {
+    room.applyRoomSettings(settings)
+  }
 
-  msg := "room changes:\n\n"
-  errs := ""
-
-  renameRoomOk, renameRoomErr := server.renameRoom(room, settings.Admin.RoomName)
   if renameRoomOk {
-    msg += "room name: changed"
+    server.applyRoomRename(room, validatedRoomName)
+    msg += "room name: changed\n"
   } else if renameRoomErr != nil {
+    if errs != "" {
+      errs += "\n"
+    }
     errs += "room name: " + renameRoomErr.Error()
   } else {
-    msg += "room name: unchanged"
+    msg += "room name: unchanged\n"
   }
-  msg += "\n"
 
-  if settings.Admin.NumSeats != room.table.NumSeats {
-    if err := room.table.SetNumSeats(settings.Admin.NumSeats); err != nil {
+  if settings.NumSeats != room.table.NumSeats {
+    if err := room.table.SetNumSeats(settings.NumSeats); err != nil {
+      if errs != "" {
+        errs += "\n"
+      }
       errs += "num seats: " + err.Error()
     } else {
-      msg += "num seats: changed"
+      msg += "num seats: changed\n"
     }
   } else {
-    msg += "num seats: unchanged"
+    msg += "num seats: unchanged\n"
   }
-  msg += "\n"
+
+  roomSettings = room.getRoomSettings()
 
   if errs != "" {
-    return msg, errors.New("errors: \n" + errs)
+    return roomSettings, msg, errors.New("server response: unable to complete request due to following errors:\n\n" + errs)
   }
 
-  return msg, nil
+  return roomSettings, msg, nil
+}
+
+func (server *Server) validateRoomRename(room *Room, newName string) (validatedName string, changed bool, err error) {
+  if newName == "" || room.name == newName {
+    return room.name, false, nil
+  }
+
+  if false {
+    return room.name, false, errors.New("invalid name requested")
+  }
+
+  if int32(len(newName)) > server.MaxRoomNameLen {
+    fmt.Printf("Server.createNewRoom(): roomName %s is too long (%v > %v), using random name\n",
+               newName[:server.MaxRoomNameLen+1] + "...", len(newName), server.MaxRoomNameLen)
+    newName = server.randRoomName()
+  }
+
+  if server.hasRoom(newName) {
+    return room.name, false, errors.New(fmt.Sprintf("requested name '%v' already taken",
+                                         newName))
+  }
+
+  return newName, true, nil
+}
+
+func (server *Server) applyRoomRename(room *Room, newName string) {
+  delete(server.rooms, room.name)
+  room.name = newName
+  server.rooms[newName] = room
+}
+
+func (server *Server) renameRoom(room *Room, newName string) (bool, error) {
+  validatedName, changed, err := server.validateRoomRename(room, newName)
+  if err != nil || !changed {
+    return changed, err
+  }
+
+  server.applyRoomRename(room, validatedName)
+
+  return true, nil
 }
 
 type RoomOpts struct {
@@ -422,34 +478,6 @@ func (server *Server) removeRoom(room *Room) {
   } else {
     fmt.Printf("Server.removeRoom(): room '%s' not found\n", room.name)
   }
-}
-
-// NOTE: caller needs to handle server locking
-func (server *Server) renameRoom(room *Room, newName string) (bool, error) {
-  if newName == "" || room.name == newName {
-    return false, nil
-  }
-
-  if false {
-    return false, errors.New("invalid name requested")
-  }
-
-  if server.hasRoom(newName) {
-    return false, errors.New(fmt.Sprintf("requested name '%v' already taken",
-                                         newName))
-  }
-
-  if int32(len(newName)) > server.MaxRoomNameLen {
-    fmt.Printf("Server.createNewRoom(): roomName %s is too long (%v > %v), using random name\n",
-               newName[:server.MaxRoomNameLen+1] + "...", len(newName), server.MaxRoomNameLen)
-    newName = server.randRoomName()
-  }
-
-  delete(server.rooms, room.name)
-  room.name = newName
-  server.rooms[newName] = room
-
-  return true, nil
 }
 
 func (server *Server) handleNewConn(
@@ -1006,27 +1034,6 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
       settings := netData.Client.Settings
 
-      if client.ID == room.tableAdminID {
-        msg, err := server.handleRoomSettings(room, client, settings)
-        if err == nil {
-          netData.ClearData(nil)
-          netData.Response = NetDataRoomSettings
-
-          room.sendResponseToAll(&netData, nil)
-
-          netData.ClearData(client)
-          netData.Response = NetDataServerMsg
-          netData.Msg = msg
-          netData.Send()
-        } else {
-          fmt.Printf("Server.handleRoomSettings(): <%s> err: %v\n", client.FullName(false), err)
-          netData.ClearData(client)
-          netData.Response = NetDataServerMsg
-          netData.Msg = msg + err.Error()
-          netData.Send()
-        }
-      }
-
       msg, err := room.handleClientSettings(client, settings)
       if err == nil {
         room.applyClientSettings(client, settings)
@@ -1056,6 +1063,96 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         netData.Response = NetDataServerMsg
         netData.Msg = err.Error()
         netData.Send()
+      }
+
+      room.Unlock()
+    case NetDataAdminSettings:
+      if !room.TryLock() {
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        netData.Msg = "cannot change your settings right now. please try again later"
+        netData.Send()
+
+        returnFromInputLoop <- false
+        return
+      }
+
+      prevRoomSettings := room.getRoomSettings()
+
+      var clientSettings *ClientSettings
+      if netData.Client != nil {
+        clientSettings = netData.Client.Settings
+      }
+
+      if client == nil || client.ID != room.tableAdminID {
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        netData.Msg = "only the table admin can change room settings"
+        netData.Send()
+      } else if roomSettings, msg, err := server.handleRoomSettings(room, client, netData.RoomSettings); roomSettings != nil {
+        roomSettingsChanged := prevRoomSettings.RoomName != roomSettings.RoomName ||
+          prevRoomSettings.NumSeats != roomSettings.NumSeats ||
+          prevRoomSettings.Lock != roomSettings.Lock ||
+          prevRoomSettings.Password != roomSettings.Password
+
+        if roomSettingsChanged {
+          netData.ClearData(nil)
+          netData.Client = nil
+          netData.Response = NetDataRoomSettings
+          netData.RoomSettings = roomSettings
+
+          room.sendResponseToAll(&netData, nil)
+          room.sendTable(nil)
+        }
+
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        if err != nil {
+          fmt.Printf("Server.handleRoomSettings(): <%s> err: %v\n", client.FullName(false), err)
+          netData.Msg = msg + err.Error()
+        } else {
+          netData.Msg = msg
+        }
+        netData.Send()
+      } else if err != nil {
+        fmt.Printf("Server.handleRoomSettings(): <%s> err: %v\n", client.FullName(false), err)
+        netData.ClearData(client)
+        netData.Response = NetDataServerMsg
+        netData.Msg = msg + err.Error()
+        netData.Send()
+      }
+
+      settings := clientSettings
+      if client != nil && settings != nil {
+        msg, err := room.handleClientSettings(client, settings)
+        if err == nil {
+          room.applyClientSettings(client, settings)
+
+          netData.ClearData(client)
+          if client.Player != nil {
+            netData.Response = NetDataUpdatePlayer
+            netData.Client = room.publicClientInfo(client)
+
+            room.sendResponseToAll(&netData, client)
+          }
+
+          netData.Client = client
+          netData.Response = NetDataClientSettings
+          netData.Send()
+
+          room.sendTable(nil)
+
+          netData.Response = NetDataServerMsg
+          netData.Msg = msg
+          netData.Send()
+        } else {
+          fmt.Printf("Room.handleClientSettings(): <%s> err: %v\n", client.FullName(false), err)
+
+          netData.ClearData(client)
+          netData.Response = NetDataServerMsg
+          netData.Msg = err.Error()
+          netData.Send()
+        }
       }
 
       room.Unlock()

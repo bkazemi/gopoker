@@ -93,7 +93,7 @@ const nullPot = {
   Total: 0,
 };
 
-export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
+export default function Tablenew({ socket, connStatus, netData, setShowGame, roomIDRef }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
   // need this ref so that server response useEffect doesn't trigger when router changes
@@ -188,18 +188,20 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
     };
   }, [chatInputRef, modalOpen]);
 
-  const updateRoom = useCallback((client) => {
+  const updateRoom = useCallback((roomSettings) => {
     const router = routerRef.current;
 
-    if (router && client.Settings?.Admin?.RoomName) {
-      const newPath = `/room/${client.Settings.Admin.RoomName}`;
-      if (newPath !== routerRef.asPath) {
+    if (router && roomSettings?.RoomName) {
+      const newPath = `/room/${roomSettings.RoomName}`;
+      if (newPath !== router.asPath) {
         console.log(`newPath: ${newPath} router.asPath: ${router.asPath}`);
         console.log('replacing URL with:', newPath);
+        if (roomIDRef)
+          roomIDRef.current = roomSettings.RoomName;
         router.replace({ pathname: newPath });
       }
     }
-  }, [routerRef]);
+  }, [routerRef, roomIDRef]);
 
   const updateTable = useCallback((netData) => {
     setMainPot(netData.Table.MainPot);
@@ -279,13 +281,10 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
       setChatMsgs(msgs => [...msgs, netData.Msg]);
       break;
     case NETDATA.ROOM_SETTINGS:
-      updateRoom(netData.Client);
+      updateRoom(netData.RoomSettings);
       setGameOpts(opts => ({
         ...opts,
-        websocketOpts: {
-          ...opts.websocketOpts,
-          Client: netData.Client,
-        }
+        roomSettings: netData.RoomSettings,
       }));
       break;
     case NETDATA.CLIENT_SETTINGS:
@@ -388,7 +387,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame }) {
         websocketOpts: {
           ...opts.websocketOpts,
           Client: netData.Client,
-        }
+        },
+        roomSettings: netData.RoomSettings,
       }));
       break;
     case NETDATA.DEAL:

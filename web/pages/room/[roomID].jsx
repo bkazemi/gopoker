@@ -33,13 +33,14 @@ const literata = Literata({
   weight: '500',
 });
 
-const createWebSocket = (key, roomID, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt) => {
+const createWebSocket = (key, roomIDRef, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt) => {
   if (tryCnt > 2) {
     setConnStatus('closed');
     return;
   }
 
-  const gameSocket = new WebSocket(key);
+  const wsURL = `${config.gopokerServerWSURL}/room/${encodeURIComponent(roomIDRef.current)}/web`;
+  const gameSocket = new WebSocket(wsURL);
 
   gameSocket.addEventListener('message',
     async (event) => {
@@ -69,12 +70,13 @@ const createWebSocket = (key, roomID, websocketOpts, setSocket, socketRef, setCo
     if (!event.wasClean || event.code !== 1000) {
       console.log('websocket had an unclean exit. attempting to reconnect...');
       console.log('making sure the room still exists...')
-      const res = await fetch(`/api/check/${encodeURIComponent(roomID)}`);
+      const currentRoomID = roomIDRef.current;
+      const res = await fetch(`/api/check/${encodeURIComponent(currentRoomID)}`);
       if (!res.ok) {
         const body = await res.text();
         next(
           res.status === 404
-            ? new Error(`room "${roomID}" doesn't exist anymore`)
+            ? new Error(`room "${currentRoomID}" doesn't exist anymore`)
             : body?.error ?? `code ${res.code} reason unspecified`
         );
 
@@ -83,7 +85,7 @@ const createWebSocket = (key, roomID, websocketOpts, setSocket, socketRef, setCo
       setConnStatus('rc');
       tryCnt++;
       await new Promise(res => setTimeout(res, 1 * 1000));
-      createWebSocket(key, roomID, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt);
+      createWebSocket(null, roomIDRef, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt);
       //createWebSocket(...arguments);
     } else {
       console.log('websocket had clean close', event);
@@ -117,6 +119,7 @@ const Connect = ({ roomID }) => {
   const [connStatus, setConnStatus] = useState('ok');
   const [socket, setSocket] = useState(null);
   const socketRef = useRef(null);
+  const roomIDRef = useRef(roomID);
   const creatorTokenRef = useRef(null);
 
   const { roomURL, creatorToken, setShowGame } = gameOpts;
@@ -128,6 +131,10 @@ const Connect = ({ roomID }) => {
     websocketOpts.Client.Settings.Password = creatorToken;
     creatorTokenRef.current = creatorToken;
   }
+
+  useEffect(() => {
+    roomIDRef.current = roomID;
+  }, [roomID]);
 
   useEffect(() => {
     console.log('Connect mounted');
@@ -158,7 +165,7 @@ const Connect = ({ roomID }) => {
     try {
       next(null); // need to reset error on Game remounts
 
-      createWebSocket(key, roomID, websocketOpts, setSocket, socketRef, setConnStatus, next, 0);
+      createWebSocket(key, roomIDRef, websocketOpts, setSocket, socketRef, setConnStatus, next, 0);
     } catch (e) {
       next(e);
     }
@@ -207,7 +214,7 @@ const Connect = ({ roomID }) => {
 
   return (
    <Tablenew
-     {...{socket, websocketOpts, connStatus, setShowGame}}
+     {...{socket, websocketOpts, connStatus, setShowGame, roomIDRef}}
      netData={data}
    />
   );
