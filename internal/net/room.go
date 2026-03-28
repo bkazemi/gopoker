@@ -89,14 +89,20 @@ func (room *Room) getPlayerClient(player *poker.Player) *Client {
 	if client, ok := room.clients.ByPlayer(player); ok {
 		return client
 	}
-	log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in playerClientMap")
+	log.Warn().
+		Str("room", room.name).
+		Str("player", player.Name).
+		Msg("player not found in playerClientMap")
 
 	for _, client := range room.clients.All() {
 		if client.Player != nil && client.Player.Name == player.Name {
 			return client
 		}
 	}
-	log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in connClientMap")
+	log.Warn().
+		Str("room", room.name).
+		Str("player", player.Name).
+		Msg("player not found in connClientMap")
 
 	return nil
 }
@@ -110,14 +116,20 @@ func (room *Room) getPlayerConn(player *poker.Player) *websocket.Conn {
 	if client, ok := room.clients.ByPlayer(player); ok {
 		return client.conn
 	}
-	log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in playerClientMap")
+	log.Warn().
+		Str("room", room.name).
+		Str("player", player.Name).
+		Msg("player not found in playerClientMap")
 
 	for _, client := range room.clients.All() {
 		if client.Player != nil && client.Player.Name == player.Name {
 			return client.conn
 		}
 	}
-	log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in connClientMap")
+	log.Warn().
+		Str("room", room.name).
+		Str("player", player.Name).
+		Msg("player not found in connClientMap")
 
 	return nil
 }
@@ -351,7 +363,10 @@ func (room *Room) sendPlayerHead(client *Client, clear bool) {
 		playerHead := playerHeadNode.Player
 		playerHeadClient := room.getPlayerClient(playerHead)
 		if playerHeadClient == nil {
-			log.Warn().Str("room", room.name).Str("player", playerHead.Name).Msg("playerHead client not found, clearing")
+			log.Warn().
+				Str("room", room.name).
+				Str("player", playerHead.Name).
+				Msg("playerHead client not found, clearing")
 			room.sendPlayerHead(client, true)
 			return
 		}
@@ -369,7 +384,11 @@ func (room *Room) sendPlayerHead(client *Client, clear bool) {
 }
 
 func (room *Room) sendPlayerActionToAll(player *poker.Player, client *Client) {
-	log.Debug().Str("room", room.name).Str("player", player.Name).Str("action", player.ActionToString()).Msg("sending player action")
+	log.Debug().
+		Str("room", room.name).
+		Str("player", player.Name).
+		Str("action", player.ActionToString()).
+		Msg("sending player action")
 
 	var c *Client
 	if client == nil {
@@ -531,7 +550,10 @@ func (room *Room) removeEliminatedPlayers() {
 }
 
 func (room *Room) sendLock(conn *websocket.Conn, connType string) {
-	log.Warn().Str("room", room.name).Str("lock", room.table.TableLockToString()).Msgf("locked out %p", conn)
+	log.Warn().
+		Str("room", room.name).
+		Str("lock", room.table.TableLockToString()).
+		Msgf("locked out %p", conn)
 
 	netData := &NetData{
 		room:     room,
@@ -677,7 +699,10 @@ func (room *Room) gameOver() {
 // XXX: need to add to sidepots
 func (room *Room) checkBlindsAutoAllIn() {
 	if room.table.SmallBlind.Player.Action.Action == playerState.AllIn {
-		log.Debug().Str("room", room.name).Str("player", room.table.SmallBlind.Player.Name).Msg("smallblind forced all-in")
+		log.Debug().
+			Str("room", room.name).
+			Str("player", room.table.SmallBlind.Player.Name).
+			Msg("smallblind forced all-in")
 
 		if room.table.CurPlayer().Player.Name == room.table.SmallBlind.Player.Name {
 			// because blind is curPlayer SetNextPlayerTurn() will remove the blind
@@ -690,7 +715,10 @@ func (room *Room) checkBlindsAutoAllIn() {
 		room.sendPlayerActionToAll(room.table.SmallBlind.Player, nil)
 	}
 	if room.table.BigBlind.Player.Action.Action == playerState.AllIn {
-		log.Debug().Str("room", room.name).Str("player", room.table.BigBlind.Player.Name).Msg("bigblind forced all-in")
+		log.Debug().
+			Str("room", room.name).
+			Str("player", room.table.BigBlind.Player.Name).
+			Msg("bigblind forced all-in")
 
 		if room.table.CurPlayer().Player.Name == room.table.BigBlind.Player.Name {
 			// because blind is curPlayer SetNextPlayerTurn() will remove the blind
@@ -787,7 +815,10 @@ func (room *Room) postPlayerAction(client *Client, netData *NetData) {
 		// all other players folded before all comm cards were dealt
 		// TODO: check for this state in a better fashion
 		room.table.FinishRound()
-		log.Debug().Int("numWinners", len(room.table.Winners)).Str("winner", room.table.Winners[0].Name).Msg("wins by folds")
+		log.Debug().
+			Int("numWinners", len(room.table.Winners)).
+			Str("winner", room.table.Winners[0].Name).
+			Msg("wins by folds")
 
 		netData.Response = NetDataRoundOver
 		netData.Table = room.table

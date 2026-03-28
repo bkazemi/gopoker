@@ -42,23 +42,38 @@ func (pot *Pot) HasPlayer(player *Player) bool {
 }
 
 func (pot *Pot) AddPlayer(player *Player) {
-	log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Str("player", player.Name).Msg("added player")
+	log.Debug().
+		Str("pot", pot.Name).
+		Uint64("bet", uint64(pot.Bet)).
+		Str("player", player.Name).
+		Msg("added player")
 	pot.Players[player.Name] = player
 }
 
 func (pot *Pot) AddPlayers(playerMap map[string]*Player) {
 	for name, player := range playerMap {
-		log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Str("player", name).Msg("added player")
+		log.Debug().
+			Str("pot", pot.Name).
+			Uint64("bet", uint64(pot.Bet)).
+			Str("player", name).
+			Msg("added player")
 		pot.Players[name] = player
 	}
 }
 
 func (pot *Pot) RemovePlayer(player *Player) {
 	if player == nil {
-		log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Msg("clearing pot")
+		log.Debug().
+			Str("pot", pot.Name).
+			Uint64("bet", uint64(pot.Bet)).
+			Msg("clearing pot")
 		pot.Players = make(map[string]*Player)
 	} else {
-		log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Str("player", player.Name).Msg("removed player")
+		log.Debug().
+			Str("pot", pot.Name).
+			Uint64("bet", uint64(pot.Bet)).
+			Str("player", player.Name).
+			Msg("removed player")
 		delete(pot.Players, player.Name)
 	}
 }
@@ -135,18 +150,30 @@ func (sidePot *SidePot) WithMustCall(mustCall *Pot) *SidePot {
 }
 
 func (sidePot *SidePot) Calculate(prevBet Chips) {
-	log.Debug().Str("sidePot", sidePot.Name).Uint64("prevBet", uint64(prevBet)).Msg("calculating")
+	log.Debug().
+		Str("sidePot", sidePot.Name).
+		Uint64("prevBet", uint64(prevBet)).
+		Msg("calculating")
 
 	defer func() {
-		log.Debug().Str("sidePot", sidePot.Name).Uint64("total", uint64(sidePot.Total)).Msg("calculated")
+		log.Debug().
+			Str("sidePot", sidePot.Name).
+			Uint64("total", uint64(sidePot.Total)).
+			Msg("calculated")
 	}()
 
 	// MustCall struct contains players who folded on
 	// an allin re-raise
 	if sidePot.MustCall != nil {
-		log.Debug().Str("mustCall", sidePot.MustCall.Name).Str("playerInfo", sidePot.MustCall.PlayerInfo()).Msg("calculating")
+		log.Debug().
+			Str("mustCall", sidePot.MustCall.Name).
+			Str("playerInfo", sidePot.MustCall.PlayerInfo()).
+			Msg("calculating")
 		mustCallChips := sidePot.MustCall.Bet * Chips(len(sidePot.MustCall.Players))
-		log.Debug().Str("mustCall", sidePot.MustCall.Name).Uint64("total", uint64(mustCallChips)).Msg("adding mustCall to sidePot")
+		log.Debug().
+			Str("mustCall", sidePot.MustCall.Name).
+			Uint64("total", uint64(mustCallChips)).
+			Msg("adding mustCall to sidePot")
 		sidePot.Total += mustCallChips
 	}
 
@@ -253,10 +280,22 @@ func (sidePots *SidePots) Clear() {
 
 func (sidePots *SidePots) Print() {
 	for _, sidePot := range sidePots.AllInPots.Pots {
-		log.Debug().Str("sidePot", sidePot.Name).Uint64("bet", uint64(sidePot.Bet)).Uint64("pot", uint64(sidePot.Total)).Bool("closed", sidePot.IsClosed).Str("playerInfo", sidePot.PlayerInfo()).Msg("sidepot state")
+		log.Debug().
+			Str("sidePot", sidePot.Name).
+			Uint64("bet", uint64(sidePot.Bet)).
+			Uint64("pot", uint64(sidePot.Total)).
+			Bool("closed", sidePot.IsClosed).
+			Str("playerInfo", sidePot.PlayerInfo()).
+			Msg("sidepot state")
 	}
 
 	if sidePot := sidePots.BettingPot; sidePot != nil {
-		log.Debug().Str("sidePot", sidePot.Name).Uint64("bet", uint64(sidePot.Bet)).Uint64("pot", uint64(sidePot.Total)).Bool("closed", sidePot.IsClosed).Str("playerInfo", sidePot.PlayerInfo()).Msg("sidepot state")
+		log.Debug().
+			Str("sidePot", sidePot.Name).
+			Uint64("bet", uint64(sidePot.Bet)).
+			Uint64("pot", uint64(sidePot.Total)).
+			Bool("closed", sidePot.IsClosed).
+			Str("playerInfo", sidePot.PlayerInfo()).
+			Msg("sidepot state")
 	}
 }

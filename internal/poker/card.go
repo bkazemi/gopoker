@@ -153,7 +153,11 @@ func cardNumToString(card *Card) error {
 
 	name := cardNumStringMap[card.NumValue]
 	if name == "" {
-		log.Error().Str("cardName", card.Name).Uint8("numValue", uint8(card.NumValue)).Uint8("suit", uint8(card.Suit)).Msg("BUG: couldn't find cardNum name")
+		log.Error().
+			Str("cardName", card.Name).
+			Uint8("numValue", uint8(card.NumValue)).
+			Uint8("suit", uint8(card.Suit)).
+			Msg("BUG: couldn't find cardNum name")
 		return errors.New("cardNumToString")
 	}
 
@@ -167,7 +171,11 @@ func cardNumToString(card *Card) error {
 	suitName := cardSuitStringMap[card.Suit]
 	if suitName == nil {
 		// TODO: fix redundancy.
-		log.Error().Str("cardName", card.Name).Uint8("numValue", uint8(card.NumValue)).Uint8("suit", uint8(card.Suit)).Msg("BUG: couldn't find suitName")
+		log.Error().
+			Str("cardName", card.Name).
+			Uint8("numValue", uint8(card.NumValue)).
+			Uint8("suit", uint8(card.Suit)).
+			Msg("BUG: couldn't find suitName")
 		return errors.New("cardNumToString")
 	}
 

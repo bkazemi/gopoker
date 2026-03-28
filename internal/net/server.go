@@ -267,7 +267,12 @@ func (server *Server) validateRoomRename(room *Room, newName string) (validatedN
 	}
 
 	if int32(len(newName)) > server.MaxRoomNameLen {
-		log.Warn().Str("roomName", newName[:server.MaxRoomNameLen+1]+"...").Int("len", len(newName)).Int32("max", server.MaxRoomNameLen).Msg("room name too long, using random name")
+		log.Warn().
+			Str("roomName", newName[:server.MaxRoomNameLen+1]+"...").
+			Int("len", len(newName)).
+			Int32("max", server.MaxRoomNameLen).
+			Msg("room name too long, using random name")
+
 		newName = server.randRoomName()
 	}
 
@@ -413,12 +418,18 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
 		roomOpts.RoomName = server.randRoomName()
 	} else if int32(len(roomOpts.RoomName)) > server.MaxRoomNameLen {
 		roomOpts.RoomName = roomOpts.RoomName[:server.MaxRoomNameLen+1] + "..."
-		log.Warn().Str("roomName", roomOpts.RoomName).Int("len", len(roomOpts.RoomName)).Int32("max", server.MaxRoomNameLen).Msg("roomName too long, clamping")
+		log.Warn().
+			Str("roomName", roomOpts.RoomName).
+			Int("len", len(roomOpts.RoomName)).
+			Int32("max", server.MaxRoomNameLen).
+			Msg("roomName too long, clamping")
 		roomOpts.RoomName = server.randRoomName()
 	}
 
 	if roomOpts.NumSeats < 2 || roomOpts.NumSeats > 7 {
-		log.Warn().Uint8("numSeats", roomOpts.NumSeats).Msg("requested NumSeats out of range, using default (7)")
+		log.Warn().
+			Uint8("numSeats", roomOpts.NumSeats).
+			Msg("requested NumSeats out of range, using default (7)")
 		roomOpts.NumSeats = 7
 	}
 
@@ -436,7 +447,8 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Debug().Msgf("table.Lock: %v table.Password: %v table.NumSeats: %v", table.Lock, table.Password, table.NumSeats)
+	log.Debug().
+		Msgf("table.Lock: %v table.Password: %v table.NumSeats: %v", table.Lock, table.Password, table.NumSeats)
 
 	log.Info().Str("roomName", roomOpts.RoomName).Msg("creating new room")
 
@@ -545,7 +557,13 @@ func (server *Server) handleNewConn(
 
 				processClient()
 
-				log.Info().Str("room", room.name).Str("client", client.ID).Str("name", client.Name).Str("player", player.Name).Uint("tPos", player.TablePos).Msg("adding player (creator)")
+				log.Info().
+					Str("room", room.name).
+					Str("client", client.ID).
+					Str("name", client.Name).
+					Str("player", player.Name).
+					Uint("tPos", player.TablePos).
+					Msg("adding player (creator)")
 
 				player.Action.Action = playerState.FirstAction
 				room.table.CurPlayers().AddPlayer(player)
@@ -583,7 +601,10 @@ func (server *Server) handleNewConn(
 			processClient()
 		}
 
-		log.Debug().Str("room", room.name).Str("client", client.FullName(false)).Msg("used creatorToken, removing token")
+		log.Debug().
+			Str("room", room.name).
+			Str("client", client.FullName(false)).
+			Msg("used creatorToken, removing token")
 
 		room.creatorToken = "" // token gets invalidated after first use
 
@@ -656,7 +677,13 @@ func (server *Server) handleNewConn(
 			room.clients.SetPlayer(client, player)
 
 			room.applyClientSettings(client, netData.Client.Settings)
-			log.Info().Str("room", room.name).Str("client", client.ID).Str("name", client.Name).Str("player", player.Name).Uint("tPos", player.TablePos).Msg("adding player")
+			log.Info().
+				Str("room", room.name).
+				Str("client", client.ID).
+				Str("name", client.Name).
+				Str("player", player.Name).
+				Uint("tPos", player.TablePos).
+				Msg("adding player")
 
 			if room.table.State == poker.TableStateNotStarted {
 				player.Action.Action = playerState.FirstAction
@@ -858,7 +885,9 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 				client.isDisconnected = true
 
 				if !cleanExit {
-					log.Debug().Str("client", client.FullName(true)).Msg("unclean exit, waiting 1 min for reconnect until cleanup")
+					log.Debug().
+						Str("client", client.FullName(true)).
+						Msg("unclean exit, waiting 1 min for reconnect until cleanup")
 
 					if client.Player != nil {
 						room.sendResponseToAll(&NetData{
@@ -887,7 +916,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
 					// if IsLocked is true then there must be at least one other client
 					if !room.IsLocked() && room.table.NumConnected == 1 {
-						log.Info().Str("client", client.FullName(true)).Str("room", room.name).Msg("last client left, removing room")
+						log.Info().
+							Str("client", client.FullName(true)).
+							Str("room", room.name).
+							Msg("last client left, removing room")
 						server.removeRoom(room)
 						return
 					}
@@ -975,7 +1007,12 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 				player.SetName(client.Name)
 				client.SetName(player.Name)
 
-				log.Info().Str("room", room.name).Str("client", client.FullName(true)).Str("player", player.Name).Uint("tPos", player.TablePos).Msg("adding new player")
+				log.Info().
+					Str("room", room.name).
+					Str("client", client.FullName(true)).
+					Str("player", player.Name).
+					Uint("tPos", player.TablePos).
+					Msg("adding new player")
 
 				if room.table.State == poker.TableStateNotStarted {
 					player.Action.Action = playerState.FirstAction
@@ -1102,7 +1139,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 				netData.ClearData(client)
 				netData.Response = NetDataServerMsg
 				if err != nil {
-					log.Error().Err(err).Str("client", client.FullName(false)).Msg("handleRoomSettings partial error")
+					log.Error().
+						Err(err).
+						Str("client", client.FullName(false)).
+						Msg("handleRoomSettings partial error")
 					netData.Msg = msg + err.Error()
 				} else {
 					netData.Msg = msg
@@ -1140,7 +1180,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 					netData.Msg = msg
 					netData.Send()
 				} else {
-					log.Error().Err(err).Str("client", client.FullName(false)).Msg("handleClientSettings failed (admin)")
+					log.Error().
+						Err(err).
+						Str("client", client.FullName(false)).
+						Msg("handleClientSettings failed (admin)")
 
 					netData.ClearData(client)
 					netData.Response = NetDataServerMsg
@@ -1198,7 +1241,9 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 			room.sendResponseToAll(&netData, nil)
 		case NetDataAllIn, NetDataBet, NetDataCall, NetDataCheck, NetDataFold:
 			if room.IsLocked() {
-				log.Warn().Str("client", client.FullName(true)).Msg("tried to send action while room was locked")
+				log.Warn().
+					Str("client", client.FullName(true)).
+					Msg("tried to send action while room was locked")
 				netData.ClearData(client)
 				netData.Response = NetDataBadRequest
 				netData.Msg = "that action is not valid at this time"
@@ -1293,9 +1338,15 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 				_, rawData, err := conn.ReadMessage()
 				if err != nil {
 					if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-						log.Error().Str("room", room.name).Err(err).Msgf("cli: readConn error on conn %p", conn)
+						log.Error().
+							Str("room", room.name).
+							Err(err).
+							Msgf("cli: readConn error on conn %p", conn)
 					} else {
-						log.Debug().Str("room", room.name).Err(err).Msgf("cli: readConn conn %p ws closed cleanly", conn)
+						log.Debug().
+							Str("room", room.name).
+							Err(err).
+							Msgf("cli: readConn conn %p ws closed cleanly", conn)
 						cleanExit = true
 					}
 
@@ -1307,17 +1358,27 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 				nd := NetData{Response: NetDataNewConn, Table: nil}
 
 				if err := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&nd); err != nil {
-					log.Error().Str("room", room.name).Err(err).Msgf("cli: problem decoding gob stream from %p", conn)
+					log.Error().
+						Str("room", room.name).
+						Err(err).
+						Msgf("cli: problem decoding gob stream from %p", conn)
 
 					return
 				}
 
 				nd.Table = room.table
 
-				log.Debug().Str("room", room.name).Str("action", nd.NetActionToString()).Int("bytes", len(rawData)).Msgf("cli: recv from %p", conn)
+				log.Debug().
+					Str("room", room.name).
+					Str("action", nd.NetActionToString()).
+					Int("bytes", len(rawData)).
+					Msgf("cli: recv from %p", conn)
 
 				if int64(len(rawData)) > server.MaxConnBytes {
-					log.Warn().Str("room", room.name).Int64("max", server.MaxConnBytes).Msgf("cli: conn %p sent too many bytes", conn)
+					log.Warn().
+						Str("room", room.name).
+						Int64("max", server.MaxConnBytes).
+						Msgf("cli: conn %p sent too many bytes", conn)
 					return
 				}
 
@@ -1326,9 +1387,15 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 				_, rawData, err := conn.ReadMessage()
 				if err != nil {
 					if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-						log.Error().Str("room", room.name).Err(err).Msgf("web: readConn error on conn %p", conn)
+						log.Error().
+							Str("room", room.name).
+							Err(err).
+							Msgf("web: readConn error on conn %p", conn)
 					} else {
-						log.Debug().Str("room", room.name).Err(err).Msgf("web: readConn conn %p ws closed cleanly", conn)
+						log.Debug().
+							Str("room", room.name).
+							Err(err).
+							Msgf("web: readConn conn %p ws closed cleanly", conn)
 						cleanExit = true
 					}
 
@@ -1337,7 +1404,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
 				err = msgpack.Unmarshal(rawData, &netData)
 				if err != nil {
-					log.Error().Str("room", room.name).Err(err).Msgf("web: problem decoding msgpack stream from %p", conn)
+					log.Error().
+						Str("room", room.name).
+						Err(err).
+						Msgf("web: problem decoding msgpack stream from %p", conn)
 
 					return
 				}
@@ -1353,7 +1423,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 					log.Warn().Str("room", room.name).Msgf("web: (%p) netData.HasClient() == false", conn)
 				}
 
-				log.Debug().Str("room", room.name).Str("action", netData.NetActionToString()).Msgf("web: recv msgpack, request=%v", netData.Request)
+				log.Debug().
+					Str("room", room.name).
+					Str("action", netData.NetActionToString()).
+					Msgf("web: recv msgpack, request=%v", netData.Request)
 				if netData.room == nil {
 					netData.room = room
 				}

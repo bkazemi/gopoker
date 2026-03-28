@@ -317,7 +317,10 @@ func (netData *NetData) unwrappedSender(conn *websocket.Conn, connType string) {
 			roomPrefix = "{" + netData.room.name + "}: "
 		}
 
-		log.Debug().Str("room", roomPrefix).Str("action", netData.NetActionToString()).Msgf("web: sending to %p", conn)
+		log.Debug().
+			Str("room", roomPrefix).
+			Str("action", netData.NetActionToString()).
+			Msgf("web: sending to %p", conn)
 
 		conn.WriteMessage(websocket.BinaryMessage, b)
 	} else {

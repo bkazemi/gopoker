@@ -516,7 +516,10 @@ func (table *Table) getChipLeaders(includeAllIns bool) (Chips, Chips) {
 	}
 
 	for _, p := range players {
-		log.Debug().Str("player", p.Name).Uint64("actionAmt", uint64(p.Action.Amount)).Msg("getChipLeaders")
+		log.Debug().
+			Str("player", p.Name).
+			Uint64("actionAmt", uint64(p.Action.Amount)).
+			Msg("getChipLeaders")
 	}
 
 	for _, p := range players {
@@ -675,7 +678,10 @@ func (table *Table) GetEliminatedPlayers() []*Player {
 	if uint8(len(ret)) == table.NumPlayers-1 {
 		table.State = TableStateGameOver
 	} else {
-		log.Debug().Uint("lenRet", uint(len(ret))).Uint8("np-1", table.NumPlayers-1).Msg("GetEliminatedPlayers")
+		log.Debug().
+			Uint("lenRet", uint(len(ret))).
+			Uint8("np-1", table.NumPlayers-1).
+			Msg("GetEliminatedPlayers")
 	}
 
 	names := make([]string, 0, len(ret))
@@ -728,7 +734,10 @@ func (table *Table) ReorderPlayers() {
 
 			Assert(smallBlindNode != nil, "Table.ReorderPlayers(): couldn't find a nonfolded player after Sb")
 
-			log.Debug().Str("smallBlind", table.SmallBlind.Player.Name).Str("curPlayer", smallBlindNode.Player.Name).Msg("smallBlind not active")
+			log.Debug().
+				Str("smallBlind", table.SmallBlind.Player.Name).
+				Str("curPlayer", smallBlindNode.Player.Name).
+				Msg("smallBlind not active")
 		}
 		table.curPlayers.SetHead(smallBlindNode) // small blind (or next active player)
 		// is always first better after pre-flop
@@ -805,12 +814,20 @@ func (table *Table) rotatePlayers() {
 		table.handleOrphanedSeats()
 	}
 
-	log.Debug().Str("dealer", table.Dealer.Player.Name).Str("smallBlind", table.SmallBlind.Player.Name).Str("bigBlind", table.BigBlind.Player.Name).Msg("before")
+	log.Debug().
+		Str("dealer", table.Dealer.Player.Name).
+		Str("smallBlind", table.SmallBlind.Player.Name).
+		Str("bigBlind", table.BigBlind.Player.Name).
+		Msg("before")
 
 	Panic := &Panic{}
 
 	defer Panic.IfNoPanic(func() {
-		log.Debug().Str("dealer", table.Dealer.Player.Name).Str("smallBlind", table.SmallBlind.Player.Name).Str("bigBlind", table.BigBlind.Player.Name).Msg("after")
+		log.Debug().
+			Str("dealer", table.Dealer.Player.Name).
+			Str("smallBlind", table.SmallBlind.Player.Name).
+			Str("bigBlind", table.BigBlind.Player.Name).
+			Msg("after")
 
 		table.ReorderPlayers()
 	})
@@ -847,7 +864,10 @@ func (table *Table) SetNextPlayerTurn() {
 		if thisPlayer.Player.Action.Action == playerState.AllIn {
 			nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
 			if nextNode != nil {
-				log.Debug().Str("removed", thisPlayer.Player.Name).Str("headWas", table.curPlayers.Head.Player.Name).Msg("allIn removal")
+				log.Debug().
+					Str("removed", thisPlayer.Player.Name).
+					Str("headWas", table.curPlayers.Head.Player.Name).
+					Msg("allIn removal")
 				table.curPlayer = nextNode
 				log.Debug().Str("headNow", table.curPlayers.Head.Player.Name).Msg("curPlayers head updated")
 			}
@@ -874,9 +894,14 @@ func (table *Table) SetNextPlayerTurn() {
 	if thisPlayer.Player.Action.Action == playerState.Fold {
 		nextNode := table.curPlayers.RemovePlayer(thisPlayer.Player)
 		if nextNode != nil {
-			log.Debug().Str("removed", thisPlayer.Player.Name).Str("headWas", table.curPlayers.Head.Player.Name).Msg("fold removal")
+			log.Debug().
+				Str("removed", thisPlayer.Player.Name).
+				Str("headWas", table.curPlayers.Head.Player.Name).
+				Msg("fold removal")
 			table.curPlayer = nextNode
-			log.Debug().Str("headNow", table.curPlayers.Head.Player.Name).Msg("curPlayers head updated after fold")
+			log.Debug().
+				Str("headNow", table.curPlayers.Head.Player.Name).
+				Msg("curPlayers head updated after fold")
 		}
 	} else {
 		table.curPlayer = thisPlayer.Next()
@@ -897,7 +922,10 @@ func (table *Table) SetNextPlayerTurn() {
 		//       firstaction, /*however this doesn't work post-flop so we check
 		//       the table better as well*/ <- I've opted to reset the action before each round for now
 		log.Debug().Str("lastPlayer", thisPlayer.Player.Name).Msg("last player didn't raise")
-		log.Debug().Str("curPlayersHead", table.curPlayers.Head.Player.Name).Str("curPlayerNext", table.curPlayer.Next().Player.Name).Msg("done betting")
+		log.Debug().
+			Str("curPlayersHead", table.curPlayers.Head.Player.Name).
+			Str("curPlayerNext", table.curPlayer.Next().Player.Name).
+			Msg("done betting")
 
 		table.State = TableStateDoneBetting
 	} else {
@@ -923,7 +951,11 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 			if cc == player.ChipCountToString() {
 				log.Debug().Str("player", player.Name).Msg("chipcount unchanged")
 			} else {
-				log.Debug().Str("player", player.Name).Str("from", cc).Str("to", player.ChipCountToString()).Msg("chipcount changed")
+				log.Debug().
+					Str("player", player.Name).
+					Str("from", cc).
+					Str("to", player.ChipCountToString()).
+					Msg("chipcount changed")
 			}
 		}()
 	}
@@ -947,12 +979,17 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 			sidePot := NewSidePot(table.Bet - player.Action.Amount).WithName("bettingPot")
 
 			if prevBet > 0 {
-				log.Debug().Str("player", player.Name).Uint64("prevBet", uint64(prevBet)).Msg("firstSidePot: removing prevBet from mainPot")
+				log.Debug().
+					Str("player", player.Name).
+					Uint64("prevBet", uint64(prevBet)).
+					Msg("firstSidePot: removing prevBet from mainPot")
 				table.MainPot.Total -= prevBet
 			}
 
 			if sidePot.Bet == 0 { // first allin was a raise/exact match bet
-				log.Debug().Str("player", player.Name).Msg("firstSidePot: allin created an empty betting sidepot")
+				log.Debug().
+					Str("player", player.Name).
+					Msg("firstSidePot: allin created an empty betting sidepot")
 			} else {
 				// get players who already called the last bet,
 				// sub the delta of the last bet and this players
@@ -965,7 +1002,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
 					table.MainPot.Total -= sidePot.Bet
 
-					log.Debug().Str("player", p.Name).Msgf("firstSidePot: sub %s from mainpot, add same amt to BettingPot", printer.Sprintf("%d", sidePot.Bet))
+					log.Debug().
+						Str("player", p.Name).
+						Msgf("firstSidePot: sub %s from mainpot, add same amt to BettingPot", printer.Sprintf("%d", sidePot.Bet))
 
 					sidePot.Total += sidePot.Bet
 					sidePot.AddPlayer(p)
@@ -985,9 +1024,17 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 		if player.Action.Action == playerState.AllIn {
 			if !mainPot.IsClosed {
 				if mainPot.Bet > player.Action.Amount {
-					log.Debug().Str("player", player.Name).Uint64("mainPotBet", uint64(mainPot.Bet)).Msg("moving previous mainpot to first sidepot")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("mainPotBet", uint64(mainPot.Bet)).
+						Msg("moving previous mainpot to first sidepot")
 					betDiff := mainPot.Bet - player.Action.Amount
-					log.Debug().Str("player", player.Name).Uint64("fromBet", uint64(mainPot.Bet)).Uint64("toBet", uint64(player.Action.Amount)).Uint64("betDiff", uint64(betDiff)).Msg("changed mainpot bet")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("fromBet", uint64(mainPot.Bet)).
+						Uint64("toBet", uint64(player.Action.Amount)).
+						Uint64("betDiff", uint64(betDiff)).
+						Msg("changed mainpot bet")
 
 					sidePot := NewSidePot(mainPot.Bet).WithPlayers(mainPot.Players)
 
@@ -995,26 +1042,42 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 					oldTotal := mainPot.Total
 					mainPot.Total -= betDiff * Chips(len(mainPot.Players))
 					mainPot.Total += mainPot.Bet - prevBet // add this player's new chips
-					log.Debug().Uint64("from", uint64(oldTotal)).Uint64("to", uint64(mainPot.Total)).Msg("mainpot total changed")
+					log.Debug().
+						Uint64("from", uint64(oldTotal)).
+						Uint64("to", uint64(mainPot.Total)).
+						Msg("mainpot total changed")
 					mainPot.AddPlayer(player)
 
 					table.sidePots.AllInPots.Insert(sidePot, 0)
 				} else if mainPot.Bet == player.Action.Amount {
-					log.Debug().Str("player", player.Name).Uint64("allin", uint64(player.Action.Amount)).Uint64("prevBet", uint64(prevBet)).Msg("allin matched mainpot allin")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("allin", uint64(player.Action.Amount)).
+						Uint64("prevBet", uint64(prevBet)).
+						Msg("allin matched mainpot allin")
 
 					mainPot.AddPlayer(player)
 					oldTotal := mainPot.Total
 					mainPot.Total += mainPot.Bet - prevBet
-					log.Debug().Uint64("from", uint64(oldTotal)).Uint64("to", uint64(mainPot.Total)).Msg("mainpot total changed")
+					log.Debug().
+						Uint64("from", uint64(oldTotal)).
+						Uint64("to", uint64(mainPot.Total)).
+						Msg("mainpot total changed")
 				} else {
 					if !mainPot.HasPlayer(player) {
 						if prevBet > 0 {
-							log.Debug().Str("player", player.Name).Uint64("prevBet", uint64(prevBet)).Msg("allin: adding (mainPot.Bet - prevBet) to mainPot")
+							log.Debug().
+								Str("player", player.Name).
+								Uint64("prevBet", uint64(prevBet)).
+								Msg("allin: adding (mainPot.Bet - prevBet) to mainPot")
 						}
 						mainPot.AddPlayer(player)
 						oldTotal := mainPot.Total
 						mainPot.Total += mainPot.Bet - prevBet
-						log.Debug().Uint64("from", uint64(oldTotal)).Uint64("to", uint64(mainPot.Total)).Msg("mainpot total changed")
+						log.Debug().
+							Uint64("from", uint64(oldTotal)).
+							Uint64("to", uint64(mainPot.Total)).
+							Msg("mainpot total changed")
 					}
 
 					idx := -1
@@ -1040,7 +1103,10 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 					case -1:
 						var sidePot *SidePot
 
-						log.Debug().Str("player", player.Name).Uint64("allin", uint64(player.Action.Amount)).Msg("largest AllIn sidePot")
+						log.Debug().
+							Str("player", player.Name).
+							Uint64("allin", uint64(player.Action.Amount)).
+							Msg("largest AllIn sidePot")
 
 						var (
 							sidePotBetDiff Chips = player.Action.Amount - table.MainPot.Bet
@@ -1061,7 +1127,10 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 							if bettingPot.Bet != 0 {
 								sidePot.MustCall = NewPot(fmt.Sprintf("%s mustcall pot", sidePot.Name), bettingPot.Bet).
 									WithPlayers(bettingPot.Players)
-								log.Debug().Uint64("bet", uint64(sidePot.MustCall.Bet)).Int("numPlayers", len(sidePot.MustCall.Players)).Msg("created new MustCall pot")
+								log.Debug().
+									Uint64("bet", uint64(sidePot.MustCall.Bet)).
+									Int("numPlayers", len(sidePot.MustCall.Players)).
+									Msg("created new MustCall pot")
 							}
 							bettingPot.Clear()
 							sidePotBetDiff = 0
@@ -1075,8 +1144,14 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 						if sidePotBetDiff != 0 {
 							// bettingPot bet is always delta largest sidePot
 							// that is also less than bettingPot bet
-							log.Debug().Uint64("fromBet", uint64(bettingPot.Bet)).Uint64("toBet", uint64(bettingPot.Bet-sidePotBetDiff)).Msg("bettingpot bet changed")
-							log.Debug().Uint64("fromPot", uint64(bettingPot.Total)).Uint64("toPot", uint64(bettingPot.Total-(sidePotBetDiff*Chips(len(bettingPot.Players))))).Msg("bettingpot pot changed")
+							log.Debug().
+								Uint64("fromBet", uint64(bettingPot.Bet)).
+								Uint64("toBet", uint64(bettingPot.Bet-sidePotBetDiff)).
+								Msg("bettingpot bet changed")
+							log.Debug().
+								Uint64("fromPot", uint64(bettingPot.Total)).
+								Uint64("toPot", uint64(bettingPot.Total-(sidePotBetDiff*Chips(len(bettingPot.Players))))).
+								Msg("bettingpot pot changed")
 							bettingPot.Bet -= sidePotBetDiff
 							bettingPot.Total -= sidePotBetDiff * Chips(len(bettingPot.Players))
 						}
@@ -1099,7 +1174,12 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 							sidePot.AddPlayers(sp.Players)
 						}
 
-						log.Debug().Str("player", player.Name).Uint64("allin", uint64(sidePot.Bet)).Int("idx", idx).Str("playerInfo", sidePot.PlayerInfo()).Msg("inserting allin sidepot")
+						log.Debug().
+							Str("player", player.Name).
+							Uint64("allin", uint64(sidePot.Bet)).
+							Int("idx", idx).
+							Str("playerInfo", sidePot.PlayerInfo()).
+							Msg("inserting allin sidepot")
 
 						table.sidePots.AllInPots.Insert(sidePot, idx)
 					}
@@ -1130,11 +1210,16 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 				}
 				switch idx {
 				case -2:
-					log.Debug().Str("player", player.Name).Msg("mpclosed: all in matched a previous all in sidePot")
+					log.Debug().
+						Str("player", player.Name).
+						Msg("mpclosed: all in matched a previous all in sidePot")
 				case -1:
 					var sidePot *SidePot
 
-					log.Debug().Str("player", player.Name).Str("allin", player.ChipCountToString()).Msg("mpclosed: largest AllIn sidePot")
+					log.Debug().
+						Str("player", player.Name).
+						Str("allin", player.ChipCountToString()).
+						Msg("mpclosed: largest AllIn sidePot")
 
 					var (
 						bettingPotBetDiff Chips = player.Action.Amount
@@ -1156,7 +1241,10 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 						if bettingPot.Bet != 0 {
 							sidePot.MustCall = NewPot(fmt.Sprintf("%s mustcall pot", sidePot.Name), bettingPot.Bet).
 								WithPlayers(bettingPot.Players)
-							log.Debug().Uint64("bet", uint64(sidePot.MustCall.Bet)).Int("numPlayers", len(sidePot.MustCall.Players)).Msg("mpclosed: created new MustCall pot")
+							log.Debug().
+								Uint64("bet", uint64(sidePot.MustCall.Bet)).
+								Int("numPlayers", len(sidePot.MustCall.Players)).
+								Msg("mpclosed: created new MustCall pot")
 						}
 						bettingPot.Clear()
 						bettingPotBetDiff = 0
@@ -1170,8 +1258,14 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 					if bettingPotBetDiff != 0 {
 						// bettingPot bet is always delta largest sidePot
 						// that is also less than bettingPot bet
-						log.Debug().Uint64("fromBet", uint64(bettingPot.Bet)).Uint64("toBet", uint64(bettingPot.Bet-sidePotBetDiff)).Msg("mpclosed: bettingpot bet changed")
-						log.Debug().Uint64("fromPot", uint64(bettingPot.Total)).Uint64("toPot", uint64(bettingPot.Total-(sidePotBetDiff*Chips(len(bettingPot.Players))))).Msg("mpclosed: bettingpot pot changed")
+						log.Debug().
+							Uint64("fromBet", uint64(bettingPot.Bet)).
+							Uint64("toBet", uint64(bettingPot.Bet-sidePotBetDiff)).
+							Msg("mpclosed: bettingpot bet changed")
+						log.Debug().
+							Uint64("fromPot", uint64(bettingPot.Total)).
+							Uint64("toPot", uint64(bettingPot.Total-(sidePotBetDiff*Chips(len(bettingPot.Players))))).
+							Msg("mpclosed: bettingpot pot changed")
 						bettingPot.Bet -= sidePotBetDiff
 						bettingPot.Total -= sidePotBetDiff * Chips(len(bettingPot.Players))
 					}
@@ -1188,7 +1282,12 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 						sidePot.AddPlayers(sp.Players)
 					}
 
-					log.Debug().Str("player", player.Name).Uint64("allin", uint64(sidePot.Bet)).Int("idx", idx).Str("playerInfo", sidePot.PlayerInfo()).Msg("mpclosed: inserting allin sidepot")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("allin", uint64(sidePot.Bet)).
+						Int("idx", idx).
+						Str("playerInfo", sidePot.PlayerInfo()).
+						Msg("mpclosed: inserting allin sidepot")
 
 					table.sidePots.AllInPots.Insert(sidePot, idx)
 				}
@@ -1203,14 +1302,24 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 				//                      player.Name, betDiff, mainPot.Bet))
 
 				if player.Action.Action != playerState.FirstAction && table.MainPot.Bet > prevBet {
-					log.Debug().Str("player", player.Name).Uint64("mainPotBet", uint64(mainPot.Bet)).Uint64("prevBet", uint64(prevBet)).Msg("called allin reraise, adding to mainPot")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("mainPotBet", uint64(mainPot.Bet)).
+						Uint64("prevBet", uint64(prevBet)).
+						Msg("called allin reraise, adding to mainPot")
 					oldTotal := mainPot.Total
 					mainPot.Total += (table.MainPot.Bet - prevBet)
-					log.Debug().Uint64("from", uint64(oldTotal)).Uint64("to", uint64(mainPot.Total)).Msg("mainpot total changed")
+					log.Debug().
+						Uint64("from", uint64(oldTotal)).
+						Uint64("to", uint64(mainPot.Total)).
+						Msg("mainpot total changed")
 				} else { // player hadn't added to the previous (smaller) mainpot bet
 					oldTotal := mainPot.Total
 					mainPot.Total += mainPot.Bet
-					log.Debug().Uint64("from", uint64(oldTotal)).Uint64("to", uint64(mainPot.Total)).Msg("mainpot total changed")
+					log.Debug().
+						Uint64("from", uint64(oldTotal)).
+						Uint64("to", uint64(mainPot.Total)).
+						Msg("mainpot total changed")
 				}
 				mainPot.AddPlayer(player)
 			}
@@ -1228,14 +1337,20 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 				// will include the MustCall bet so this player does not need
 				// to be included anymore
 				if sidePot.MustCall != nil && sidePot.MustCall.HasPlayer(player) {
-					log.Debug().Str("player", player.Name).Uint64("allinBet", uint64(sidePot.Bet)).Msg("removing from allin MustCall struct")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("allinBet", uint64(sidePot.Bet)).
+						Msg("removing from allin MustCall struct")
 					sidePot.MustCall.RemovePlayer(player)
 				}
 
 				if !sidePot.HasPlayer(player) {
 					sidePot.AddPlayer(player)
 				} else {
-					log.Debug().Str("player", player.Name).Uint64("bet", uint64(sidePot.Bet)).Msg("player already in sidePot")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("bet", uint64(sidePot.Bet)).
+						Msg("player already in sidePot")
 				}
 			}
 
@@ -1253,10 +1368,14 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 						}
 					}
 					if sidePotDiff == 0 && !table.MainPot.IsClosed {
-						log.Debug().Uint64("sidePotDiff", uint64(sidePotDiff)).Msg("bettingpot: sidePotDiff == 0 && !mpclosed")
+						log.Debug().
+							Uint64("sidePotDiff", uint64(sidePotDiff)).
+							Msg("bettingpot: sidePotDiff == 0 && !mpclosed")
 						sidePotDiff = table.MainPot.Bet
 					} else {
-						log.Debug().Uint64("sidePotDiff", uint64(sidePotDiff)).Msg("bettingpot: sidePotDiff != 0 || mpclosed")
+						log.Debug().
+							Uint64("sidePotDiff", uint64(sidePotDiff)).
+							Msg("bettingpot: sidePotDiff != 0 || mpclosed")
 					}
 					if bettingPot.Bet == 0 {
 						log.Debug().Str("player", player.Name).Msg("bettingpot: re-raised an all-in")
@@ -1272,14 +1391,21 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 					bettingPot.Total += bettingPot.Bet
 				}
 				if bettingPot.Bet != lastBettingPotBet {
-					log.Debug().Str("player", player.Name).Msgf("bettingpot: changed bet from %s to %s", printer.Sprintf("%d", lastBettingPotBet), printer.Sprintf("%d", bettingPot.Bet))
+					log.Debug().
+						Str("player", player.Name).
+						Msgf("bettingpot: changed bet from %s to %s", printer.Sprintf("%d", lastBettingPotBet), printer.Sprintf("%d", bettingPot.Bet))
 				}
 			case playerState.Call:
 				if bettingPot.Bet == 0 {
-					log.Debug().Str("player", player.Name).Msg("bettingpot: called, but pot is empty. no bettingpot change")
+					log.Debug().
+						Str("player", player.Name).
+						Msg("bettingpot: called, but pot is empty. no bettingpot change")
 				} else {
 					// XXX there was a problem here, but I've forgetten what it was.
-					log.Debug().Str("player", player.Name).Uint64("chips", uint64(bettingPot.Bet)).Msg("bettingpot: called, adding chips")
+					log.Debug().
+						Str("player", player.Name).
+						Uint64("chips", uint64(bettingPot.Bet)).
+						Msg("bettingpot: called, adding chips")
 					bettingPot.Total += bettingPot.Bet
 					//bettingPot.Total += betDiff
 				}
@@ -1312,7 +1438,11 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 			player.Action.Amount = MinChips(table.Bet, player.ChipCount)
 		} else {
 			chipLeaderCount, secondChipLeaderCount := table.getChipLeaders(true)
-			log.Debug().Str("player", player.Name).Uint64("chipLeader", uint64(chipLeaderCount)).Uint64("2ndChipLeader", uint64(secondChipLeaderCount)).Msg("allin chip leaders")
+			log.Debug().
+				Str("player", player.Name).
+				Uint64("chipLeader", uint64(chipLeaderCount)).
+				Uint64("2ndChipLeader", uint64(secondChipLeaderCount)).
+				Msg("allin chip leaders")
 
 			// NOTE: A chipleader can only bet what at least one other player can match.
 			if player.ChipCount >= table.Bet && player.ChipCount == chipLeaderCount {
@@ -1326,7 +1456,10 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 				table.State = TableStatePlayerRaised
 				table.better = player
 				if table.curPlayers.Head.Player.Name != table.curPlayer.Player.Name {
-					log.Debug().Str("player", player.Name).Str("newHead", table.curPlayer.Player.Name).Msg("allin: setting curPlayers head")
+					log.Debug().
+						Str("player", player.Name).
+						Str("newHead", table.curPlayer.Player.Name).
+						Msg("allin: setting curPlayers head")
 					table.curPlayers.SetHead(table.curPlayer) // NOTE: the new better always
 					// becomes the head of the table
 				}
@@ -1355,9 +1488,16 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 		}
 
 		chipLeaderCount, secondChipLeaderCount := table.getChipLeaders(true)
-		log.Debug().Str("player", player.Name).Uint64("chipLeader", uint64(chipLeaderCount)).Uint64("2ndChipLeader", uint64(secondChipLeaderCount)).Msg("bet chip leaders")
+		log.Debug().
+			Str("player", player.Name).
+			Uint64("chipLeader", uint64(chipLeaderCount)).
+			Uint64("2ndChipLeader", uint64(secondChipLeaderCount)).
+			Msg("bet chip leaders")
 
-		log.Debug().Str("player", player.Name).Uint64("prevChips", uint64(prevChips)).Msg("bet: adding prevChips")
+		log.Debug().
+			Str("player", player.Name).
+			Uint64("prevChips", uint64(prevChips)).
+			Msg("bet: adding prevChips")
 		player.ChipCount += prevChips
 
 		// NOTE: A chipleader can only bet what at least one other player can match.
@@ -1383,7 +1523,10 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
 		table.Bet = player.Action.Amount
 
-		log.Debug().Str("player", player.Name).Str("newHead", table.curPlayer.Player.Name).Msg("bet: setting curPlayers head")
+		log.Debug().
+			Str("player", player.Name).
+			Str("newHead", table.curPlayer.Player.Name).
+			Msg("bet: setting curPlayers head")
 		table.curPlayers.SetHead(table.curPlayer)
 		table.better = player
 		table.State = TableStatePlayerRaised
@@ -1394,7 +1537,10 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
 		if (table.SmallBlind != nil && player.Name == table.SmallBlind.Player.Name) ||
 			(table.BigBlind != nil && player.Name == table.BigBlind.Player.Name) {
-			log.Debug().Str("player", player.Name).Uint64("actionAmt", uint64(player.Action.Amount)).Msg("call: blind")
+			log.Debug().
+				Str("player", player.Name).
+				Uint64("actionAmt", uint64(player.Action.Amount)).
+				Msg("call: blind")
 		}
 
 		prevChips := player.Action.Amount
@@ -1672,7 +1818,9 @@ func (table *Table) FinishRound() {
 	// leaves the table
 	if table.activePlayers.Len == 1 &&
 		table.activePlayers.Head.Player.Action.Action == playerState.Fold {
-		log.Warn().Str("player", table.activePlayers.Head.Player.Name).Msg("only one folded player left at table, abandoning all pots")
+		log.Warn().
+			Str("player", table.activePlayers.Head.Player.Name).
+			Msg("only one folded player left at table, abandoning all pots")
 
 		table.State = TableStateGameOver
 		table.Winners = []*Player{table.activePlayers.Head.Player}
@@ -1737,7 +1885,10 @@ func (table *Table) FinishRound() {
 		// XXX: probably not the best place to do this.
 		for _, player := range sidePot.Players {
 			if player.Action.Action == playerState.Fold {
-				log.Debug().Str("player", player.Name).Str("pot", sidePot.Name).Msg("removing folded player from sidepot")
+				log.Debug().
+					Str("player", player.Name).
+					Str("pot", sidePot.Name).
+					Msg("removing folded player from sidepot")
 				sidePot.RemovePlayer(player)
 			}
 		}
@@ -1754,7 +1905,10 @@ func (table *Table) FinishRound() {
 				player = p
 			}
 
-			log.Debug().Str("player", player.Name).Str("pot", sidePot.Name).Msg("won by folds")
+			log.Debug().
+				Str("player", player.Name).
+				Str("pot", sidePot.Name).
+				Msg("won by folds")
 
 			player.ChipCount += sidePot.Total
 
@@ -1767,7 +1921,10 @@ func (table *Table) FinishRound() {
 			bestPlayers := table.BestHand(sidePotPlayersArr, sidePot)
 
 			if len(bestPlayers) == 1 {
-				log.Debug().Str("player", bestPlayers[0].Name).Str("pot", sidePot.Name).Msg("won sidepot")
+				log.Debug().
+					Str("player", bestPlayers[0].Name).
+					Str("pot", sidePot.Name).
+					Msg("won sidepot")
 				bestPlayers[0].ChipCount += sidePot.Total
 			} else {
 				splitChips := sidePot.Total / Chips(len(bestPlayers))
@@ -1789,7 +1946,10 @@ func (table *Table) FinishRound() {
 
 	table.Winners = PlayerMapToArr(playerMap)
 	for _, winner := range table.Winners {
-		log.Debug().Str("winner", winner.Name).Str("chipcount", winner.ChipCountToString()).Msg("final chipcount")
+		log.Debug().
+			Str("winner", winner.Name).
+			Str("chipcount", winner.ChipCountToString()).
+			Msg("final chipcount")
 	}
 }
 
@@ -1847,12 +2007,18 @@ func (table *Table) BestHand(players []*Player, sidePot *SidePot) []*Player {
 			names += player.Name + " "
 			*winInfo += player.Name + " "
 		}
-		log.Info().Str("players", names).Str("hand", tiedPlayers[0].Hand.RankName()).Msg("split pot")
+		log.Info().
+			Str("players", names).
+			Str("hand", tiedPlayers[0].Hand.RankName()).
+			Msg("split pot")
 
 		*winInfo += "\nwinning hand => " + tiedPlayers[0].Hand.RankName() + "\n"
 	} else {
 		*winInfo += "\n" + tiedPlayers[0].Name + "  wins with " + tiedPlayers[0].Hand.RankName() + "\n"
-		log.Info().Str("player", tiedPlayers[0].Name).Str("hand", tiedPlayers[0].Hand.RankName()).Msg("winner")
+		log.Info().
+			Str("player", tiedPlayers[0].Name).
+			Str("hand", tiedPlayers[0].Hand.RankName()).
+			Msg("winner")
 	}
 
 	// build best hand string
