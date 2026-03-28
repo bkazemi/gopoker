@@ -968,9 +968,9 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 		table.State != TableStatePlayerRaised { // XXX mixed states...
 		if table.SmallBlind != nil && player.Name == table.SmallBlind.Player.Name {
 			isSmallBlindPreFlop = true
-			blindRequiredBet = MinChips(table.SmallBlind.Player.ChipCount, table.Ante/2)
+			blindRequiredBet = min(table.SmallBlind.Player.ChipCount, table.Ante/2)
 		} else if table.BigBlind != nil && player.Name == table.BigBlind.Player.Name {
-			blindRequiredBet = MinChips(table.BigBlind.Player.ChipCount, table.Ante)
+			blindRequiredBet = min(table.BigBlind.Player.ChipCount, table.Ante)
 		}
 	}
 
@@ -1435,7 +1435,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
 		if table.BettingIsImpossible() {
 			log.Debug().Str("player", player.Name).Msg("allin: last player went all-in")
-			player.Action.Amount = MinChips(table.Bet, player.ChipCount)
+			player.Action.Amount = min(table.Bet, player.ChipCount)
 		} else {
 			chipLeaderCount, secondChipLeaderCount := table.getChipLeaders(true)
 			log.Debug().
@@ -1502,7 +1502,7 @@ func (table *Table) PlayerAction(player *Player, action Action) error {
 
 		// NOTE: A chipleader can only bet what at least one other player can match.
 		if player.ChipCount == chipLeaderCount {
-			player.Action.Amount = MinChips(action.Amount, secondChipLeaderCount)
+			player.Action.Amount = min(action.Amount, secondChipLeaderCount)
 		} else {
 			player.Action.Amount = action.Amount
 		}
@@ -1672,9 +1672,9 @@ func (table *Table) NextTableAction() {
 
 		table.Bet = table.Ante
 
-		table.SmallBlind.Player.Action.Amount = MinChips(table.Ante/2,
+		table.SmallBlind.Player.Action.Amount = min(table.Ante/2,
 			table.SmallBlind.Player.ChipCount)
-		table.BigBlind.Player.Action.Amount = MinChips(table.Ante,
+		table.BigBlind.Player.Action.Amount = min(table.Ante,
 			table.BigBlind.Player.ChipCount)
 
 		table.SmallBlind.Player.ChipCount -= table.SmallBlind.Player.Action.Amount
@@ -1692,9 +1692,9 @@ func (table *Table) NextTableAction() {
 
 		table.Bet = table.Ante
 
-		table.SmallBlind.Player.Action.Amount = MinChips(table.Ante/2,
+		table.SmallBlind.Player.Action.Amount = min(table.Ante/2,
 			table.SmallBlind.Player.ChipCount)
-		table.BigBlind.Player.Action.Amount = MinChips(table.Ante,
+		table.BigBlind.Player.Action.Amount = min(table.Ante,
 			table.BigBlind.Player.ChipCount)
 
 		table.SmallBlind.Player.ChipCount -= table.SmallBlind.Player.Action.Amount
@@ -1966,7 +1966,7 @@ func (table *Table) BestHand(players []*Player, sidePot *SidePot) []*Player {
 	// XXX move me
 	maxNameWidth := 0
 	for _, player := range players {
-		maxNameWidth = MaxInt(uniseg.StringWidth(player.Name), maxNameWidth)
+		maxNameWidth = max(uniseg.StringWidth(player.Name), maxNameWidth)
 	}
 
 	if sidePot == nil {

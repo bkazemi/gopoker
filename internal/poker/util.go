@@ -16,62 +16,6 @@ func Assert(cond bool, msg string) {
 	}
 }
 
-func AbsUInt64(x, y uint64) uint64 {
-	if x > y {
-		return x - y
-	}
-
-	return y - x
-}
-
-func AbsChips(x, y Chips) Chips {
-	if x > y {
-		return x - y
-	}
-
-	return y - x
-}
-
-func MinUInt64(x, y uint64) uint64 {
-	if x < y {
-		return x
-	}
-
-	return y
-}
-
-func MinChips(x, y Chips) Chips {
-	if x < y {
-		return x
-	}
-
-	return y
-}
-
-func MaxUInt64(x, y uint64) uint64 {
-	if x > y {
-		return x
-	}
-
-	return y
-}
-
-func MaxChips(x, y Chips) Chips {
-	if x > y {
-		return x
-	}
-
-	return y
-}
-
-func MaxInt(x, y int) int {
-	if x > y {
-		return x
-	}
-
-	return y
-}
-
 func PlayerMapToArr(playerMap map[string]*Player) []*Player {
 	if playerMap == nil || len(playerMap) == 0 {
 		return []*Player{}

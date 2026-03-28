@@ -391,8 +391,7 @@ func textViewSetLine(textView *tview.TextView, lineNum int, txt string) {
 		return // no update
 	} else {
 		if lineCnt > 1 {
-			for i, _ := range tv[lineNum:poker.MinUInt64(uint64(lineNum+lineCnt-1),
-				uint64(len(tv)))] {
+			for i, _ := range tv[lineNum:min(lineNum+lineCnt-1, len(tv))] {
 				tv[i] = ""
 			}
 		}
