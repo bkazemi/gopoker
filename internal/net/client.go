@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/bkazemi/gopoker/internal/poker"
 
 	"github.com/gorilla/websocket"
@@ -27,7 +28,7 @@ type Client struct {
 
 func NewClient(settings *ClientSettings) *Client {
   if settings == nil {
-    fmt.Println("Client.NewClient(): called with nil ClientSettings, using defaults")
+    log.Warn().Msg("nil ClientSettings, using defaults")
     settings = NewClientSettings()
   }
 
@@ -55,12 +56,12 @@ func (client *Client) FullName(includeConn bool) string {
 
 func (client *Client) SetName(name string) *Client {
   if len(name) > MaxClientNameLen {
-    fmt.Printf("Client.SetName(): requested name too long. rejecting\n")
+    log.Warn().Msg("requested name too long, rejecting")
 
     return client
   }
 
-  fmt.Printf("Client.SetName(): <%s> (%p) '%s' => '%s'\n", client.ID, client.conn, client.Name, name)
+  log.Debug().Str("client", client.ID).Str("from", client.Name).Str("to", name).Msg("name changed")
   client.Name = name
 
   return client

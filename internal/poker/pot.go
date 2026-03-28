@@ -1,6 +1,10 @@
 package poker
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/rs/zerolog/log"
+)
 
 type Pot struct {
   Name     string // XXX tmp for debugging
@@ -38,23 +42,23 @@ func (pot *Pot) HasPlayer(player *Player) bool {
 }
 
 func (pot *Pot) AddPlayer(player *Player) {
-  printer.Printf("Pot.AddPlayer(): <%s> (%v bet) adding %s\n", pot.Name, pot.Bet, player.Name)
+  log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Str("player", player.Name).Msg("added player")
   pot.Players[player.Name] = player
 }
 
 func (pot *Pot) AddPlayers(playerMap map[string]*Player) {
   for name, player := range playerMap {
-    printer.Printf("Pot.AddPlayers(): <%s> (%v bet) adding %s\n", pot.Name, pot.Bet, name)
+    log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Str("player", name).Msg("added player")
     pot.Players[name] = player
   }
 }
 
 func (pot *Pot) RemovePlayer(player *Player) {
   if player == nil {
-    printer.Printf("Pot.RemovePlayer(): <%s> (%v bet) clearing pot\n", pot.Name, pot.Bet)
+    log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Msg("clearing pot")
     pot.Players = make(map[string]*Player)
   } else {
-    printer.Printf("Pot.RemovePlayer(): <%s> (%v bet) removing %s\n", pot.Name, pot.Bet, player.Name)
+    log.Debug().Str("pot", pot.Name).Uint64("bet", uint64(pot.Bet)).Str("player", player.Name).Msg("removed player")
     delete(pot.Players, player.Name)
   }
 }
@@ -77,7 +81,7 @@ func (pot *Pot) PlayerInfo() string {
 
 func (pot *Pot) Clear() {
   defer func() {
-    fmt.Printf("Pot.Clear(): cleared %s\n", pot.Name)
+    log.Debug().Str("pot", pot.Name).Msg("cleared")
   }()
 
   pot.Players = make(map[string]*Player)
@@ -131,18 +135,18 @@ func (sidePot *SidePot) WithMustCall(mustCall *Pot) *SidePot {
 }
 
 func (sidePot *SidePot) Calculate(prevBet Chips) {
-  printer.Printf("SidePot.Calculate(): %s prevBet: %v\n", sidePot.Name, prevBet)
+  log.Debug().Str("sidePot", sidePot.Name).Uint64("prevBet", uint64(prevBet)).Msg("calculating")
 
   defer func() {
-    printer.Printf("SidePot.Calculate(): %s total => %v\n", sidePot.Name, sidePot.Total)
+    log.Debug().Str("sidePot", sidePot.Name).Uint64("total", uint64(sidePot.Total)).Msg("calculated")
   }()
 
   // MustCall struct contains players who folded on
   // an allin re-raise
   if sidePot.MustCall != nil {
-    printer.Printf("SidePot.Calculate(): %s playerInfo: %s\n", sidePot.MustCall.Name, sidePot.MustCall.PlayerInfo())
+    log.Debug().Str("mustCall", sidePot.MustCall.Name).Str("playerInfo", sidePot.MustCall.PlayerInfo()).Msg("calculating")
     mustCallChips := sidePot.MustCall.Bet * Chips(len(sidePot.MustCall.Players))
-    printer.Printf("SidePot.Calculate(): %s total => %v, adding to attached sidePot\n", sidePot.MustCall.Name, mustCallChips)
+    log.Debug().Str("mustCall", sidePot.MustCall.Name).Uint64("total", uint64(mustCallChips)).Msg("adding mustCall to sidePot")
     sidePot.Total += mustCallChips
   }
 
@@ -201,7 +205,7 @@ func (arr *SidePotArray) GetLargest() *SidePot {
 
 func (arr *SidePotArray) CloseAll() {
   for _, sidePot := range arr.GetOpenPots() {
-    fmt.Printf("SidePotArray.CloseAll(): closing %s\n", sidePot.Name)
+    log.Debug().Str("sidePot", sidePot.Name).Msg("closing")
     sidePot.IsClosed = true
   }
 }
@@ -249,12 +253,10 @@ func (sidePots *SidePots) Clear() {
 
 func (sidePots *SidePots) Print() {
   for _, sidePot := range sidePots.AllInPots.Pots {
-    printer.Printf("%s - bet: %v pot: %v closed: %v %s\n", sidePot.Name, sidePot.Bet,
-                   sidePot.Total, sidePot.IsClosed, sidePot.PlayerInfo())
+    log.Debug().Str("sidePot", sidePot.Name).Uint64("bet", uint64(sidePot.Bet)).Uint64("pot", uint64(sidePot.Total)).Bool("closed", sidePot.IsClosed).Str("playerInfo", sidePot.PlayerInfo()).Msg("sidepot state")
   }
 
   if sidePot := sidePots.BettingPot; sidePot != nil {
-    printer.Printf("%s - bet: %v pot: %v closed: %v %s\n", sidePot.Name, sidePot.Bet,
-                   sidePot.Total, sidePot.IsClosed, sidePot.PlayerInfo())
+    log.Debug().Str("sidePot", sidePot.Name).Uint64("bet", uint64(sidePot.Bet)).Uint64("pot", uint64(sidePot.Total)).Bool("closed", sidePot.IsClosed).Str("playerInfo", sidePot.PlayerInfo()).Msg("sidepot state")
   }
 }

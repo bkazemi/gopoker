@@ -2,8 +2,10 @@ package poker
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/bkazemi/gopoker/internal/playerState"
+	"github.com/rs/zerolog/log"
 )
 
 type Action struct {
@@ -46,7 +48,7 @@ func (p *Player) SetName(name string) {
   } else {
     p.Name = name
   }
-  fmt.Printf("Player.setName(): <%s> '%s' => '%s'\n", p.defaultName, oldName, p.Name)
+  log.Debug().Str("defaultName", p.defaultName).Str("oldName", oldName).Str("newName", p.Name).Msg("name changed")
 }
 
 func (p *Player) canBet() bool {
@@ -96,7 +98,7 @@ func NewPlayerList(name string, players []*Player) *PlayerList {
   }
 
   if players == nil || len(players) == 0 {
-    fmt.Printf("NewPlayerList(): <%s> called with empty player list\n", name)
+    log.Debug().Str("listName", name).Msg("called with empty player list")
 
     return list
   }
@@ -109,7 +111,7 @@ func NewPlayerList(name string, players []*Player) *PlayerList {
       list.Head = list.Head.Next()
     }
   } else {
-    fmt.Printf("NewPlayerList(): <%s> called with len(players) == 1\n", name)
+    log.Debug().Str("listName", name).Msg("called with len(players) == 1")
   }
   list.Head.SetNext(head)
   list.Head = head
@@ -119,15 +121,17 @@ func NewPlayerList(name string, players []*Player) *PlayerList {
 }
 
 func (list *PlayerList) Print() {
-  fmt.Printf("<%s> len==%v [ ", list.Name, list.Len)
+  var sb strings.Builder
+  fmt.Fprintf(&sb, "[ ")
   for i, n := 0, list.Head; i < list.Len; i++ {
-    fmt.Printf("%s n=> %s ", n.Player.Name, n.Next().Player.Name)
+    fmt.Fprintf(&sb, "%s n=> %s ", n.Player.Name, n.Next().Player.Name)
     n = n.Next()
     if i == list.Len-1 {
-      fmt.Printf("| n=> %s ", n.Next().Player.Name)
+      fmt.Fprintf(&sb, "| n=> %s ", n.Next().Player.Name)
     }
   }
-  fmt.Println("]")
+  fmt.Fprintf(&sb, "]")
+  log.Debug().Str("listName", list.Name).Int("len", list.Len).Msg(sb.String())
 }
 
 func (list *PlayerList) Clone(newName string) *PlayerList {
@@ -156,8 +160,8 @@ func (list *PlayerList) RemovePlayer(player *Player) *PlayerNode {
     return nil
   }
 
-  fmt.Printf("&PlayerList.RemovePlayer(): <%s> called for %s\n", list.Name, player.Name)
-  fmt.Printf("&PlayerList.RemovePlayer(): was ") ; list.Print()
+  log.Debug().Str("listName", list.Name).Str("player", player.Name).Msg("called")
+  log.Debug().Msg("was:") ; list.Print()
 
   foundPlayer := true
 
@@ -165,7 +169,7 @@ func (list *PlayerList) RemovePlayer(player *Player) *PlayerNode {
     if foundPlayer {
       list.Len--
     }
-    fmt.Printf("&PlayerList.RemovePlayer(): now ") ; list.Print()
+    log.Debug().Msg("now:") ; list.Print()
   }()
 
   node, prevNode := list.Head, list.Head
@@ -197,7 +201,7 @@ func (list *PlayerList) RemovePlayer(player *Player) *PlayerNode {
     node = node.Next()
   }
 
-  fmt.Printf("&PlayerList.RemovePlayer(): <%s> %s not found in list\n", list.Name, player.Name)
+  log.Warn().Str("listName", list.Name).Str("player", player.Name).Msg("player not found in list")
 
   foundPlayer = false
   return nil // player not found
@@ -221,11 +225,10 @@ func (list *PlayerList) GetPlayerNode(player *Player) *PlayerNode {
 
 func (list *PlayerList) SetHead(node *PlayerNode) {
   if node == nil {
-    fmt.Printf("%s.SetHead(): setting parameter is nil\n", list.Name)
     if list.Len != 0 {
-      fmt.Printf(" with a nonempty list\n")
+      log.Warn().Str("listName", list.Name).Msg("called with nil on a nonempty list")
     } else {
-      fmt.Println()
+      log.Warn().Str("listName", list.Name).Msg("called with nil")
     }
   }
 

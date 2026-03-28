@@ -19,6 +19,7 @@ import (
 
 	"github.com/bkazemi/gopoker/internal/playerState"
 	"github.com/bkazemi/gopoker/internal/poker"
+	"github.com/rs/zerolog/log"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -165,13 +166,13 @@ func status(w http.ResponseWriter, req *http.Request) {
 }
 
 func closeConn(conn *websocket.Conn) {
-  fmt.Printf("Server closeConn(): <= closing conn to %s\n", conn.RemoteAddr().String())
+  log.Debug().Str("remote", conn.RemoteAddr().String()).Msg("closing connection")
   conn.Close()
 }
 
 // cleanly close connections after a server panic()
 func (server *Server) serverError(err error, room *Room) {
-  fmt.Println("server panicked")
+  log.Error().Msg("server panicked")
 
   for _, conn := range room.clients.Conns() {
     conn.WriteMessage(websocket.CloseMessage,
@@ -192,7 +193,7 @@ func (server *Server) handleRoomSettings(room *Room, client *Client, settings *R
       return // log err in caller to keep this defer small and clean
     }
 
-    fmt.Printf("Server.handleRoomSettings(): <%s> %s\n", client.FullName(false), m)
+    log.Debug().Str("client", client.FullName(false)).Msg(m)
   }()
 
   if client == nil { // NOTE: this is currently an impossible condition because the callers access client.ID beforehand
@@ -265,8 +266,7 @@ func (server *Server) validateRoomRename(room *Room, newName string) (validatedN
   }
 
   if int32(len(newName)) > server.MaxRoomNameLen {
-    fmt.Printf("Server.createNewRoom(): roomName %s is too long (%v > %v), using random name\n",
-               newName[:server.MaxRoomNameLen+1] + "...", len(newName), server.MaxRoomNameLen)
+    log.Warn().Str("roomName", newName[:server.MaxRoomNameLen+1]+"...").Int("len", len(newName)).Int32("max", server.MaxRoomNameLen).Msg("room name too long, using random name")
     newName = server.randRoomName()
   }
 
@@ -378,8 +378,7 @@ func (server *Server) randRoomName() string {
   for {
     name = poker.RandString(10) // 62^10 is plenty ;)
     if _, found := server.rooms[name]; found {
-      fmt.Printf("Server.createNewRoom(): WARNING: possible bug: roomName '%s' already found in rooms\n",
-                 name)
+      log.Warn().Str("roomName", name).Msg("possible bug: roomName already found in rooms")
     } else {
       break
     }
@@ -394,33 +393,31 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
 
   var roomOpts RoomOpts
   if err := json.NewDecoder(req.Body).Decode(&roomOpts); err != nil {
-    fmt.Printf("Server.createNewRoom(): problem decoding POST request: %v\n", err)
+    log.Error().Err(err).Msg("problem decoding POST request")
     http.Error(w, "failed to parse JSON body", http.StatusBadRequest)
 
     return
   }
 
-  fmt.Printf("Server.createNewRoom(): roomOpts: %v\n", roomOpts)
+  log.Debug().Msgf("roomOpts: %v", roomOpts)
 
   if roomOpts.RoomName == "" {
-    fmt.Printf("Server.createNewRoom(): empty roomName given\n")
+    log.Debug().Msg("empty roomName given")
     roomOpts.RoomName = server.randRoomName()
   } else if invalidRoomNames[roomOpts.RoomName] {
-    fmt.Printf("Server.createNewRoom(): roomName %s is invalid\n", roomOpts.RoomName)
+    log.Warn().Str("roomName", roomOpts.RoomName).Msg("roomName is invalid")
     roomOpts.RoomName = server.randRoomName()
   } else if server.rooms[roomOpts.RoomName] != nil {
-    fmt.Printf("Server.createNewRoom(): roomName %s already taken\n", roomOpts.RoomName)
+    log.Warn().Str("roomName", roomOpts.RoomName).Msg("roomName already taken")
     roomOpts.RoomName = server.randRoomName()
   } else if int32(len(roomOpts.RoomName)) > server.MaxRoomNameLen {
     roomOpts.RoomName = roomOpts.RoomName[:server.MaxRoomNameLen+1] + "..."
-    fmt.Printf("Server.createNewRoom(): roomName %s is too long (%v > %v), clamping\n",
-               roomOpts.RoomName, len(roomOpts.RoomName), server.MaxRoomNameLen)
+    log.Warn().Str("roomName", roomOpts.RoomName).Int("len", len(roomOpts.RoomName)).Int32("max", server.MaxRoomNameLen).Msg("roomName too long, clamping")
     roomOpts.RoomName = server.randRoomName()
   }
 
   if roomOpts.NumSeats < 2 || roomOpts.NumSeats > 7 {
-    fmt.Printf("Server.createNewRoom(): requested NumSeats (%v) out of range. setting numSeats to default (7 seats)\n",
-               roomOpts.NumSeats)
+    log.Warn().Uint8("numSeats", roomOpts.NumSeats).Msg("requested NumSeats out of range, using default (7)")
     roomOpts.NumSeats = 7
   }
 
@@ -432,15 +429,15 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
   table, tableErr := poker.NewTable(deck, roomOpts.NumSeats, roomOpts.Lock, roomOpts.Password,
                                     make([]bool, roomOpts.NumSeats))
   if tableErr != nil {
-    fmt.Printf("Server.createNewRoom(): problem creating new table: %v\n", tableErr)
+    log.Error().Err(tableErr).Msg("problem creating new table")
     http.Error(w, fmt.Sprintf("couldn't create a new table: %v", tableErr), http.StatusBadRequest)
 
     return
   }
 
-  fmt.Printf("table.Lock: %v table.Password: %v table.NumSeats: %v\n", table.Lock, table.Password, table.NumSeats)
+  log.Debug().Msgf("table.Lock: %v table.Password: %v table.NumSeats: %v", table.Lock, table.Password, table.NumSeats)
 
-  fmt.Printf("Server.createNewRoom(): creating new room with roomName `%s`\n", roomOpts.RoomName)
+  log.Info().Str("roomName", roomOpts.RoomName).Msg("creating new room")
 
   room := NewRoom(roomOpts.RoomName, table, poker.RandString(17))
   server.rooms[roomOpts.RoomName] = room
@@ -472,11 +469,11 @@ func (server *Server) removeRoom(room *Room) {
   defer server.mtx.Unlock()
 
   if _, found := server.rooms[room.name]; found {
-    fmt.Printf("Server.removeRoom(): removing room '%s'\n", room.name)
+    log.Info().Str("room", room.name).Msg("removing room")
 
     delete(server.rooms, room.name)
   } else {
-    fmt.Printf("Server.removeRoom(): room '%s' not found\n", room.name)
+    log.Warn().Str("room", room.name).Msg("room not found")
   }
 }
 
@@ -510,7 +507,7 @@ func (server *Server) handleNewConn(
   // we add this here so we don't accidently deference any nil pointers
   // need it here for the IsSpectator test below
   if netData.Client.Settings == nil {
-    fmt.Printf("Server.handleNewConn(): %p had nil ClientSettings, using defaults\n", conn)
+    log.Warn().Msgf("%p had nil ClientSettings, using defaults", conn)
     netData.Client.Settings = NewClientSettings()
   }
 
@@ -547,8 +544,7 @@ func (server *Server) handleNewConn(
 
         processClient()
 
-        fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s' tPos '%v'\n",
-                   room.name, client.ID, &conn, client.Name, player.Name, player.TablePos)
+        log.Info().Str("room", room.name).Str("client", client.ID).Str("name", client.Name).Str("player", player.Name).Uint("tPos", player.TablePos).Msg("adding player (creator)")
 
         player.Action.Action = playerState.FirstAction
         room.table.CurPlayers().AddPlayer(player)
@@ -586,8 +582,7 @@ func (server *Server) handleNewConn(
       processClient()
     }
 
-    fmt.Printf("Server.handleNewConn(): {%s}: <%s> used creatorToken (%v), removing token\n",
-               room.name, client.FullName(false), room.creatorToken)
+    log.Debug().Str("room", room.name).Str("client", client.FullName(false)).Msg("used creatorToken, removing token")
 
     room.creatorToken = "" // token gets invalidated after first use
 
@@ -615,7 +610,7 @@ func (server *Server) handleNewConn(
   client := room.newClient(conn, connType, netData.Client.Settings)
 
   if _, err := room.handleClientSettings(client, netData.Client.Settings); err != nil {
-    fmt.Printf("Room.handleClientSettings(): <%s> err: %v\n", client.FullName(false), err)
+    log.Error().Err(err).Str("client", client.FullName(false)).Msg("handleClientSettings failed")
 
     (&NetData{
       room: room,
@@ -660,8 +655,7 @@ func (server *Server) handleNewConn(
       room.clients.SetPlayer(client, player)
 
       room.applyClientSettings(client, netData.Client.Settings)
-      fmt.Printf("Server.handleNewConn(): {%s}: adding <%s> (%p) (%s) as player '%s' tPos '%v'\n",
-                 room.name, client.ID, &conn, client.Name, player.Name, player.TablePos)
+      log.Info().Str("room", room.name).Str("client", client.ID).Str("name", client.Name).Str("player", player.Name).Uint("tPos", player.TablePos).Msg("adding player")
 
       if room.table.State == poker.TableStateNotStarted {
         player.Action.Action = playerState.FirstAction
@@ -798,14 +792,14 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
   }
 
   if connType != "cli" && connType != "web" {
-    fmt.Printf("Server.WSClient(): {%s}: connType '%s' is invalid.\n", room.name, connType)
+    log.Warn().Str("room", room.name).Str("connType", connType).Msg("invalid connType")
 
     return
   }
 
   conn, err := server.upgrader.Upgrade(w, req, nil)
   if err != nil {
-    fmt.Printf("WS upgrade err %s\n", err.Error())
+    log.Error().Err(err).Msg("WS upgrade error")
 
     return
   }
@@ -863,7 +857,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         client.isDisconnected = true
 
         if !cleanExit {
-          fmt.Printf("Server.WSClient: <%s> unclean exit, waiting 1 min for reconnect until cleanup\n", client.FullName(true))
+          log.Debug().Str("client", client.FullName(true)).Msg("unclean exit, waiting 1 min for reconnect until cleanup")
 
           if client.Player != nil {
             room.sendResponseToAll(&NetData{
@@ -892,7 +886,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
           // if IsLocked is true then there must be at least one other client
           if !room.IsLocked() && room.table.NumConnected == 1 {
-            fmt.Printf("Server.WSClient(): <%s> defer(): {%s}: last client left, skipping player & client cleanup\n", client.FullName(true), room.name)
+            log.Info().Str("client", client.FullName(true)).Str("room", room.name).Msg("last client left, removing room")
             server.removeRoom(room)
             return
           }
@@ -903,12 +897,12 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
         client.mtx.Unlock()
       } else {
-        fmt.Printf("Server.WSClient(): defer(): {%s}: couldn't find conn %p in connClientMap\n", room.name, conn)
+        log.Warn().Str("room", room.name).Msgf("defer: couldn't find conn %p in connClientMap", conn)
       }
     }
   }()
 
-  fmt.Printf("Server.WSClient(): {%s}: => new conn from %s\n", room.name, req.Host)
+  log.Info().Str("room", room.name).Str("host", req.Host).Msg("new websocket connection")
 
   stopPing := make(chan bool)
   go func() {
@@ -920,7 +914,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         return
       case <-ticker.C:
         if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-          fmt.Printf("Server.WSClient(): {%s}: ping err: %s\n", room.name, err.Error())
+          log.Error().Err(err).Str("room", room.name).Msg("ping error")
           return
         }
       }
@@ -965,10 +959,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
       seatPos := uint8(0)
       if netData.Client.Settings != nil {
-        fmt.Printf("Server.handleAsyncRequest(): NewPlayer: SeatPos: %v\n", netData.Client.Settings.SeatPos)
+        log.Debug().Uint8("seatPos", netData.Client.Settings.SeatPos).Msg("NewPlayer request")
         seatPos = netData.Client.Settings.SeatPos
       } else {
-        fmt.Println("Server.handleAsyncRequest(): NewPlayer: Settings was nil")
+        log.Warn().Msg("NewPlayer request with nil Settings")
       }
 
       netData.ClearData(client)
@@ -980,8 +974,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         player.SetName(client.Name)
         client.SetName(player.Name)
 
-        fmt.Printf("Server.handleAsyncRequest(): NewPlayer: {%s}: adding <%s> as player '%s' tPos '%v'\n",
-                   room.name, client.FullName(true), player.Name, player.TablePos)
+        log.Info().Str("room", room.name).Str("client", client.FullName(true)).Str("player", player.Name).Uint("tPos", player.TablePos).Msg("adding new player")
 
         if room.table.State == poker.TableStateNotStarted {
           player.Action.Action = playerState.FirstAction
@@ -1057,7 +1050,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         netData.Msg = msg
         netData.Send()
       } else {
-        fmt.Printf("Room.handleClientSettings(): <%s> err: %v\n", client.FullName(false), err)
+        log.Error().Err(err).Str("client", client.FullName(false)).Msg("handleClientSettings failed")
 
         netData.ClearData(client)
         netData.Response = NetDataServerMsg
@@ -1108,14 +1101,14 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         netData.ClearData(client)
         netData.Response = NetDataServerMsg
         if err != nil {
-          fmt.Printf("Server.handleRoomSettings(): <%s> err: %v\n", client.FullName(false), err)
+          log.Error().Err(err).Str("client", client.FullName(false)).Msg("handleRoomSettings partial error")
           netData.Msg = msg + err.Error()
         } else {
           netData.Msg = msg
         }
         netData.Send()
       } else if err != nil {
-        fmt.Printf("Server.handleRoomSettings(): <%s> err: %v\n", client.FullName(false), err)
+        log.Error().Err(err).Str("client", client.FullName(false)).Msg("handleRoomSettings failed")
         netData.ClearData(client)
         netData.Response = NetDataServerMsg
         netData.Msg = msg + err.Error()
@@ -1146,7 +1139,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
           netData.Msg = msg
           netData.Send()
         } else {
-          fmt.Printf("Room.handleClientSettings(): <%s> err: %v\n", client.FullName(false), err)
+          log.Error().Err(err).Str("client", client.FullName(false)).Msg("handleClientSettings failed (admin)")
 
           netData.ClearData(client)
           netData.Response = NetDataServerMsg
@@ -1204,8 +1197,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
       room.sendResponseToAll(&netData, nil)
     case NetDataAllIn, NetDataBet, NetDataCall, NetDataCheck, NetDataFold:
       if room.IsLocked() {
-        fmt.Printf("<%s> tried to send action while room mtx was locked.\n",
-                   client.FullName(true))
+        log.Warn().Str("client", client.FullName(true)).Msg("tried to send action while room was locked")
         netData.ClearData(client)
         netData.Response = NetDataBadRequest
         netData.Msg = "that action is not valid at this time"
@@ -1301,9 +1293,9 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         _, rawData, err := conn.ReadMessage()
         if err != nil {
           if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-            fmt.Printf("Server.WSClient(): {%s}: cli: readConn() conn: %p err: %v\n", room.name, conn, err)
+            log.Error().Str("room", room.name).Err(err).Msgf("cli: readConn error on conn %p", conn)
           } else {
-            fmt.Printf("Server.WSClient(): {%s} cli: readConn() conn %p ws closed cleanly: %v\n", room.name, conn, err)
+            log.Debug().Str("room", room.name).Err(err).Msgf("cli: readConn conn %p ws closed cleanly", conn)
             cleanExit = true
           }
 
@@ -1316,20 +1308,17 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
         if err := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&nd);
           err != nil {
-          fmt.Printf("Server.WSClient(): {%s}: cli: %p had a problem decoding gob stream: %s\n",
-                     room.name, conn, err.Error())
+          log.Error().Str("room", room.name).Err(err).Msgf("cli: problem decoding gob stream from %p", conn)
 
           return
         }
 
         nd.Table = room.table
 
-        fmt.Printf("Server.WSClient(): {%s}: cli: recv %s (%d bytes) from %p\n",
-                   room.name, nd.NetActionToString(), len(rawData), conn)
+        log.Debug().Str("room", room.name).Str("action", nd.NetActionToString()).Int("bytes", len(rawData)).Msgf("cli: recv from %p", conn)
 
         if int64(len(rawData)) > server.MaxConnBytes {
-          fmt.Printf("Server.WSClient(): {%s}: cli: conn: %p sent too many bytes (> %v)\n",
-                     room.name, conn, server.MaxConnBytes)
+          log.Warn().Str("room", room.name).Int64("max", server.MaxConnBytes).Msgf("cli: conn %p sent too many bytes", conn)
           return
         }
 
@@ -1338,9 +1327,9 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
         _, rawData, err := conn.ReadMessage()
         if err != nil {
           if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-            fmt.Printf("Server.WSClient(): {%s}: web: readConn() conn: %p err: %v\n", room.name, conn, err)
+            log.Error().Str("room", room.name).Err(err).Msgf("web: readConn error on conn %p", conn)
           } else {
-            fmt.Printf("Server.WSClient(): {%s} web: readConn() conn %p ws closed cleanly: %v\n", room.name, conn, err)
+            log.Debug().Str("room", room.name).Err(err).Msgf("web: readConn conn %p ws closed cleanly", conn)
             cleanExit = true
           }
 
@@ -1349,8 +1338,7 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 
         err = msgpack.Unmarshal(rawData, &netData)
         if err != nil {
-          fmt.Printf("Server.WSClient(): {%s}: web: %p had a problem decoding msgpack steam: %s\n",
-                     room.name, conn, err.Error())
+          log.Error().Str("room", room.name).Err(err).Msgf("web: problem decoding msgpack stream from %p", conn)
 
           return
         }
@@ -1363,12 +1351,10 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
             netData.Client.Settings = &ClientSettings{}
           }
         } else {
-          fmt.Printf("Server.WSClient(): {%s}: web: WARNING: (%p) netData.HasClient() == false\n", room.name, conn)
+          log.Warn().Str("room", room.name).Msgf("web: (%p) netData.HasClient() == false", conn)
         }
 
-        fmt.Printf("Server.WSClient(): {%s}: web: recv msgpack: %v nd.Request == %v\n",
-                   room.name, netData, netData.Request)
-        fmt.Printf("Server.WSClient(): {%s}: web: nd %s\n", room.name, netData.NetActionToString())
+        log.Debug().Str("room", room.name).Str("action", netData.NetActionToString()).Msgf("web: recv msgpack, request=%v", netData.Request)
         if netData.room == nil {
           netData.room = room
         }
@@ -1388,11 +1374,11 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 } // func end
 
 func (server *Server) Run() error {
-  fmt.Printf("Server.Run(): starting server on %v\n", server.http.Addr)
+  log.Info().Str("addr", server.http.Addr).Msg("starting server")
 
   go func() {
     if err := server.http.ListenAndServe(); err != nil {
-      fmt.Printf("Server.Run(): http.ListenAndServe(): %s\n", err.Error())
+      log.Error().Err(err).Msg("http.ListenAndServe failed")
     }
   }()
 
@@ -1401,7 +1387,7 @@ func (server *Server) Run() error {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    fmt.Fprintf(os.Stderr, "received signal: %s\n", sig.String())
+    log.Info().Str("signal", sig.String()).Msg("received signal")
 
     // TODO: ignore irrelevant signals
     for _, room := range server.rooms {
@@ -1409,7 +1395,7 @@ func (server *Server) Run() error {
     }
 
     if err := server.http.Shutdown(ctx); err != nil {
-      fmt.Fprintf(os.Stderr, "server.http.Shutdown(): %s\n", err.Error())
+      log.Error().Err(err).Msg("server.http.Shutdown failed")
       return err
     }
 
@@ -1418,10 +1404,10 @@ func (server *Server) Run() error {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    fmt.Fprintf(os.Stderr, "irrecoverable server error: %s\n", err.Error())
+    log.Error().Err(err).Msg("irrecoverable server error")
 
     if err := server.http.Shutdown(ctx); err != nil {
-      fmt.Fprintf(os.Stderr, "server.http.Shutdown(): %s\n", err.Error())
+      log.Error().Err(err).Msg("server.http.Shutdown failed")
       return err
     }
 

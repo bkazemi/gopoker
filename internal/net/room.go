@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/bkazemi/gopoker/internal/playerState"
 	"github.com/bkazemi/gopoker/internal/poker"
 	"github.com/gorilla/websocket"
@@ -81,42 +82,42 @@ func (room *Room) sendResponseToAll(netData *NetData, except *Client) {
 
 func (room *Room) getPlayerClient(player *poker.Player) *Client {
   if (player == nil ) {
-    fmt.Printf("Room.getPlayerClient(): {%s}: player == nil\n", room.name)
+    log.Error().Str("room", room.name).Msg("player is nil")
     return nil
   }
 
   if client, ok := room.clients.ByPlayer(player); ok {
     return client
   }
-  fmt.Printf("Room.getPlayerClient(): {%s}: WARNING: player (%s) not found in playerClientMap\n", room.name, player.Name)
+  log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in playerClientMap")
 
   for _, client := range room.clients.All() {
     if client.Player != nil && client.Player.Name == player.Name {
       return client
     }
   }
-  fmt.Printf("Room.getPlayerClient(): {%s}: WARNING: player %s not found in connClientMap\n", room.name, player.Name)
+  log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in connClientMap")
 
   return nil
 }
 
 func (room *Room) getPlayerConn(player *poker.Player) *websocket.Conn {
   if (player == nil) {
-    fmt.Printf("Room.getPlayerConn(): {%s}: player == nil\n", room.name)
+    log.Error().Str("room", room.name).Msg("player is nil")
     return nil
   }
 
   if client, ok := room.clients.ByPlayer(player); ok {
     return client.conn
   }
-  fmt.Printf("Room.getPlayerConn(): {%s}: WARNING: player (%s) not found in playerClientMap\n", room.name, player.Name)
+  log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in playerClientMap")
 
   for _, client := range room.clients.All() {
     if client.Player != nil && client.Player.Name == player.Name {
       return client.conn
     }
   }
-  fmt.Printf("Room.getPlayerConn(): {%s}: WARNING: player %s not found in connClientMap\n", room.name, player.Name)
+  log.Warn().Str("room", room.name).Str("player", player.Name).Msg("player not found in connClientMap")
 
   return nil
 }
@@ -126,7 +127,7 @@ func (room *Room) removeClient(client *Client) {
   defer room.table.Mtx().Unlock()
 
   if (client == nil) {
-    fmt.Printf("Room.removeClient(): {%s}: client == nil\n", room.name)
+    log.Error().Str("room", room.name).Msg("client is nil")
     return
   }
 
@@ -151,26 +152,26 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 
   room.table.Mtx().Lock()
   defer func() {
-    fmt.Printf("Room.removePlayer(): {%s}: cleanup defer CALLED\n", room.name);
+    log.Debug().Str("room", room.name).Msg("cleanup defer called");
     if reset {
       if calledFromClientExit || movedToSpectator {
         room.Lock()
       }
 
       if noPlayersLeft {
-        fmt.Printf("Room.removePlayers(): {%s}: no players left, resetting\n", room.name)
+        log.Debug().Str("room", room.name).Msg("no players left, resetting")
         room.table.Reset(nil)
         room.sendReset(nil)
       } else if !calledFromClientExit && !movedToSpectator {
-        fmt.Printf("Room.removePlayer(): {%s}: !calledFromClientExit, returning\n", room.name)
+        log.Debug().Str("room", room.name).Msg("!calledFromClientExit, returning")
         return
       } else if room.table.State == poker.TableStateNotStarted {
-        fmt.Printf("Room.removePlayer(): {%s}: State == poker.TableStateNotStarted\n", room.name)
+        log.Debug().Str("room", room.name).Msg("state == TableStateNotStarted")
       } else {
         // XXX: if a player who hasn't bet preflop is
         //      the last player left he receives the mainpot chips.
         //      if he's a blind he should also get (only) his blind chips back.
-        fmt.Printf("Room.removePlayer(): {%s}: state != (rndovr || gameovr)\n", room.name)
+        log.Debug().Str("room", room.name).Msg("state != (rndovr || gameovr)")
 
         room.table.FinishRound()
         room.table.State = poker.TableStateGameOver
@@ -186,7 +187,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
         room.Lock()
       }
 
-      fmt.Printf("Room.removePlayer(): {%s}: defer postPlayerAction\n", room.name)
+      log.Debug().Str("room", room.name).Msg("defer postPlayerAction")
       room.postPlayerAction(nil, &NetData{})
 
       if calledFromClientExit || movedToSpectator {
@@ -202,7 +203,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
     playerName := player.Name
     hadDefaultName := client.Name == player.DefaultName()
 
-    fmt.Printf("Room.removePlayer(): {%s}: removing %s\n", room.name, playerName)
+    log.Debug().Str("room", room.name).Str("player", playerName).Msg("removing player")
 
     table.ActivePlayers().RemovePlayer(player)
     table.CurPlayers().RemovePlayer(player)
@@ -270,7 +271,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 
 func (room *Room) sendPlayerTurn(client *Client) {
   if room.table.CurPlayer() == nil {
-    fmt.Printf("Room.sendPlayerTurn(): {%s}: curPlayer == nil\n", room.name)
+    log.Warn().Str("room", room.name).Msg("curPlayer is nil")
     return
   }
 
@@ -300,7 +301,7 @@ func (room *Room) sendPlayerTurn(client *Client) {
 
 func (room *Room) sendPlayerTurnToAll() {
   if room.table.CurPlayer() == nil {
-    fmt.Printf("Room.sendPlayerTurnToAll(): {%s}: curPlayer == nil\n", room.name)
+    log.Warn().Str("room", room.name).Msg("curPlayer is nil")
     return
   }
 
@@ -330,7 +331,7 @@ func (room *Room) sendPlayerTurnToAll() {
 // XXX: this response gets sent too often
 func (room *Room) sendPlayerHead(client *Client, clear bool) {
   if clear {
-    fmt.Printf("Room.sendPlayerHead(): {%s}: sending clear player head\n", room.name)
+    log.Debug().Str("room", room.name).Msg("sending clear player head")
     netData := &NetData{
       Response: NetDataPlayerHead,
     }
@@ -350,8 +351,7 @@ func (room *Room) sendPlayerHead(client *Client, clear bool) {
     playerHead := playerHeadNode.Player
     playerHeadClient := room.getPlayerClient(playerHead)
     if playerHeadClient == nil {
-      fmt.Printf("Room.sendPlayerHead(): {%s}: playerHead client not found for <%s>, clearing player head\n",
-                 room.name, playerHead.Name)
+      log.Warn().Str("room", room.name).Str("player", playerHead.Name).Msg("playerHead client not found, clearing")
       room.sendPlayerHead(client, true)
       return
     }
@@ -369,8 +369,7 @@ func (room *Room) sendPlayerHead(client *Client, clear bool) {
 }
 
 func (room *Room) sendPlayerActionToAll(player *poker.Player, client *Client) {
-  fmt.Printf("Room.sendPlayerActionToAll(): {%s}: <%s> sending %s\n",
-             room.name, player.Name, player.ActionToString())
+  log.Debug().Str("room", room.name).Str("player", player.Name).Str("action", player.ActionToString()).Msg("sending player action")
 
   var c *Client
   if client == nil {
@@ -442,7 +441,7 @@ func (room *Room) sendCurHands() {
 
 func (room *Room) sendActivePlayers(client *Client) {
   if client == nil {
-    fmt.Printf("Room.sendActivePlayers(): {%s}: conn is nil\n", room.name)
+    log.Warn().Str("room", room.name).Msg("client is nil")
     return
   }
 
@@ -532,8 +531,7 @@ func (room *Room) removeEliminatedPlayers() {
 }
 
 func (room *Room) sendLock(conn *websocket.Conn, connType string) {
-  fmt.Printf("Room.sendLock(): {%s}: locked out %p with %s\n", room.name, conn,
-             room.table.TableLockToString())
+  log.Warn().Str("room", room.name).Str("lock", room.table.TableLockToString()).Msgf("locked out %p", conn)
 
   netData := &NetData{
     room: room,
@@ -548,7 +546,7 @@ func (room *Room) sendLock(conn *websocket.Conn, connType string) {
 }
 
 func (room *Room) sendBadAuth(conn *websocket.Conn, connType string) {
-  fmt.Printf("Room.sendBadAuth(): {%s}: %p had bad authentication\n", room.name, conn)
+  log.Warn().Str("room", room.name).Msgf("bad authentication from %p", conn)
 
   netData := &NetData{
     room: room,
@@ -573,11 +571,11 @@ func (room *Room) getRoomSettings() *RoomSettings {
 
 func (room *Room) makeAdmin(client *Client) {
   if client == nil {
-    fmt.Printf("Room.makeAdmin(): {%s}: client is nil, unsetting tableAdmin\n", room.name)
+    log.Debug().Str("room", room.name).Msg("client is nil, unsetting tableAdmin")
     room.tableAdminID = ""
     return
   } else {
-    fmt.Printf("Room.makeAdmin(): {%s}: making <%s> table admin\n", room.name, client.FullName(false))
+    log.Info().Str("room", room.name).Str("client", client.FullName(false)).Msg("making table admin")
     room.tableAdminID = client.ID
   }
 
@@ -649,7 +647,7 @@ func (room *Room) roundOver() {
 }
 
 func (room *Room) gameOver() {
-  fmt.Printf("Room.gameOver(): {%s}: ** game over %s wins **\n", room.name, room.table.Winners[0].Name)
+  log.Info().Str("room", room.name).Str("winner", room.table.Winners[0].Name).Msg("game over")
   winner := room.table.Winners[0]
 
   netData := &NetData{
@@ -663,7 +661,7 @@ func (room *Room) gameOver() {
 
   winnerClient := room.getPlayerClient(winner)
   if winnerClient == nil {
-    fmt.Printf("Room.getPlayerClient(): {%s}: winner (%s) not found in any maps\n", room.name, winner.Name)
+    log.Warn().Str("room", room.name).Str("winner", winner.Name).Msg("winner not found in any maps")
     room.makeAdmin(nil)
     room.sendReset(nil)
     return
@@ -679,8 +677,7 @@ func (room *Room) gameOver() {
 // XXX: need to add to sidepots
 func (room *Room) checkBlindsAutoAllIn() {
   if room.table.SmallBlind.Player.Action.Action == playerState.AllIn {
-    fmt.Printf("Room.checkBlindsAutoAllIn(): {%s}: smallblind (%s) forced to go all in\n",
-               room.name, room.table.SmallBlind.Player.Name)
+    log.Debug().Str("room", room.name).Str("player", room.table.SmallBlind.Player.Name).Msg("smallblind forced all-in")
 
     if room.table.CurPlayer().Player.Name == room.table.SmallBlind.Player.Name {
       // because blind is curPlayer SetNextPlayerTurn() will remove the blind
@@ -693,8 +690,7 @@ func (room *Room) checkBlindsAutoAllIn() {
     room.sendPlayerActionToAll(room.table.SmallBlind.Player, nil)
   }
   if room.table.BigBlind.Player.Action.Action == playerState.AllIn {
-    fmt.Printf("Room.checkBlindsAutoAllIn(): {%s}: bigblind (%s) forced to go all in\n",
-               room.name, room.table.BigBlind.Player.Name)
+    log.Debug().Str("room", room.name).Str("player", room.table.BigBlind.Player.Name).Msg("bigblind forced all-in")
 
     if room.table.CurPlayer().Player.Name == room.table.BigBlind.Player.Name {
       // because blind is curPlayer SetNextPlayerTurn() will remove the blind
@@ -715,10 +711,10 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
     room.sendPlayerTurnToAll()
   }
 
-  fmt.Println("Room.postBetting(): done betting...")
+  log.Debug().Msg("done betting")
 
   if room.table.BettingIsImpossible() {
-    fmt.Println("Room.postBetting(): no more betting possible this round")
+    log.Debug().Msg("no more betting possible this round")
 
     tmpReq := netData.Request
     tmpClient := netData.Client
@@ -767,7 +763,7 @@ func (room *Room) postBetting(player *poker.Player, netData *NetData, client *Cl
     room.table.SetBetter(nil)
 
     for _, player := range room.table.CurPlayers().ToPlayerArray() {
-      fmt.Printf("Room.postBetting(): clearing %v's action\n", player.Name)
+      log.Debug().Str("player", player.Name).Msg("clearing action")
       player.Action.Clear()
     }
 
@@ -791,8 +787,7 @@ func (room *Room) postPlayerAction(client *Client, netData *NetData) {
     // all other players folded before all comm cards were dealt
     // TODO: check for this state in a better fashion
     room.table.FinishRound()
-    fmt.Printf("winner # %d\n", len(room.table.Winners))
-    fmt.Println(room.table.Winners[0].Name + " wins by folds")
+    log.Debug().Int("numWinners", len(room.table.Winners)).Str("winner", room.table.Winners[0].Name).Msg("wins by folds")
 
     netData.Response = NetDataRoundOver
     netData.Table = room.table
@@ -854,7 +849,7 @@ func (room *Room) handleClientSettings(client *Client, settings *ClientSettings)
       return // log err in caller to keep this defer small and clean
     }
 
-    fmt.Printf("Room.handleClientSettings(): <%s> %s\n", client.FullName(false), m)
+    log.Debug().Str("client", client.FullName(false)).Msg(m)
   }()
 
   msg := ""
@@ -916,7 +911,7 @@ func (room *Room) handleRoomSettings(client *Client, settings *RoomSettings) (m 
       return
     }
 
-    fmt.Printf("Room.handleRoomSettings(): <%s> %s\n", client.FullName(false), m)
+    log.Debug().Str("client", client.FullName(false)).Msg(m)
   }()
 
   const MaxPassLen uint8 = 50
@@ -973,13 +968,13 @@ func commState2NetDataResponse(room *Room) NetAction {
     return netDataResponse
   }
 
-  fmt.Printf("Room.commState2NetDataResponse(): bad state `%v`\n", room.table.CommState)
+  log.Error().Msgf("bad commState `%v`", room.table.CommState)
   return NetDataBadRequest
 }
 
 func (room *Room) applyClientSettings(client *Client, settings *ClientSettings) {
   if settings == nil {
-    fmt.Printf("Room.applyClientSettings(): %s had nil ClientSettings, using defaults\n", client.Name)
+    log.Warn().Str("client", client.Name).Msg("nil ClientSettings, using defaults")
     settings = NewClientSettings()
   }
   client.Settings = settings
@@ -1024,10 +1019,10 @@ func (room *Room) newClient(conn *websocket.Conn, connType string, clientSetting
       break
     } else {
       if foundID {
-        fmt.Printf("room.newClient(): WARNING: possible bug: ID '%s' already found in IDClientMap\n", ID)
+        log.Warn().Str("ID", ID).Msg("possible bug: ID already found in IDClientMap")
       }
       if foundPrivID {
-        fmt.Printf("room.newClient(): WARNING: possible bug: privID '%s' already found in privIDClientMap\n", privID)
+        log.Warn().Str("privID", privID).Msg("possible bug: privID already found in privIDClientMap")
       }
     }
   }

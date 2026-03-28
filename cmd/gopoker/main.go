@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/bkazemi/gopoker/internal/cli"
+	_ "github.com/bkazemi/gopoker/internal/log"
+	"github.com/rs/zerolog/log"
 	"github.com/bkazemi/gopoker/internal/net"
 	"github.com/bkazemi/gopoker/internal/poker"
 
@@ -40,7 +42,7 @@ func runClient(opts options) (err error) {
     opts.addr = "wss://" + opts.addr
   }
 
-  fmt.Fprintf(os.Stderr, "connecting to %s ...\n", opts.addr)
+  log.Info().Str("addr", opts.addr).Msg("connecting")
   conn, resp, err := websocket.DefaultDialer.Dial(opts.addr, nil)
   if err != nil {
     if resp != nil && resp.StatusCode == http.StatusNotFound {
@@ -57,8 +59,7 @@ func runClient(opts options) (err error) {
 
     req, err := http.NewRequest("GET", "http://"+opts.addr[5:], nil)
     if err != nil {
-      fmt.Fprintf(os.Stderr, "problem setting up keepalive request %s\n",
-                  err.Error())
+      log.Error().Err(err).Msg("problem setting up keepalive request")
 
       return
     }
@@ -69,8 +70,7 @@ func runClient(opts options) (err error) {
 
       _, err := client.Do(req)
       if err != nil {
-        fmt.Fprintf(os.Stderr, "problem sending a keepalive request %s\n",
-                    err.Error())
+        log.Error().Err(err).Msg("problem sending keepalive request")
 
         return
       }
@@ -78,7 +78,7 @@ func runClient(opts options) (err error) {
   }()
 
   defer func() {
-    fmt.Fprintf(os.Stderr, "closing connection\n")
+    log.Info().Msg("closing connection")
 
     (&net.NetData{
       Request: net.NetDataClientExited,
@@ -90,7 +90,7 @@ func runClient(opts options) (err error) {
     err := conn.WriteMessage(websocket.CloseMessage,
       websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
     if err != nil {
-      fmt.Fprintf(os.Stderr, "write close err: %s\n", err.Error())
+      log.Error().Err(err).Msg("write close error")
     }
 
     /*select {
@@ -117,11 +117,11 @@ func runClient(opts options) (err error) {
       if frontEnd != nil {
         frontEnd.Finish() <- poker.PanicRetToError(err)
       }
-      fmt.Printf("recover() done\n")
+      log.Debug().Msg("recover() done")
     }
   }
 
-  fmt.Fprintf(os.Stderr, "connected to %s\n", opts.addr)
+  log.Info().Str("addr", opts.addr).Msg("connected")
 
   // listen for messages from the server and send them to the frontend
   go func() {
@@ -154,7 +154,7 @@ func runClient(opts options) (err error) {
       netData := &net.NetData{}
       dec := gob.NewDecoder(bytes.NewReader(data))
       if err := dec.Decode(&netData); err != nil {
-        fmt.Printf("runClient(): problem decoding gob stream %s\n", err.Error())
+        log.Error().Err(err).Msg("problem decoding gob stream")
 
         frontEnd.Finish() <- errors.New("server had a problem decoding a gob stream")
         return
@@ -177,7 +177,7 @@ func runClient(opts options) (err error) {
       select {
       case err := <-frontEnd.Error(): // error from front-end
         if err != nil {
-          fmt.Fprintf(os.Stderr, "front-end err: %s\n", err.Error())
+          log.Error().Err(err).Msg("front-end error")
         }
         return
       case netData := <-frontEnd.OutputChan():
@@ -295,7 +295,7 @@ func main() {
   flag.Parse()
 
   if numSeats > uint(^uint8(0)) {
-    fmt.Printf("main(): numSeats %v is too large\n", numSeats)
+    log.Error().Uint("numSeats", numSeats).Msg("numSeats is too large")
     return
   }
 
@@ -308,7 +308,6 @@ func main() {
   }()*/
 
   if err := runGame(opts); err != nil {
-    fmt.Println(err)
-    return
+    log.Fatal().Err(err).Msg("fatal error")
   }
 }

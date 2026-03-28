@@ -2,8 +2,9 @@ package poker
 
 import (
 	"errors"
-	"fmt"
 	"sort"
+
+	"github.com/rs/zerolog/log"
 )
 
 // ranks
@@ -150,8 +151,7 @@ func cardNumToString(card *Card) error {
 
   name := cardNumStringMap[card.NumValue]
   if name == "" {
-    fmt.Println("cardNumToString(): BUG: couldn't find cardNum name")
-    fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
+    log.Error().Str("cardName", card.Name).Uint8("numValue", uint8(card.NumValue)).Uint8("suit", uint8(card.Suit)).Msg("BUG: couldn't find cardNum name")
     return errors.New("cardNumToString")
   }
 
@@ -165,8 +165,7 @@ func cardNumToString(card *Card) error {
   suitName := cardSuitStringMap[card.Suit]
   if suitName == nil {
     // TODO: fix redundancy.
-    fmt.Println("cardNumToString(): BUG: couldn't find suitName")
-    fmt.Printf("c: %s %d %d\n", card.Name, card.NumValue, card.Suit)
+    log.Error().Str("cardName", card.Name).Uint8("numValue", uint8(card.NumValue)).Uint8("suit", uint8(card.Suit)).Msg("BUG: couldn't find suitName")
     return errors.New("cardNumToString")
   }
 

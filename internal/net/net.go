@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"os"
 
 	"github.com/bkazemi/gopoker/internal/poker"
+	"github.com/rs/zerolog/log"
 
 	"github.com/gorilla/websocket"
 	"github.com/vmihailenco/msgpack/v5"
@@ -247,7 +247,7 @@ func (netData *NetData) Send() {
   } else if netData.Client.conn == nil {
     // avoid a dedicated branch to circumvent race condition in Server.handleReconnect()
     if netData.Client.isDisconnected {
-      fmt.Fprintf(os.Stderr, "NetData.Send(): <%s> isDisconnected, skipping send\n", netData.Client.ID)
+      log.Debug().Str("client", netData.Client.ID).Msg("client disconnected, skipping send")
       return
     }
     panic("NetData.Send(): .Client.conn == nil")
@@ -267,7 +267,7 @@ func (netData *NetData) SendTo(client *Client) {
   } else if client.conn == nil {
     // avoid a dedicated branch to circumvent race condition in Server.handleReconnect()
     if client.isDisconnected {
-      fmt.Fprintf(os.Stderr, "NetData.SendTo(): <%s> isDisconnected, skipping send\n", client.FullName(false))
+      log.Debug().Str("client", client.FullName(false)).Msg("client disconnected, skipping send")
       return
     }
     panic("NetData.SendTo(): client.conn == nil")
@@ -317,7 +317,7 @@ func (netData *NetData) unwrappedSender(conn *websocket.Conn, connType string) {
       roomPrefix = "{" + netData.room.name + "}: "
     }
 
-    fmt.Fprintf(os.Stderr, "NETDATA: %sweb: sending: %v to %p\n", roomPrefix, netData.NetActionToString(), conn)
+    log.Debug().Str("room", roomPrefix).Str("action", netData.NetActionToString()).Msgf("web: sending to %p", conn)
 
     conn.WriteMessage(websocket.BinaryMessage, b)
   } else {
