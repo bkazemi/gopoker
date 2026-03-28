@@ -1,17 +1,19 @@
 package playerState
 
 type PlayerState uint64
+
 const (
-  FirstAction PlayerState = 1 << iota
-  AllIn
-  Bet
-  Call
-  Check
-  Fold
-  VacantSeat
-  PlayerTurn
-  MidroundAddition
+	FirstAction PlayerState = 1 << iota
+	AllIn
+	Bet
+	Call
+	Check
+	Fold
+	VacantSeat
+	PlayerTurn
+	MidroundAddition
 )
+
 /*NetDataAllIn:
 274:  case net.NetDataBet:
 276:  case net.NetDataCall:
