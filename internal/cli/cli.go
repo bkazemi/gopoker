@@ -3,7 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -988,7 +988,7 @@ func cliInputLoop(cli *CLI) {
 				for k := range poker.TableLockNameMap {
 					tableLockKeys = append(tableLockKeys, int(k))
 				}
-				sort.Ints(tableLockKeys)
+				slices.Sort(tableLockKeys)
 				tableLockOpts := make([]string, 0)
 				for _, lock := range tableLockKeys {
 					tableLockOpts = append(tableLockOpts, poker.TableLockNameMap[poker.TableLock(lock)])

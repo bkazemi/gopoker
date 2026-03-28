@@ -1,11 +1,8 @@
 package poker
 
 import (
-	"encoding/binary"
 	"errors"
-
-	crypto_rand "crypto/rand"
-	math_rand "math/rand"
+	"math/rand"
 
 	"github.com/rivo/uniseg"
 )
@@ -14,20 +11,6 @@ func Assert(cond bool, msg string) {
 	if !cond {
 		panic(msg)
 	}
-}
-
-func PlayerMapToArr(playerMap map[string]*Player) []*Player {
-	if playerMap == nil || len(playerMap) == 0 {
-		return []*Player{}
-	}
-
-	arr := make([]*Player, 0)
-
-	for _, p := range playerMap {
-		arr = append(arr, p)
-	}
-
-	return arr
 }
 
 // used to avoid execution of defers after a panic()
@@ -46,7 +29,7 @@ func (p *Panic) IfNoPanic(deferredFunc func()) {
 	}
 }
 
-func PanicRetToError(err interface{}) error {
+func PanicRetToError(err any) error {
 	var typedErr error
 
 	switch errType := err.(type) {
@@ -61,27 +44,14 @@ func PanicRetToError(err interface{}) error {
 	return typedErr
 }
 
-func RandSeed() {
-	var b [8]byte
-
-	_, err := crypto_rand.Read(b[:])
-	if err != nil {
-		panic("randSeed(): problem with crypto/rand")
-	}
-
-	math_rand.Seed(int64(binary.LittleEndian.Uint64(b[:])))
-}
-
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
 func RandString(n int) string {
 	b := make([]rune, n)
 
 	for i := range b {
-		b[i] = letters[math_rand.Intn(len(letters))]
+		b[i] = letters[rand.Intn(len(letters))]
 	}
-
-	RandSeed() // re-seed just in case
 
 	return string(b)
 }

@@ -435,7 +435,6 @@ func (server *Server) createNewRoom(w http.ResponseWriter, req *http.Request) {
 
 	deck := poker.NewDeck()
 
-	poker.RandSeed()
 	deck.Shuffle()
 
 	table, tableErr := poker.NewTable(deck, roomOpts.NumSeats, roomOpts.Lock, roomOpts.Password,

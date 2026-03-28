@@ -2,7 +2,7 @@ package poker
 
 import (
 	"errors"
-	"sort"
+	"slices"
 
 	"github.com/rs/zerolog/log"
 )
@@ -117,8 +117,8 @@ func (hand *Hand) RankName() string {
 }
 
 func cardsSort(cards *Cards) error {
-	sort.Slice((*cards), func(i, j int) bool {
-		return (*cards)[i].NumValue < (*cards)[j].NumValue
+	slices.SortFunc(*cards, func(a, b *Card) int {
+		return int(a.NumValue) - int(b.NumValue)
 	})
 
 	return nil

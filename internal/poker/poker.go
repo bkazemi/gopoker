@@ -2,6 +2,8 @@ package poker
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	//"net"
 
@@ -1914,11 +1916,7 @@ func (table *Table) FinishRound() {
 
 			playerMap[player.Name] = player
 		} else {
-			sidePotPlayersArr := make([]*Player, 0, len(sidePot.Players))
-			for _, player := range sidePot.Players { // TODO: make a mapval2slice util func
-				sidePotPlayersArr = append(sidePotPlayersArr, player)
-			}
-			bestPlayers := table.BestHand(sidePotPlayersArr, sidePot)
+			bestPlayers := table.BestHand(slices.Collect(maps.Values(sidePot.Players)), sidePot)
 
 			if len(bestPlayers) == 1 {
 				log.Debug().
@@ -1944,7 +1942,7 @@ func (table *Table) FinishRound() {
 		}
 	}
 
-	table.Winners = PlayerMapToArr(playerMap)
+	table.Winners = slices.Collect(maps.Values(playerMap))
 	for _, winner := range table.Winners {
 		log.Debug().
 			Str("winner", winner.Name).
