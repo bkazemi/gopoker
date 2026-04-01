@@ -203,17 +203,13 @@
     border: 1px solid rgba(var(--card-border-rgb), 0.5);
   }
 
-  .card:hover:not(.selectedCard) > h2 span img {
-    /*transform: translateX(4px);*/
-    animation: roll 0.7s ease-out forwards;
-    animation-iteration-count: 1;
-    backface-visibility: hidden;
+  .card:not(.selectedCard) > h2 span img {
+    transition: transform 0.7s linear;
   }
 
-  .card:not(.selectedCard, :hover) > h2 span img {
-    animation: roll-back 0.7s linear forwards;
-    animation-iteration-count: 1;
-    backface-visibility: hidden;
+  .card:hover:not(.selectedCard) > h2 span img {
+    transform: translateX(12px) rotate(360deg);
+    transition-timing-function: ease-out;
   }
 
   .selectedCard span img {
