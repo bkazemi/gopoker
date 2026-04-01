@@ -82,6 +82,7 @@ export default function NotFoundPage() {
             style={{
               alignSelf: 'flex-start',
               paddingLeft: '15px',
+              userSelect: 'none',
             }}
           >
             4
@@ -101,6 +102,7 @@ export default function NotFoundPage() {
             style={{
               alignSelf: 'flex-end',
               paddingRight: '15px',
+              userSelect: 'none',
             }}
           >
             4
