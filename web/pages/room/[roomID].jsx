@@ -22,6 +22,7 @@ const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice')
   ssr: false,
 });
 
+import useDeferredLoading from '@/lib/useDeferredLoading';
 import config from '@/serverConfig';
 
 import { NETDATA, NetData } from '@/lib/libgopoker';
@@ -254,6 +255,8 @@ const Connect = ({ roomID }) => {
     }
   });
 
+  const showConnectingSpinner = useDeferredLoading(!data && !error);
+
   if (error)
     return (
       <div
@@ -286,7 +289,7 @@ const Connect = ({ roomID }) => {
     );
 
   if (!data)
-    return <Spinner msg={'connecting to server...'} />;
+    return showConnectingSpinner ? <Spinner msg={'connecting to server...'} /> : null;
 
   return (
    <Tablenew
@@ -331,6 +334,10 @@ const RoomNotFound = ({ errMsg, router }) => (
     </div>
 );
 
+const TransitionPlaceholder = () => (
+  <div aria-hidden='true' />
+);
+
 function RoomPostDimCheck() {
   const router = useRouter();
   const { roomID } = router.query;
@@ -341,6 +348,7 @@ function RoomPostDimCheck() {
 
   const [roomNotFound, setRoomNotFound] = useState(undefined);
   const [checkRoomErr, setCheckRoomErr] = useState('');
+  const showCheckingSpinner = useDeferredLoading(roomNotFound === undefined);
 
   const prevRoomIDRef = useRef(roomID);
   const skipCheckRef = useRef(false);
@@ -415,11 +423,11 @@ function RoomPostDimCheck() {
   }, [websocketOpts, roomURL, reset, setGameOpts]);
 
   if (gameOpts.goHome)
-    return;
+    return <TransitionPlaceholder />;
 
   const render = () => {
     if (roomNotFound === undefined)
-      return <Spinner msg={'checking if room exists...'} />;
+      return showCheckingSpinner ? <Spinner msg={'checking if room exists...'} /> : <TransitionPlaceholder />;
 
     if (roomNotFound)
       return <RoomNotFound errMsg={checkRoomErr} router={router} />;
@@ -428,7 +436,7 @@ function RoomPostDimCheck() {
       return <NewGameForm isVisible={true} isDirectLink={true} />;
 
     if (!roomID)
-      return <Spinner msg={'loading room...'} />;
+      return <TransitionPlaceholder />;
 
     return <Connect roomID={roomID} />;
   };

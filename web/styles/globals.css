@@ -95,6 +95,14 @@ body {
   background: var(--background-color);
 }
 
+.appShell {
+  display: contents;
+}
+
+html.no-js .appShell {
+  display: none;
+}
+
 a {
   color: inherit;
   text-decoration: none;

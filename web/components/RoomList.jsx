@@ -7,6 +7,7 @@ import { Literata } from 'next/font/google';
 import cx from 'classnames';
 
 import { TABLE_LOCK } from '@/lib/libgopoker';
+import useDeferredLoading from '@/lib/useDeferredLoading';
 
 import styles from '@/styles/RoomList.module.css';
 
@@ -123,7 +124,7 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
 RoomListItem.displayName = 'RoomListItem';
 
 function RoomList({ isVisible, mode = 'card' }) {
-  const [curRoomCnt, setCurRoomCnt] = useState('fetching room count...');
+  const [curRoomCnt, setCurRoomCnt] = useState(null);
 
   const [roomList, setRoomList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -131,6 +132,8 @@ function RoomList({ isVisible, mode = 'card' }) {
   const [searchValue, setSearchValue] = useState('');
   const [searchRegex, setSearchRegex] = useState(null);
   const roomListRef = useRef(null);
+  const prevIsVisibleRef = useRef(isVisible);
+  const becameVisible = isVisible && !prevIsVisibleRef.current;
 
   const filteredRooms = useCallback(() => {
     if (!roomList.length)
@@ -151,6 +154,10 @@ function RoomList({ isVisible, mode = 'card' }) {
 
     return rooms;
   }, [roomList, searchRegex]);
+
+  useEffect(() => {
+    prevIsVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   useEffect(() => {
     const fetchRoomList = async () => {
@@ -177,15 +184,12 @@ function RoomList({ isVisible, mode = 'card' }) {
       }
     };
     const fetchCurRoomCnt = async () => {
-      setIsLoading(true);
-
       try {
         const roomCntRes = await fetch('/api/roomCount');
 
         if (roomCntRes.ok) {
           const roomCnt = await roomCntRes.json();
           setCurRoomCnt(roomCnt.roomCount);
-          setIsLoading(false);
         } else {
           throw new Error();
         }
@@ -205,17 +209,24 @@ function RoomList({ isVisible, mode = 'card' }) {
     setSearchRegex(escapedSearchVal ? new RegExp(`(${escapedSearchVal})`, 'gi') : null);
   }, [searchValue]);
 
+  const showLoading = useDeferredLoading(isVisible && (isLoading || becameVisible));
+  const showRoomCntLoading = useDeferredLoading(!isVisible && curRoomCnt === null);
+
   const isPageMode = mode === 'page';
 
+  const showRoomCnt = curRoomCnt !== null || showRoomCntLoading;
+  const roomCountText = (
+    <p className={exo.className} style={showRoomCnt ? undefined : { visibility: 'hidden' }}>
+      current games: { curRoomCnt !== null ? curRoomCnt : 'fetching room count...' }
+    </p>
+  );
+
   if (!isVisible) {
-    return (
-      <p className={exo.className}>
-        current games: { curRoomCnt }
-      </p>
-    );
+    return roomCountText;
   }
 
   if (isLoading) {
+    if (!showLoading) return roomCountText;
     return (
       <p className={exo.className}>fetching room list...</p>
     );

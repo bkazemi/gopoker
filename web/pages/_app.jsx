@@ -8,9 +8,7 @@ import cx from 'classnames';
 
 import { GameProvider } from '@/GameContext';
 
-const Header = dynamic(() => import('@/components/Header'), {
-  ssr: false,
-});
+import Header from '@/components/Header';
 const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice'), {
   ssr: false,
 });
@@ -20,6 +18,8 @@ import homeStyles from '@/styles/Home.module.css';
 
 const MainContent = ({ Component, pageProps, isCompactRoom, router }) => {
   const isInGame = router.pathname === '/room/[roomID]';
+  const isHomePage = router.pathname === '/';
+  const shouldCenterContent = isHomePage || isInGame;
 
   // confirm window exit only when in a game room
   useEffect(() => {
@@ -44,6 +44,7 @@ const MainContent = ({ Component, pageProps, isCompactRoom, router }) => {
     <div
       className={cx(
         homeStyles.center,
+        shouldCenterContent && homeStyles.centeredContent,
         isCompactRoom && homeStyles.compactCenter
       )}
       id='center'
@@ -97,9 +98,6 @@ const toggleLogging = (turnOff, dontLog) => {
 export default function App({ Component, pageProps, router }) {
   const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(undefined);
   const [isCompactRoom, setIsCompactRoom] = useState(false);
-  const [isJSEnabled, setIsJSEnabled] = useState(false);
-
-  const [isReadyForRender, setIsReadyForRender] = useState(false);
 
   // toggle logging for debugging
   useEffect(() => {
@@ -139,20 +137,14 @@ export default function App({ Component, pageProps, router }) {
     // global variable
     setIsCompactRoom(router.pathname === '/room/[roomID]'
       && window.roomURL && window?.innerWidth <= 1920);
-
-    setIsJSEnabled(true);
-    setIsReadyForRender(true);
   }, [router.pathname]);
-
-  if (!isReadyForRender)
-    return;
 
   return (
     <>
       <Head>
         <title>gopoker - shirkadeh.org</title>
         <meta name="header" content="gopoker webclient" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <GameProvider>
@@ -162,13 +154,14 @@ export default function App({ Component, pageProps, router }) {
             isCompactRoom && homeStyles.compactMain
           )}
         >
-          {
-            !isJSEnabled
-              ? <JSDisabled />
-              : isUnsupportedDevice
-                  ? <UnsupportedDevice isVisible={true} showHomeBtn={false} />
-                  : <MainContent {...{Component, pageProps, router, isCompactRoom}} />
-          }
+          <div className="appShell">
+            {
+              isUnsupportedDevice
+                ? <UnsupportedDevice isVisible={true} showHomeBtn={false} />
+                : <MainContent {...{Component, pageProps, router, isCompactRoom}} />
+            }
+          </div>
+          <noscript><JSDisabled /></noscript>
         </main>
       </GameProvider>
     </>

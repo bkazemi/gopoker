@@ -8,6 +8,8 @@ import cx from 'classnames';
 
 import { GameContext } from '@/GameContext';
 
+import useDeferredLoading from '@/lib/useDeferredLoading';
+
 import homeStyles from '@/styles/Home.module.css';
 
 const mPlus = M_PLUS_Code_Latin({ subsets: ['latin'], weight: '700' });
@@ -16,17 +18,19 @@ export default function Header({ isTableHeader }) {
   const { gameOpts } = useContext(GameContext);
 
   const router = useRouter();
+  const isHomePage = router.pathname === '/';
 
-  const [headerInfo, setHeaderInfo] = useState('fetching...');
+  const [headerInfo, setHeaderInfo] = useState(null);
   const [headerError, setHeaderError] = useState(false);
+  const showHeaderLoading = useDeferredLoading(headerInfo === null);
   const [headerChipLoaded, setHeaderChipLoaded] = useState(false);
 
-  const [isHomePage, setIsHomePage] = useState(router.pathname === '/');
-
-  const [windowWidth, setWindowWidth] = useState(window?.innerWidth);
-  const [isCompactRoom, setIsCompactRoom] =
-    useState(router.pathname === '/room/[roomID]' && gameOpts.roomURL
-      && window?.innerWidth <= 1920);
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 0
+  );
+  const isCompactRoom = router.pathname === '/room/[roomID]'
+    && !!gameOpts.roomURL
+    && windowWidth <= 1920;
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -40,7 +44,8 @@ export default function Header({ isTableHeader }) {
     const isHomePage = pathname === '/';
     const URL = `/api/${isHomePage ? 'status' : 'roomCount'}`;
 
-    setIsHomePage(isHomePage);
+    setHeaderInfo(null);
+    setHeaderError(false);
 
     try {
       const res = await fetch(URL);
@@ -67,15 +72,8 @@ export default function Header({ isTableHeader }) {
     fetchHeaderInfo(router.pathname);
   }, [router.pathname, fetchHeaderInfo]);
 
-  useEffect(() => {
-    const isConnectedRoom = router.pathname === '/room/[roomID]' && gameOpts.roomURL;
-    const winWidth = windowWidth || window.innerWidth;
-
-    setIsCompactRoom(isConnectedRoom && winWidth <= 1920);
-  }, [router.pathname, gameOpts.roomURL, windowWidth]);
-
   if (!shouldRenderHeader)
-    return;
+    return null;
 
   return (
     <div className={cx(
@@ -104,7 +102,9 @@ export default function Header({ isTableHeader }) {
         </div>
         <h1>poker</h1>
       </div>
-      <p>
+      <p style={{
+        visibility: headerInfo !== null || showHeaderLoading ? 'visible' : 'hidden'
+      }}>
         { isHomePage ? 'server status:' : 'current games:' }
         &nbsp;
         <span
@@ -112,7 +112,7 @@ export default function Header({ isTableHeader }) {
             color: headerError ? 'red' : isHomePage ? 'green' : 'inherit'
           }}
         >
-          { headerInfo }
+          { headerInfo !== null ? headerInfo : 'fetching...' }
         </span>
       </p>
     </div>

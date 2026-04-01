@@ -6,6 +6,7 @@ import { Literata } from 'next/font/google';
 import {GameContext} from '@/GameContext';
 import UnsupportedDevice from './UnsupportedDevice';
 import Spinner from '@/components/Spinner';
+import useDeferredLoading from '@/lib/useDeferredLoading';
 
 import config from '@/serverConfig';
 
@@ -39,6 +40,7 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
 
   const [fetchCalled, setFetchCalled] = useState(false);
   const [error, setError] = useState('');
+  const showCreatingSpinner = useDeferredLoading(isVisible && !fetchCalled && !error);
 
   const router = useRouter();
 
@@ -129,6 +131,9 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
         </button>
       </div>
     );
+
+  if (!showCreatingSpinner)
+    return null;
 
   return (
     <Spinner msg={'creating new room...'} />
