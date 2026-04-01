@@ -4,6 +4,8 @@ import { useRouter } from 'next/router';
 import { Exo } from 'next/font/google';
 import { Literata } from 'next/font/google';
 
+import cx from 'classnames';
+
 import { TABLE_LOCK } from '@/lib/libgopoker';
 
 import styles from '@/styles/RoomList.module.css';
@@ -120,7 +122,7 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
 
 RoomListItem.displayName = 'RoomListItem';
 
-function RoomList({ isVisible }) {
+function RoomList({ isVisible, mode = 'card' }) {
   const [curRoomCnt, setCurRoomCnt] = useState('fetching room count...');
 
   const [roomList, setRoomList] = useState([]);
@@ -128,7 +130,6 @@ function RoomList({ isVisible }) {
   const [error, setError] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [searchRegex, setSearchRegex] = useState(null);
-
   const roomListRef = useRef(null);
 
   const filteredRooms = useCallback(() => {
@@ -153,6 +154,9 @@ function RoomList({ isVisible }) {
 
   useEffect(() => {
     const fetchRoomList = async () => {
+      setError(false);
+      setIsLoading(true);
+
       try {
         const listRes = await fetch('/api/roomList');
         if (listRes.ok) {
@@ -163,6 +167,7 @@ function RoomList({ isVisible }) {
               tableLock: TABLE_LOCK.toString(room.tableLock),
           }));
           setRoomList(roomList);
+          setIsLoading(false);
         } else {
           throw new Error();
         }
@@ -172,6 +177,8 @@ function RoomList({ isVisible }) {
       }
     };
     const fetchCurRoomCnt = async () => {
+      setIsLoading(true);
+
       try {
         const roomCntRes = await fetch('/api/roomCount');
 
@@ -198,6 +205,8 @@ function RoomList({ isVisible }) {
     setSearchRegex(escapedSearchVal ? new RegExp(`(${escapedSearchVal})`, 'gi') : null);
   }, [searchValue]);
 
+  const isPageMode = mode === 'page';
+
   if (!isVisible) {
     return (
       <p className={exo.className}>
@@ -218,30 +227,45 @@ function RoomList({ isVisible }) {
     );
   }
 
-  return (
-    <>
-      <div
-        className={styles.search}
-        onClick={e => e.stopPropagation()}
-      >
-        <label
-          className={exo.className}
-        >
-          search
-        </label>
-        <input
-          value={searchValue}
-          onChange={e => setSearchValue(e.target.value)}
-        />
-      </div>
+  const rooms = filteredRooms();
+
+  const searchBar = (
+    <div
+      className={cx(styles.search, isPageMode && styles.pageSearch)}
+      onClick={e => e.stopPropagation()}
+    >
+      <label className={exo.className}>search</label>
+      <input
+        value={searchValue}
+        onChange={e => setSearchValue(e.target.value)}
+      />
+    </div>
+  );
+
+  if (!isPageMode) {
+    return <>
+      { searchBar }
       <div
         ref={roomListRef}
         className={isVisible ? styles.roomList : 'hidden'}
         onClick={e => e.stopPropagation()}
       >
-      { filteredRooms() }
+        { rooms }
       </div>
-    </>
+    </>;
+  }
+
+  return (
+    <div className={styles.pageContainer}>
+      { searchBar }
+      <div
+        ref={roomListRef}
+        className={styles.pageResults}
+        onClick={e => e.stopPropagation()}
+      >
+        { rooms }
+      </div>
+    </div>
   );
 }
 
