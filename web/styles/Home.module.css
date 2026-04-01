@@ -28,7 +28,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 30px;
-  transform: scale(0.8);
+  zoom: 0.8;
 }
 
 .header h1 {
@@ -66,10 +66,17 @@
   transition: opacity 2s;
 }
 
-.logo img {
+.logoChip {
+  width: 75px;
+  height: 75px;
   align-self: flex-end;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.logoChip img {
   animation: spin 25s linear infinite;
-  transform: translateZ(0);
+  will-change: transform;
 }
 
 .pauseAnimation {
@@ -77,8 +84,8 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from { transform: rotate(0deg) translateZ(0); }
+  to { transform: rotate(360deg) translateZ(0); }
 }
 
 @keyframes roll {

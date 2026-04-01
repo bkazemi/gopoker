@@ -15,8 +15,6 @@ const mPlus = M_PLUS_Code_Latin({ subsets: ['latin'], weight: '700' });
 export default function Header({ isTableHeader }) {
   const { gameOpts } = useContext(GameContext);
 
-  const logoImgRef = useRef(null);
-
   const router = useRouter();
 
   const [headerInfo, setHeaderInfo] = useState('fetching...');
@@ -58,9 +56,12 @@ export default function Header({ isTableHeader }) {
     }
   }, []);
 
+  const logoImgRef = useRef(null);
+  const shouldRenderHeader = !!isCompactRoom === !!isTableHeader; // both true or both false
+
   const toggleSpin = useCallback(() => {
     logoImgRef.current?.classList.toggle(homeStyles.pauseAnimation);
-  }, [logoImgRef]);
+  }, []);
 
   useEffect(() => {
     fetchHeaderInfo(router.pathname);
@@ -73,7 +74,7 @@ export default function Header({ isTableHeader }) {
     setIsCompactRoom(isConnectedRoom && winWidth <= 1920);
   }, [router.pathname, gameOpts.roomURL, windowWidth]);
 
-  if ((isCompactRoom && !isTableHeader) || (!isCompactRoom && isTableHeader))
+  if (!shouldRenderHeader)
     return;
 
   return (
@@ -89,16 +90,18 @@ export default function Header({ isTableHeader }) {
         }}
       >
         <h1>g</h1>
-        <Image
-          ref={logoImgRef}
-          priority
-          src={'/pokerchip3.png'}
-          width={75}
-          height={75}
-          alt='o'
-          onClick={toggleSpin}
-          onLoad={() => setHeaderChipLoaded(true)}
-        />
+        <div className={homeStyles.logoChip}>
+          <Image
+            ref={logoImgRef}
+            priority
+            src={'/pokerchip3.png'}
+            width={75}
+            height={75}
+            alt='o'
+            onClick={toggleSpin}
+            onLoad={() => setHeaderChipLoaded(true)}
+          />
+        </div>
         <h1>poker</h1>
       </div>
       <p>

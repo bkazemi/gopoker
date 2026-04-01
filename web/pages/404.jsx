@@ -30,7 +30,8 @@ export default function NotFoundPage() {
 
         .spinChipImg {
           animation: spin 40s linear infinite;
-          transform: translateZ(0);
+          will-change: transform;
+          line-height: 0;
         }
 
         @keyframes fadeInAnimation {
@@ -44,10 +45,10 @@ export default function NotFoundPage() {
 
         @keyframes spin {
           from {
-            transform: rotate(360deg);
+            transform: rotate(360deg) translateZ(0);
           }
           to {
-            transform: rotate(0deg);
+            transform: rotate(0deg) translateZ(0);
           }
         }
       `}</style>
