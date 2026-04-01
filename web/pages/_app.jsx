@@ -18,9 +18,13 @@ const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice')
 import '@/styles/globals.css';
 import homeStyles from '@/styles/Home.module.css';
 
-const MainContent = ({ Component, pageProps, isCompactRoom }) => {
-  // confirm window exit
+const MainContent = ({ Component, pageProps, isCompactRoom, router }) => {
+  const isInGame = router.pathname === '/room/[roomID]';
+
+  // confirm window exit only when in a game room
   useEffect(() => {
+    if (!isInGame) return;
+
     const handleBeforeUnload = (e) => {
       e.preventDefault();
       e.returnValue = '';
@@ -33,7 +37,7 @@ const MainContent = ({ Component, pageProps, isCompactRoom }) => {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, []);
+  }, [isInGame]);
 
   return <>
     <Header />
