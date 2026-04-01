@@ -35,7 +35,7 @@ const maxPlayerOpts = [
 const RequiredFields = React.memo(({
   goHome,
   isSettings, isDirectLink, isAdmin, isSpectatorChecked,
-  roomName, name, passwordLabel, tablePwd, tableLock, maxPlayers, tablePwdRef,
+  roomName, name, passwordLabel, tablePwd, tableLock, maxPlayers, tablePwdRef, newGameFormRef,
   handleSubmit, setModalOpen, setRoomName, setName, setTablePwd, setTableLock,
   setMaxPlayers, setIsSpectatorChecked
 }) => (
@@ -81,6 +81,20 @@ const RequiredFields = React.memo(({
         name='tablePwd'
         value={tablePwd}
         onChange={(e) => setTablePwd(e.target.value)}
+        onFocus={(e) => {
+          if (!window.visualViewport) return;
+          const el = e.target;
+          const cleanup = () => {
+            window.visualViewport.removeEventListener('resize', onResize);
+            el.removeEventListener('blur', cleanup);
+          };
+          const onResize = () => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            cleanup();
+          };
+          window.visualViewport.addEventListener('resize', onResize);
+          el.addEventListener('blur', cleanup);
+        }}
       />
       <Image
         style={{
@@ -108,6 +122,14 @@ const RequiredFields = React.memo(({
           inputId='tableLock'
           value={tableLock}
           onChange={sel => setTableLock(sel)}
+          isSearchable={false}
+          classNamePrefix='tableLock'
+          onMenuOpen={() => setTimeout(() => {
+            document.querySelector('.tableLock__menu')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            document.querySelector('.tableLock__option--is-selected')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 50)}
         />
         <label>maximum seats</label>
         <Select
@@ -115,6 +137,14 @@ const RequiredFields = React.memo(({
           inputId='maxPlayers'
           value={maxPlayers}
           onChange={sel => setMaxPlayers(sel)}
+          isSearchable={false}
+          classNamePrefix='maxPlayers'
+          onMenuOpen={() => setTimeout(() => {
+            document.querySelector('.maxPlayers__menu')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            document.querySelector('.maxPlayers__option--is-selected')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 50)}
         />
       </>
     }
@@ -284,7 +314,7 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
           {...{
             goHome,
             isSettings, isDirectLink, isAdmin, isSpectatorChecked, handleSubmit,
-            roomName, name, passwordLabel, tablePwd, tableLock, maxPlayers, tablePwdRef,
+            roomName, name, passwordLabel, tablePwd, tableLock, maxPlayers, tablePwdRef, newGameFormRef,
             setModalOpen, setRoomName, setName, setTablePwd, setTableLock,
             setMaxPlayers, setIsSpectatorChecked
           }}

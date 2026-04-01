@@ -238,6 +238,20 @@ function RoomList({ isVisible, mode = 'card' }) {
       <input
         value={searchValue}
         onChange={e => setSearchValue(e.target.value)}
+        onFocus={(e) => {
+          if (!window.visualViewport) return;
+          const el = e.target;
+          const cleanup = () => {
+            window.visualViewport.removeEventListener('resize', onResize);
+            el.removeEventListener('blur', cleanup);
+          };
+          const onResize = () => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            cleanup();
+          };
+          window.visualViewport.addEventListener('resize', onResize);
+          el.addEventListener('blur', cleanup);
+        }}
       />
     </div>
   );

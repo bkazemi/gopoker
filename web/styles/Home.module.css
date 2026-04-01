@@ -231,6 +231,7 @@
 
   .main {
     padding: 1rem;
+    min-height: 100dvh;
   }
 
   .grid {
@@ -251,6 +252,7 @@
   .center {
     padding: 1rem 0 1rem;
     flex-direction: column;
+    justify-content: flex-start;
   }
 
   .header {
