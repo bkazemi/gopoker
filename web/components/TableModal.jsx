@@ -28,6 +28,8 @@ const ModalContent = React.memo(({
     setGameOpts(opts => ({
       ...opts,
       client: NewClient({}),
+      creatorToken: undefined,
+      creatorTokenRoomID: undefined,
       websocketOpts: undefined,
       roomSettings: undefined,
       roomURL: '',
@@ -251,10 +253,8 @@ const ModalContent = React.memo(({
 ModalContent.displayName = 'ModalContent';
 
 function TableModal(props) {
-
   const { modalType, modalOpen, setModalOpen, setModalTxt } = props;
-
-  props.setGameOpts = useContext(GameContext).setGameOpts;
+  const { setGameOpts } = useContext(GameContext);
 
   useEffect(() => {
     if (!modalOpen)
@@ -299,6 +299,7 @@ function TableModal(props) {
       >
         <ModalContent
           {...props}
+          setGameOpts={setGameOpts}
         />
       </div>
     </Modal>

@@ -605,7 +605,7 @@ func (server *Server) handleNewConn(
 			Str("client", client.FullName(false)).
 			Msg("used creatorToken, removing token")
 
-		room.creatorToken = "" // token gets invalidated after first use
+		room.creatorToken = ""
 
 		return
 	}

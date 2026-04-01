@@ -33,7 +33,29 @@ const literata = Literata({
   weight: '500',
 });
 
-const createWebSocket = (key, roomIDRef, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt) => {
+const closeWebSocket = (socket) => {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
+    socket.close(1000, 'web client exited');
+  } else if (socket?.readyState === WebSocket.CONNECTING) {
+    socket.close(1000, 'web client exited');
+  }
+};
+
+const createWebSocket = ({
+  roomIDRef,
+  websocketOpts,
+  setSocket,
+  socketRef,
+  setConnStatus,
+  next,
+  tryCnt,
+  signal,
+  onFirstMessage,
+}) => {
+  if (signal.aborted)
+    return;
+
   if (tryCnt > 2) {
     setConnStatus('closed');
     return;
@@ -42,6 +64,7 @@ const createWebSocket = (key, roomIDRef, websocketOpts, setSocket, socketRef, se
   const wsURL = `${config.gopokerServerWSURL}/room/${encodeURIComponent(roomIDRef.current)}/web`;
   const gameSocket = new WebSocket(wsURL);
 
+  let joinConfirmed = false;
   gameSocket.addEventListener('message',
     async (event) => {
       try {
@@ -49,6 +72,11 @@ const createWebSocket = (key, roomIDRef, websocketOpts, setSocket, socketRef, se
         //const msg = await decodeFromBlob(event.data);
         const msg = decode(await event.data.arrayBuffer(), { useBigInt64: true });
         console.warn('Game: recv msg:', msg);
+
+        if (!joinConfirmed) {
+          joinConfirmed = true;
+          onFirstMessage?.();
+        }
 
         msg._noShallowCompare = uuidv4();
         next(null, msg);
@@ -67,26 +95,51 @@ const createWebSocket = (key, roomIDRef, websocketOpts, setSocket, socketRef, se
   });
 
   gameSocket.addEventListener('close', async (event) => {
+    if (signal.aborted) {
+      console.log('websocket close was intentional; skipping reconnect');
+      return;
+    }
+
     if (!event.wasClean || event.code !== 1000) {
       console.log('websocket had an unclean exit. attempting to reconnect...');
       console.log('making sure the room still exists...')
       const currentRoomID = roomIDRef.current;
-      const res = await fetch(`/api/check/${encodeURIComponent(currentRoomID)}`);
-      if (!res.ok) {
-        const body = await res.text();
-        next(
-          res.status === 404
-            ? new Error(`room "${currentRoomID}" doesn't exist anymore`)
-            : body?.error ?? `code ${res.code} reason unspecified`
-        );
+      try {
+        const res = await fetch(`/api/check/${encodeURIComponent(currentRoomID)}`, { signal });
 
+        if (!res.ok) {
+          const body = await res.text();
+
+          next(
+            res.status === 404
+              ? new Error(`room "${currentRoomID}" doesn't exist anymore`)
+              : new Error(body || `code ${res.status} reason unspecified`)
+          );
+
+          return;
+        }
+      } catch (e) {
+        if (signal.aborted)
+          return;
+        next(e);
         return;
       }
       setConnStatus('rc');
-      tryCnt++;
       await new Promise(res => setTimeout(res, 1 * 1000));
-      createWebSocket(null, roomIDRef, websocketOpts, setSocket, socketRef, setConnStatus, next, tryCnt);
-      //createWebSocket(...arguments);
+      if (signal.aborted)
+        return;
+
+      createWebSocket({
+        roomIDRef,
+        websocketOpts,
+        setSocket,
+        socketRef,
+        setConnStatus,
+        next,
+        tryCnt: tryCnt + 1,
+        signal,
+        onFirstMessage,
+      });
     } else {
       console.log('websocket had clean close', event);
     }
@@ -96,17 +149,20 @@ const createWebSocket = (key, roomIDRef, websocketOpts, setSocket, socketRef, se
   // first response msg in the message listener (unlikely but possible)
   gameSocket.addEventListener('open', (event) => {
     console.log('websocket open: trycnt', tryCnt);
+
+    const socketOpts = tryCnt > 0 ? cloneDeep(websocketOpts) : websocketOpts;
     if (tryCnt > 0) {
-      if (!window.privID) {
-        console.error('createWebSocket: reconnect attempted with falsey window.privID');
-        setConnStatus('closed');
-        return;
+      if (window.privID) {
+        console.log(`websocket open: reconnect attempt #${tryCnt}`);
+        socketOpts.Request = NETDATA.PLAYER_RECONNECTING;
+        socketOpts.Msg = window.privID;
+      } else {
+        console.log('websocket open: no privID yet, retrying fresh join');
       }
-      console.log(`websocket open: reconnect attempt #${tryCnt}`);
-      websocketOpts.Request = NETDATA.PLAYER_RECONNECTING;
-      websocketOpts.Msg = window.privID;
     }
-    gameSocket.send(websocketOpts.toMsgPack());
+
+    setConnStatus('ok');
+    gameSocket.send(socketOpts.toMsgPack());
   });
 
   socketRef.current = gameSocket;
@@ -120,16 +176,15 @@ const Connect = ({ roomID }) => {
   const [socket, setSocket] = useState(null);
   const socketRef = useRef(null);
   const roomIDRef = useRef(roomID);
-  const creatorTokenRef = useRef(null);
 
-  const { roomURL, creatorToken, setShowGame } = gameOpts;
+  const { roomURL, creatorToken, creatorTokenRoomID, setShowGame } = gameOpts;
   let { websocketOpts } = gameOpts;
+  const hasCreatorTokenForRoom = creatorToken && creatorTokenRoomID === roomID;
 
-  if (creatorToken) {
+  if (hasCreatorTokenForRoom) {
     console.log(`Connect: setting password to creator token (${creatorToken})`);
     websocketOpts = cloneDeep(websocketOpts);
     websocketOpts.Client.Settings.Password = creatorToken;
-    creatorTokenRef.current = creatorToken;
   }
 
   useEffect(() => {
@@ -148,33 +203,54 @@ const Connect = ({ roomID }) => {
 
     return () => {
       console.log('Connect unmounted');
-      if (creatorTokenRef.current) { // token invalidated after first use
-        console.log('Connect: removing creatorToken');
-        setGameOpts(opts => ({
-          ...opts,
-          creatorToken: undefined,
-          isCompactRoom: false,
-        }));
-      }
+      setGameOpts(opts => ({
+        ...opts,
+        isCompactRoom: false,
+      }));
     };
   }, [setGameOpts]);
 
   // FIXME: when a player is eliminated, NetDataUpdatePlayer, NetDataPlayerLeft & NetDataEliminated
   // sometimes are being processed out of order, due to async nature of SWR
-  const { data, error } = useSWRSubscription(roomURL, (key, { next }) => {
-    try {
-      next(null); // need to reset error on Game remounts
-
-      createWebSocket(key, roomIDRef, websocketOpts, setSocket, socketRef, setConnStatus, next, 0);
-    } catch (e) {
-      next(e);
-    }
+  const { data, error } = useSWRSubscription(roomURL, (_key, { next }) => {
+    // Defer socket creation so React StrictMode's throwaway mount in development
+    // can clean up before the creator token is used.
+    const controller = new AbortController();
+    const { signal } = controller;
+    const clearCreatorToken = hasCreatorTokenForRoom
+      ? () => {
+          console.log('Connect: clearing creator token from gameOpts');
+          setGameOpts(opts => ({
+            ...opts,
+            creatorToken: undefined,
+            creatorTokenRoomID: undefined,
+          }));
+        }
+      : undefined;
+    next(null); // need to reset error on Game remounts
+    const connectTimer = window.setTimeout(() => {
+      try {
+        createWebSocket({
+          roomIDRef,
+          websocketOpts,
+          setSocket,
+          socketRef,
+          setConnStatus,
+          next,
+          tryCnt: 0,
+          signal,
+          onFirstMessage: clearCreatorToken,
+        });
+      } catch (e) {
+        next(e);
+      }
+    }, 0);
 
     return () => {
-      if (socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(new NetData(null, NETDATA.CLIENT_EXITED).toMsgPack());
-        socketRef.current.close(1000, 'web client exited');
-      }
+      controller.abort();
+      window.clearTimeout(connectTimer);
+      closeWebSocket(socketRef.current);
+      socketRef.current = null;
     }
   });
 
@@ -266,15 +342,41 @@ function RoomPostDimCheck() {
   const [roomNotFound, setRoomNotFound] = useState(undefined);
   const [checkRoomErr, setCheckRoomErr] = useState('');
 
-  // creatorToken is guaranteed to be set before it's consumed in the
-  // checkRoom useEffect
-  const creatorToken = gameOpts.creatorToken;
+  const prevRoomIDRef = useRef(roomID);
+  const skipCheckRef = useRef(false);
+  useEffect(() => {
+    if (prevRoomIDRef.current !== roomID) {
+      prevRoomIDRef.current = roomID;
+      if (!gameOpts.roomRenamed) {
+        setGameOpts(opts => ({ ...opts, roomURL: undefined, websocketOpts: undefined }));
+        setRoomNotFound(undefined);
+        setCheckRoomErr('');
+      } else {
+        skipCheckRef.current = true;
+        setGameOpts(opts => ({ ...opts, roomRenamed: undefined }));
+      }
+    }
+  }, [roomID, gameOpts.roomRenamed, setGameOpts]);
 
   useEffect(() => {
+    if (skipCheckRef.current) {
+      skipCheckRef.current = false;
+      return;
+    }
+
+    if (gameOpts.creatorToken && gameOpts.creatorTokenRoomID === roomID) {
+      setRoomNotFound(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
     const checkRoom = async () => {
       try {
         console.log('roomID:', roomID);
-        const res = await fetch(`/api/check/${encodeURIComponent(roomID)}`);
+        const res = await fetch(`/api/check/${encodeURIComponent(roomID)}`, {
+          signal: controller.signal,
+        });
         if (res.ok)
           setRoomNotFound(false);
         else {
@@ -288,15 +390,17 @@ function RoomPostDimCheck() {
           setRoomNotFound(true);
         }
       } catch (e) {
+        if (controller.signal.aborted)
+          return;
         setRoomNotFound(true);
         setCheckRoomErr('/api/check fetch failed');
       }
     }
 
-    if (creatorToken)
-      setRoomNotFound(false);
-    else
-      roomID && checkRoom();
+    roomID && checkRoom();
+
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomID]);
 
   useEffect(() => {
@@ -322,6 +426,9 @@ function RoomPostDimCheck() {
 
     if (!roomURL)
       return <NewGameForm isVisible={true} isDirectLink={true} />;
+
+    if (!roomID)
+      return <Spinner msg={'loading room...'} />;
 
     return <Connect roomID={roomID} />;
   };

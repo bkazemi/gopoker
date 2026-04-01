@@ -192,16 +192,17 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
     const router = routerRef.current;
 
     if (router && roomSettings?.RoomName) {
-      const newPath = `/room/${roomSettings.RoomName}`;
+      const newPath = `/room/${encodeURIComponent(roomSettings.RoomName)}`;
       if (newPath !== router.asPath) {
         console.log(`newPath: ${newPath} router.asPath: ${router.asPath}`);
         console.log('replacing URL with:', newPath);
         if (roomIDRef)
           roomIDRef.current = roomSettings.RoomName;
+        setGameOpts(opts => ({ ...opts, roomRenamed: true }));
         router.replace({ pathname: newPath });
       }
     }
-  }, [routerRef, roomIDRef]);
+  }, [routerRef, roomIDRef, setGameOpts]);
 
   const updateTable = useCallback((netData) => {
     setMainPot(netData.Table.MainPot);
@@ -548,7 +549,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
     setGameOpts(opts => ({
       ...opts,
       isAdmin,
-      creatorToken: isAdmin && gameOpts.creatorToken ? '' : opts.creatorToken,
+      creatorToken: isAdmin && gameOpts.creatorToken ? undefined : opts.creatorToken,
+      creatorTokenRoomID: isAdmin && gameOpts.creatorToken ? undefined : opts.creatorTokenRoomID,
     }));
   }, [isAdmin, setGameOpts, gameOpts.creatorToken]);
 

@@ -186,6 +186,8 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
     console.log('goHome()');
     setGameOpts(opts => ({
       ...opts,
+      creatorToken: undefined,
+      creatorTokenRoomID: undefined,
       goHome: true,
     }));
 

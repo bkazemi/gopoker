@@ -80,7 +80,10 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
           setFetchCalled(true);
           setGameOpts(gameOpts => ({
             ...gameOpts,
-            roomURL, creatorToken, setShowGame,
+            roomURL,
+            creatorToken,
+            creatorTokenRoomID: data.roomName,
+            setShowGame,
           }));
           window.roomURL = roomURL;
 
