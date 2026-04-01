@@ -335,7 +335,7 @@ const RoomNotFound = ({ errMsg, router }) => (
 );
 
 const TransitionPlaceholder = () => (
-  <div aria-hidden='true' />
+  <div />
 );
 
 function RoomPostDimCheck() {

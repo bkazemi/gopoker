@@ -1,19 +1,16 @@
-/* 22rem ~= header + footer + .main padding + .center padding + rooms padding + h2/gap */
 .roomsPage {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   width: min(560px, 100%);
-  height: calc(100svh - 22rem);
+  flex: 1 1 auto;
   min-height: 0;
   box-sizing: border-box;
   padding-top: 2rem;
 }
 
 @media (max-width: 700px) {
-  /* mobile: .main padding=1rem, .center padding=1rem 0, less header space */
   .roomsPage {
-    height: calc(100svh - 12rem);
     padding-top: 1rem;
   }
 }

@@ -19,6 +19,7 @@ import homeStyles from '@/styles/Home.module.css';
 const MainContent = ({ Component, pageProps, isCompactRoom, router }) => {
   const isInGame = router.pathname === '/room/[roomID]';
   const isHomePage = router.pathname === '/';
+  const isRoomsPage = router.pathname === '/rooms';
   const shouldCenterContent = isHomePage || isInGame;
 
   // confirm window exit only when in a game room
@@ -44,6 +45,7 @@ const MainContent = ({ Component, pageProps, isCompactRoom, router }) => {
     <div
       className={cx(
         homeStyles.center,
+        isRoomsPage && homeStyles.shrinkableCenter,
         shouldCenterContent && homeStyles.centeredContent,
         isCompactRoom && homeStyles.compactCenter
       )}

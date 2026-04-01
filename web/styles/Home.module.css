@@ -160,6 +160,11 @@
   flex-direction: column;
 }
 
+.shrinkableCenter {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .centeredContent {
   justify-content: center;
 }
