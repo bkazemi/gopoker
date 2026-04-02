@@ -111,10 +111,13 @@ const createWebSocket = ({
         if (!res.ok) {
           const body = await res.text();
 
+          let reason = body || `code ${res.status} reason unspecified`;
+          try { reason = JSON.parse(body).error ?? reason; } catch {}
+
           next(
             res.status === 404
               ? new Error(`room "${currentRoomID}" doesn't exist anymore`)
-              : new Error(body || `code ${res.status} reason unspecified`)
+              : new Error(reason)
           );
 
           return;
@@ -268,7 +271,7 @@ const Connect = ({ roomID }) => {
           fontWeight: 'bold'
         }}
       >
-        <p>failed to connect to server - error: { error.message }</p>
+        <p>failed to connect to server: { error.message }</p>
         <Link
           href={'/'}
           style={{
