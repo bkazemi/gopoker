@@ -17,17 +17,21 @@ function HomeGrid({ isVisible }) {
   const gridRef = useRef();
   const roomListRef = useRef();
   const newGameRef = useRef();
+  const selectedTimers = useRef(new Map());
 
   const toggleGrid = useCallback((isOn, visibleCard) => {
-    visibleCard = visibleCard.current;
+    const el = visibleCard.current;
 
     if (isOn) {
-      setTimeout(() => {
-        visibleCard.classList.add(styles.selectedCard);
-      }, 500);
-      console.log(`added selectedCard to ${visibleCard}`)
+      el.classList.add(styles.chipHold);
+      selectedTimers.current.set(visibleCard, setTimeout(() => {
+        el.classList.add(styles.selectedCard);
+      }, 500));
+      console.log(`added selectedCard to ${el}`)
     } else {
-      visibleCard.classList.remove(styles.selectedCard);
+      clearTimeout(selectedTimers.current.get(visibleCard));
+      el.classList.remove(styles.selectedCard);
+      el.classList.remove(styles.chipHold);
     }
   }, []);
 

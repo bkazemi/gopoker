@@ -223,14 +223,20 @@
     transition-timing-function: ease-out;
   }
 
-  .selectedCard span img {
-    translate: 12px;
+  .chipHold > h2 span img,
+  .selectedCard > h2 span img {
+    transform: translateX(12px) rotate(360deg);
   }
 }
 
 @media (prefers-reduced-motion) {
-  .card:hover span {
+  .card:hover span,
+  .chipHold > h2 span img,
+  .selectedCard > h2 span img {
     transform: none;
+  }
+  .card:not(.selectedCard) > h2 span img {
+    transition: none;
   }
 }
 
