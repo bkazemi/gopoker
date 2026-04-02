@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useContext, useEffect } from 'react';
+import React, { useState, useCallback, useContext, useEffect } from 'react';
 
 import { M_PLUS_Code_Latin } from 'next/font/google';
 import Image from 'next/image';
@@ -9,6 +9,7 @@ import cx from 'classnames';
 import { GameContext } from '@/GameContext';
 
 import useDeferredLoading from '@/lib/useDeferredLoading';
+import useFlickSpin from '@/lib/useFlickSpin';
 
 import homeStyles from '@/styles/Home.module.css';
 
@@ -61,12 +62,15 @@ export default function Header({ isTableHeader }) {
     }
   }, []);
 
-  const logoImgRef = useRef(null);
   const shouldRenderHeader = !!isCompactRoom === !!isTableHeader; // both true or both false
 
-  const toggleSpin = useCallback(() => {
-    logoImgRef.current?.classList.toggle(homeStyles.pauseAnimation);
-  }, []);
+  const {
+    elRef: logoImgRef,
+    onPointerDown: handlePointerDown,
+    onPointerMove: handlePointerMove,
+    onPointerUp: handlePointerUp,
+    onPointerCancel: handlePointerCancel,
+  } = useFlickSpin(homeStyles.flickActive, 25, shouldRenderHeader);
 
   useEffect(() => {
     fetchHeaderInfo(router.pathname);
@@ -96,7 +100,11 @@ export default function Header({ isTableHeader }) {
             width={75}
             height={75}
             alt='o'
-            onClick={toggleSpin}
+            draggable={false}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
             onLoad={() => setHeaderChipLoaded(true)}
           />
         </div>

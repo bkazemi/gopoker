@@ -78,10 +78,11 @@
 .logoChip img {
   animation: spin 25s linear infinite;
   will-change: transform;
+  touch-action: none;
 }
 
-.pauseAnimation {
-  animation-play-state: paused !important;
+.flickActive {
+  animation: none !important;
 }
 
 @keyframes spin {
