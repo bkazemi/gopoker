@@ -131,6 +131,7 @@ footer {
   place-content: center;
   width: 80vw;
   padding-top: 7px;
+  padding-bottom: calc(7px + env(safe-area-inset-bottom, 0px));
   opacity: 0.8;
   gap: 5px;
 }

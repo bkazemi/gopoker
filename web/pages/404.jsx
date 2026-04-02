@@ -51,9 +51,14 @@ export default function NotFoundPage() {
             transform: rotate(0deg) translateZ(0);
           }
         }
+        @media (max-width: 700px) {
+          .notFoundWrapper {
+            zoom: 0.8;
+          }
+        }
       `}</style>
       <div
-        className={literata.className}
+        className={`${literata.className} notFoundWrapper`}
         style={{
           display: 'flex',
           flexDirection: 'column',

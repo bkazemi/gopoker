@@ -20,7 +20,8 @@ const MainContent = ({ Component, pageProps, isCompactRoom, router }) => {
   const isInGame = router.pathname === '/room/[roomID]';
   const isHomePage = router.pathname === '/';
   const isRoomsPage = router.pathname === '/rooms';
-  const shouldCenterContent = isHomePage || isInGame;
+  const is404 = router.pathname === '/404';
+  const shouldCenterContent = isHomePage || isInGame || is404;
 
   // confirm window exit only when in a game room
   useEffect(() => {
