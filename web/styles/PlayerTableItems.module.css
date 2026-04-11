@@ -1,38 +1,126 @@
 .playerItems {
+  --card-width: 65px;
+  --card-height: 90px;
+  --card-overlap: 32.5px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
+  gap: 3px;
 }
 
 .curHand {
   font-style: italic;
-  padding-bottom: 3px;
   font-family: system-ui;
+  width: 100%;
+  text-align: center;
 }
 
 .playerCards {
-  display: flex;
-  flex-direction: row;
-}
-
-.playerCards > img:first-child {
   position: relative;
-  left: 32.5px;
+  width: calc(var(--card-width) * 2 - var(--card-overlap));
+  height: var(--card-height);
 }
 
-.playerCards > img:nth-child(2) {
-  rotate: 180deg;
-}
-
-.positions {
+.cardSlot {
+  position: absolute;
+  top: 0;
+  width: var(--card-width);
+  height: var(--card-height);
   display: flex;
-  flex-direction: row;
-  align-self: flex-start;
-  padding-left: 10px;
-  padding-bottom: 5px;
+  align-items: center;
+  justify-content: center;
 }
 
-.positions > img:first-child {
-  margin-right: 3px;
+.cardSlotPrimary {
+  left: 0;
+}
+
+.cardSlotSecondary {
+  left: calc(var(--card-width) - var(--card-overlap));
+}
+
+.playerCardsLR {
+  --card-overlap: 48px;
+}
+
+.hiddenCards {
+  --hidden-rotation: 0deg;
+  width: calc(var(--card-width) * 2 - var(--card-overlap));
+  height: var(--card-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hiddenCardsInner {
+  position: relative;
+  width: calc(var(--card-width) * 2 - var(--card-overlap));
+  height: var(--card-height);
+  transform: rotate(var(--hidden-rotation));
+  transform-origin: center center;
+}
+
+.hiddenCardsInner .cardSlotSecondary {
+  transform: rotate(180deg);
+}
+
+.hiddenCardsTop {
+  --hidden-rotation: 180deg;
+}
+
+.hiddenCardsLeft,
+.hiddenCardsRight {
+  --card-overlap: 48px;
+  width: var(--card-height);
+  height: calc(var(--card-width) * 2 - var(--card-overlap));
+}
+
+.hiddenCardsLeft .hiddenCardsInner,
+.hiddenCardsRight .hiddenCardsInner {
+  width: var(--card-height);
+  height: calc(var(--card-width) * 2 - var(--card-overlap));
+  transform: none;
+}
+
+.hiddenCardsLeft .cardSlot,
+.hiddenCardsRight .cardSlot {
+  width: var(--card-height);
+  height: var(--card-width);
+}
+
+.hiddenCardsLeft .cardSlotPrimary,
+.hiddenCardsRight .cardSlotPrimary {
+  top: 0;
+  left: 0;
+}
+
+.hiddenCardsLeft .cardSlotSecondary,
+.hiddenCardsRight .cardSlotSecondary {
+  top: calc(var(--card-width) - var(--card-overlap));
+  left: 0;
+}
+
+.hiddenCardsLeft {
+  --hidden-rotation: -90deg;
+}
+
+.hiddenCardsLeft .cardSlotPrimary {
+  transform: rotate(-90deg);
+}
+
+.hiddenCardsLeft .cardSlotSecondary {
+  transform: rotate(90deg);
+}
+
+.hiddenCardsRight {
+  --hidden-rotation: 90deg;
+}
+
+.hiddenCardsRight .cardSlotPrimary {
+  transform: rotate(90deg);
+}
+
+.hiddenCardsRight .cardSlotSecondary {
+  transform: rotate(-90deg);
 }

@@ -136,10 +136,8 @@ export default function App({ Component, pageProps, router }) {
   // then I can set the variables that depend on window before the first render.
   useEffect(() => {
     setIsUnsupportedDevice(window?.screen?.width < 375);
-    // hackish, but to avoid using GameContext inside App I made roomURL a
-    // global variable
     setIsCompactRoom(router.pathname === '/room/[roomID]'
-      && window.roomURL && window?.innerWidth <= 1920);
+      && window?.innerWidth <= 1920);
   }, [router.pathname]);
 
   return (

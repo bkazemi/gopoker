@@ -1,29 +1,29 @@
-import React, { useEffect, useState} from 'react';
+import React, { useState} from 'react';
 
 import Image from 'next/image';
+import cx from 'classnames';
 
 import { TABLE_STATE, cardToImagePath, PLAYERSTATE } from '@/lib/libgopoker';
 
 import styles from '@/styles/PlayerTableItems.module.css';
 
-const lrCardStyle = (side) => (
-  side === 'left' || side === 'right'
-  ? {
-    'position': 'relative',
-    'right': '32.5px'
-  }
-  : {}
-);
-
 const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
   // we want the cards to be displayed at the same time,
   // so we make sure both card images are loaded before displaying them
   const [numCardsLoaded, setNumCardsLoaded] = useState(0);
-  const [style, setStyle] = useState(lrCardStyle(side));
 
-  useEffect(() => {
-    setStyle(lrCardStyle(side));
-  }, [side]);
+  const isLR = side === 'left' || side === 'right';
+  const cardsClass = cx(
+    styles.playerCards,
+    isLR && styles.playerCardsLR,
+  );
+  const hiddenCardsClass = cx(
+    styles.hiddenCards,
+    side === 'top' && styles.hiddenCardsTop,
+    side === 'left' && styles.hiddenCardsLeft,
+    side === 'right' && styles.hiddenCardsRight,
+  );
+  const holeLen = client?.Player?.Hole?.Cards?.length || 0;
 
   if (
     tableState === TABLE_STATE.NOT_STARTED ||
@@ -33,47 +33,57 @@ const Cards = React.memo(({ client, isYourPlayer, side, tableState }) => {
     return;
   }
 
-  const holeLen = client?.Player?.Hole?.Cards.length || 0;
-
   if (!isYourPlayer && !holeLen)
     return <div
-             className={styles.playerCards}
+             className={hiddenCardsClass}
              style={{ opacity: numCardsLoaded === 2 ? 1 : 0 }}
            >
-            <Image
-              src={'/cards/cardBack_blue5.png'}
-              height={90}
-              width={65}
-              alt={'[card]'}
-              onLoad={() => setNumCardsLoaded(numCards => numCards % 2 + 1)}
-            />
-            <Image
-              src={'/cards/cardBack_blue5.png'}
-              height={90}
-              width={65}
-              alt={'[card]'}
-              style={style}
-              onLoad={() => setNumCardsLoaded(numCards => numCards % 2 + 1)}
-            />
+            <div className={styles.hiddenCardsInner}>
+              <div className={cx(styles.cardSlot, styles.cardSlotPrimary)}>
+                <Image
+                  src={'/cards/cardBack_blue5.png'}
+                  height={90}
+                  width={65}
+                  alt={'[card]'}
+                  onLoad={() => setNumCardsLoaded(numCards => numCards % 2 + 1)}
+                />
+              </div>
+              <div className={cx(styles.cardSlot, styles.cardSlotSecondary)}>
+                <Image
+                  src={'/cards/cardBack_blue5.png'}
+                  height={90}
+                  width={65}
+                  alt={'[card]'}
+                  onLoad={() => setNumCardsLoaded(numCards => numCards % 2 + 1)}
+                />
+              </div>
+            </div>
       </div>
   else
     return <div
-             className={styles.playerCards}
+             className={cardsClass}
              style={{ opacity: numCardsLoaded === holeLen ? 1 : 0 }}
            >
       {
         client?.Player?.Hole?.Cards
           .map((c, idx) => {
-            return <Image
+            return <div
               key={idx}
-              src={cardToImagePath(c)}
-              height={90}
-              width={65}
-              alt={`[${c.Name}]`}
-              onLoad={() => setNumCardsLoaded(numCards =>
-                numCards % holeLen + 1
+              className={cx(
+                styles.cardSlot,
+                idx === 0 ? styles.cardSlotPrimary : styles.cardSlotSecondary,
               )}
-            />;
+            >
+              <Image
+                src={cardToImagePath(c)}
+                height={90}
+                width={65}
+                alt={`[${c.Name}]`}
+                onLoad={() => setNumCardsLoaded(numCards =>
+                  numCards % holeLen + 1
+                )}
+              />
+            </div>;
         }) || null
       }
     </div>
@@ -88,17 +98,10 @@ function PlayerTableItems({
   if (client._ID)
     return;
 
-  let justifyContent;
-  if (side === 'top') {
-    justifyContent = 'flex-start';
-  } else if (side === 'bottom') {
-    justifyContent = 'flex-end';
-  }
-
   return (
     <div
       className={styles.playerItems}
-      style={{ justifyContent, gridRow: gridRow, gridColumn: gridCol }}
+      style={{ gridRow: gridRow, gridColumn: gridCol }}
     >
       {
         isYourPlayer && curHand &&

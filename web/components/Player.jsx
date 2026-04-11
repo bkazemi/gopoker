@@ -162,14 +162,14 @@ const YourPlayerActions = React.memo(({
           onInput={handleRaiseInput}
           /*max={} TODO: add me */
         />
-        <a style={{ display: 'flex' }} data-tooltip-id="betTooltip">
+        <span style={{ display: 'flex', lineHeight: 0 }} data-tooltip-id="betTooltip">
           <Image
             src={'/betHelp.png'}
             width={29}
             height={29}
             alt={'<bet help img>'}
           />
-        </a>
+        </span>
         <Tooltip id="betTooltip" style={{ zIndex: 5 }}>
           <pre className={styles.betTooltipTxt}>
             {`The amount to bet.
@@ -251,8 +251,8 @@ const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }
         isDealer &&
         <Image
           src={'/D.png'}
-          width={35}
-          height={35}
+          width={28}
+          height={28}
           alt='[D]'
         />
       }
@@ -260,8 +260,8 @@ const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }
         isSmallBlind &&
         <Image
           src={'/SB.png'}
-          width={35}
-          height={35}
+          width={28}
+          height={28}
           alt='[Sb]'
         />
       }
@@ -269,8 +269,8 @@ const Positions = React.memo(({ tableState, isDealer, isSmallBlind, isBigBlind }
         isBigBlind &&
         <Image
           src={'/BB.png'}
-          width={35}
-          height={35}
+          width={28}
+          height={28}
           alt='[Bb]'
         />
       }
@@ -315,7 +315,7 @@ function Player({
     bigBlind:   setIsBigBlind,
   }), []);
 
-  const [style, setStyle] = useState({gridRow, gridCol});
+  const [style, setStyle] = useState({gridRow, gridColumn: gridCol});
 
   useEffect(() => {
     setName(client.Name);
@@ -417,6 +417,7 @@ function Player({
       <div
         key={client._ID}
         className={styles.player}
+        data-side={side}
         style={style}
       >
         <div className={styles.nameContainer}>
@@ -451,6 +452,7 @@ function Player({
   return (
     <div
       className={styles.player}
+      data-side={side}
       style={style}
     >
       <div
@@ -461,6 +463,7 @@ function Player({
         <Positions {...{tableState, isDealer, isSmallBlind, isBigBlind}} />
       </div>
       <p
+        className={styles.actionLine}
         style={reconnBlur}
       >
         current action: { PlayerStateToString(curAction) }
@@ -472,8 +475,8 @@ function Player({
         <p>chip count: { chipCount.toLocaleString() }</p>
         <Image
           src={'/chipCountChips.png'}
-          width={30}
-          height={30}
+          width={24}
+          height={24}
           alt={'<chipCount img>'}
         />
       </div>

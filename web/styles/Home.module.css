@@ -172,7 +172,9 @@
 }
 
 .compactCenter {
-  padding-top: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .grid {

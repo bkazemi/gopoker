@@ -21,3 +21,19 @@
 .mainPot {
   font-size: 1.3rem;
 }
+
+@media (max-height: 1100px) {
+  .community > img {
+    height: 90px;
+    width: 60px;
+  }
+
+  .mainPotContainer {
+    padding-top: 8px;
+  }
+
+  .mainPotContainer > img {
+    height: 38px;
+    width: 38px;
+  }
+}
