@@ -46,7 +46,7 @@ const (
 type Suit uint8
 
 const (
-	SuitClub Suit = 1 << iota
+	SuitClub Suit = iota + 1
 	SuitDiamond
 	SuitHeart
 	SuitSpade
@@ -82,7 +82,7 @@ func (hole *Hole) FillHoleInfo() {
 
 	if cardOne.Suit == cardTwo.Suit {
 		hole.IsSuited = true
-		hole.Suit = cardOne.Suit | cardTwo.Suit
+		hole.Suit = cardOne.Suit
 	}
 
 	hole.CombinedNumValue = uint16(cardOne.NumValue + cardTwo.NumValue)
