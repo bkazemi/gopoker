@@ -4,6 +4,8 @@ import (
 	"compress/flate"
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +17,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
+
+const clientExitCloseHandshakeTimeout = 250 * time.Millisecond
 
 type Server struct {
 	rooms map[string]*Room
@@ -203,33 +207,59 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 		returnFromInputLoop: make(chan bool),
 	}
 
+	server.runWSInputLoop(sess, readNetData)
+}
+
+func (server *Server) runWSInputLoop(
+	sess *wsSession,
+	readFn func(*websocket.Conn, string, *Room, int64) (NetData, bool, error),
+) {
 	for {
 		select {
-		case <-sess.returnFromInputLoop:
-			// NOTE: the pre-refactor code branched on the received value with
-			// `if isReturn { break }`, but break inside select-in-for breaks
-			// the select, not the for. Both true/false values resumed reading,
-			// so the actual exit path has always been the read-error return in
-			// the default branch. Preserving that behavior — drain and loop.
+		case shouldReturn := <-sess.returnFromInputLoop:
+			if shouldReturn {
+				drainPeerCloseFrame(sess.conn)
+				return
+			}
 		default:
-			netData, cleanClose, err := readNetData(conn, connType, room, server.MaxConnBytes)
+			netData, cleanClose, err := readFn(sess.conn, sess.connType, sess.room, server.MaxConnBytes)
 			if err != nil {
 				if cleanClose {
-					cleanExit = true
+					*sess.cleanExit = true
 				}
 				return
 			}
 
 			switch netData.Request {
 			case NetDataNewConn:
-				server.handleNewConn(room, netData, conn, connType)
+				server.handleNewConn(sess.room, netData, sess.conn, sess.connType)
 			case NetDataPlayerReconnecting:
-				server.handleReconnect(room, netData, conn, connType)
+				server.handleReconnect(sess.room, netData, sess.conn, sess.connType)
 			default:
-				client, _ := room.clients.ByConn(conn)
+				client, _ := sess.room.clients.ByConn(sess.conn)
 				go sess.dispatch(client, netData)
 			}
 		}
+	}
+}
+
+func drainPeerCloseFrame(conn *websocket.Conn) {
+	if conn == nil {
+		return
+	}
+
+	// Current web/CLI clients send NetDataClientExited and then immediately
+	// send a websocket close frame. Give that close handshake a short,
+	// bounded grace period so intentional exits still look clean to the peer.
+	_ = conn.SetReadDeadline(time.Now().Add(clientExitCloseHandshakeTimeout))
+	_, _, err := conn.ReadMessage()
+	if err == nil {
+		return
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return
 	}
 }
 
