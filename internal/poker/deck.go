@@ -32,12 +32,11 @@ func NewDeck() *Deck {
 }
 
 func (deck *Deck) Shuffle() {
-	for i := math_rand.Intn(4) + 1; i > 0; i-- {
-		for i := 0; i < deck.size; i++ {
-			randIdx := math_rand.Intn(deck.size)
-			// swap
-			deck.cards[randIdx], deck.cards[i] = deck.cards[i], deck.cards[randIdx]
-		}
+	// Fisher-Yates shuffle
+	for i := 0; i < deck.size; i++ {
+		randIdx := i + math_rand.Intn(deck.size-i)
+		// swap
+		deck.cards[randIdx], deck.cards[i] = deck.cards[i], deck.cards[randIdx]
 	}
 
 	deck.pos = 0
