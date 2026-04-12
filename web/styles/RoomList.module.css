@@ -1,0 +1,95 @@
+.roomsPage {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: min(560px, 100%);
+  flex: 1 1 auto;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-top: 2rem;
+}
+
+@media (max-width: 700px) {
+  .roomsPage {
+    padding-top: 1rem;
+  }
+}
+
+.pageContainer {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.roomList {
+  display: flex;
+  flex-direction: column;
+  padding: 5px 10px;
+  border-left: 1px solid;
+  border-radius: 5px;
+  border-color: grey;
+  width: 100%;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.pageResults {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 5px 10px;
+  border-left: 1px solid;
+  border-radius: 5px;
+  border-color: grey;
+  width: 100%;
+  overflow-y: auto;
+}
+
+.search {
+  display: flex;
+  gap: 7px;
+  padding: 7px;
+}
+
+.pageSearch {
+  width: 100%;
+  align-items: center;
+  padding: 0 0 10px;
+}
+
+.pageSearch input {
+  flex: 0 1 240px;
+  width: min(240px, 100%);
+}
+
+.searchHighlight {
+  color: red;
+}
+
+.roomListItem {
+  padding: 7px;
+  border-radius: 3px;
+}
+
+.roomListItem:hover {
+  background-color: #b7b7b7;
+}
+
+.roomListItem p {
+  opacity: 0.8;
+}
+
+.roomListItem button {
+  font-family: inherit;
+}
+
+.roomListInfo {
+  display: flex;
+  flex-direction: column;
+  padding-left: 7px;
+  text-align: left;
+  border-left: 1px solid;
+  border-radius: 5px;
+  border-color: grey;
+}

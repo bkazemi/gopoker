@@ -1,0 +1,311 @@
+import React, { useState, useEffect, useContext } from 'react';
+
+import Image from 'next/image';
+import { useRouter } from 'next/router';
+import { Literata, Overpass_Mono } from 'next/font/google';
+
+import Modal from 'react-modal';
+import cx from 'classnames';
+
+import NewGameForm from '@/components/NewGameForm';
+
+import { GameContext } from '@/GameContext';
+import { NewClient } from '@/lib/libgopoker';
+
+import styles from '@/styles/TableModal.module.css';
+
+const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
+const OverpassMono = Overpass_Mono({ subsets: ['latin', 'latin-ext', 'cyrillic', 'cyrillic-ext', 'vietnamese'], weight: '600' });
+
+const ModalContent = React.memo(({
+  modalType, modalTxt, setModalOpen, setFormData, setGameOpts, setIsSpectator
+}) => {
+  const router = useRouter();
+
+  const [pageIdx, setPageIdx] = useState(0);
+
+  const goHome = () => {
+    setGameOpts(opts => ({
+      ...opts,
+      client: NewClient({}),
+      creatorToken: undefined,
+      creatorTokenRoomID: undefined,
+      websocketOpts: undefined,
+      roomSettings: undefined,
+      roomURL: '',
+      reset: true,
+      goHome: true,
+    }));
+    window.roomURL = undefined;
+    router.push('/');
+  };
+
+  const spectate = () => {
+    setIsSpectator(true);
+  };
+
+  switch (modalType) {
+  case 'preGame':
+    return (
+      <>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+        <button
+          className={styles.modalBtn}
+          onClick={goHome}
+        >
+          go home
+        </button>
+      </>
+    );
+  case 'reconnect':
+    return (
+      <>
+       <div
+          style={{
+            display: 'flex',
+            paddingBottom: '7px',
+          }}
+        >
+          <Image
+            src={'/connectionLost.png'}
+            height={35}
+            width={35}
+            alt={'<connectionLost image>'}
+            style={{
+              alignSelf: 'flex-start',
+              marginRight: '10px',
+            }}
+          />
+          <h2>server connection lost</h2>
+        </div>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+      </>
+    );
+  case 'quit':
+    return (
+      <>
+       <div
+          style={{
+            display: 'flex',
+            alignSelf: 'flex-start',
+            paddingLeft: '4.5rem',
+            paddingBottom: '7px',
+          }}
+        >
+          <Image
+            src={'/quitGame.png'}
+            height={35}
+            width={35}
+            alt={'<quitGame image>'}
+            style={{
+              alignSelf: 'flex-start',
+              marginRight: '10px',
+            }}
+          />
+          <h2>quit game</h2>
+        </div>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+        <div
+          style={{
+            display: 'flex',
+            gap: '3px',
+            paddingTop: '7px',
+          }}
+        >
+          <button
+            className={styles.modalBtn}
+            style={{ marginRight: '3px' }}
+            onClick={goHome}
+          >
+            quit
+          </button>
+          <button
+            className={styles.modalBtn}
+            onClick={() => setModalOpen(false)}
+          >
+            cancel
+          </button>
+        </div>
+      </>
+    );
+  case 'spectate':
+    return (
+      <>
+       <div
+          style={{
+            display: 'flex',
+            alignSelf: 'flex-start',
+            paddingLeft: '4.5rem',
+            paddingBottom: '7px',
+          }}
+        >
+          <Image
+            src={'/spectator.png'}
+            height={35}
+            width={35}
+            alt={'<spectate image>'}
+            style={{
+              alignSelf: 'flex-start',
+              marginRight: '10px',
+            }}
+          />
+          <h2>move to spectator</h2>
+        </div>
+        <p className={styles.modalTxt}>{ modalTxt[pageIdx] }</p>
+        <div
+          style={{
+            display: 'flex',
+            gap: '3px',
+            paddingTop: '7px',
+          }}
+        >
+          <button
+            className={styles.modalBtn}
+            style={{ marginRight: '3px' }}
+            onClick={() => {
+              setModalOpen(false);
+              spectate();
+            }}
+          >
+            spectate
+          </button>
+          <button
+            className={styles.modalBtn}
+            onClick={() => setModalOpen(false)}
+          >
+            cancel
+          </button>
+        </div>
+      </>
+    );
+  case 'settings':
+    return (
+      <>
+        <div
+          style={{
+            display: 'flex',
+            alignSelf: 'flex-start',
+            paddingLeft: '2rem',
+            paddingBottom: '7px',
+          }}
+        >
+          <Image
+            src={'/settingsIcon.png'}
+            height={35}
+            width={35}
+            alt={'<settings image>'}
+            style={{
+              alignSelf: 'flex-start',
+              marginRight: '10px',
+            }}
+          />
+          <h2>settings</h2>
+        </div>
+        <NewGameForm
+          isVisible={true}
+          isSettings={true}
+          setModalOpen={setModalOpen}
+          setFormData={setFormData}
+        />
+      </>
+    );
+  default:
+    if (!modalTxt.length) {
+      setModalOpen(false);
+      return;
+    }
+
+    return (
+      <>
+        <p
+          className={cx(styles.modalTxt, OverpassMono.className)}
+        >
+          { modalTxt[pageIdx] }
+        </p>
+        <div
+          style={{
+            display: 'flex',
+            gap: '3px',
+            paddingTop: '7px',
+          }}
+        >
+          {
+            modalTxt.length > 1 &&
+            <button
+              className={styles.modalBtn}
+              onClick={() => setPageIdx(idx => (idx + 1) % modalTxt.length)}
+            >
+              { pageIdx === (modalTxt.length - 1) ? 'first page' : 'next page' }
+            </button>
+          }
+          <button
+            className={styles.modalBtn}
+            onClick={() => setModalOpen(false)}
+          >
+            close
+          </button>
+      </div>
+      </>
+    );
+  }
+});
+
+ModalContent.displayName = 'ModalContent';
+
+function TableModal(props) {
+  const { modalType, modalOpen, setModalOpen, setModalTxt } = props;
+  const { setGameOpts } = useContext(GameContext);
+
+  useEffect(() => {
+    if (!modalOpen)
+      setModalTxt([]);
+  }, [modalOpen, setModalTxt]);
+
+  const isCloseable = modalType !== 'preGame' && modalType !== 'reconnect';
+
+  return (
+    <Modal
+      ariaHideApp={false}
+      isOpen={modalOpen}
+      onRequestClose={() => setModalOpen(false)}
+      shouldCloseOnOverlayClick={isCloseable}
+      shouldCloseOnEsc={isCloseable}
+      contentLabel='label'
+      style={{
+        overlay: {
+          backgroundColor: modalType === 'preGame' ? '#d7d7d7' : 'transparent',
+          zIndex: 2,
+        },
+        content: {
+          top: '50%',
+          left: '50%',
+          right: 'auto',
+          bottom: 'auto',
+          marginRight: '-50%',
+          transform: 'translate(-50%, -50%)',
+          minWidth: '350px', minHeight: '350px',
+          borderRadius: '10px',
+          border: '5px solid #151515',
+          zIndex: 2,
+          overflow: 'auto',
+        },
+      }}
+    >
+      <div
+        className={cx(
+          styles.contentFlex,
+          literata.className
+        )}
+      >
+        <ModalContent
+          {...props}
+          setGameOpts={setGameOpts}
+        />
+      </div>
+    </Modal>
+  );
+}
+
+TableModal.displayName = 'TableModal';
+
+export default React.memo(TableModal);

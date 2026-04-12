@@ -3,13 +3,10 @@
 
 ### Try it [here](https://poker.shirkadeh.org)
 
-### Development currently active on [web](https://github.com/bkazemi/gopoker/tree/web) branch
-
 ## Setup
 ```sh
 $ git clone https://github.com/bkazemi/gopoker
 $ cd gopoker
-$ git checkout web
 
 # build the server
 $ go build
@@ -33,3 +30,10 @@ $ gopoker -c ws://localhost:777/cli
 $ export  NEXT_PUBLIC_GOPOKER_SERVER_ADDR='localhost:777' # tell web frontend where the server is
 $ yarn start # start next.js web frontend
 ```
+
+## Pre-commit
+```sh
+$ pre-commit install
+```
+
+The repo includes a `pre-commit` hook for `gofmt`, which formats staged `*.go` files before commit.

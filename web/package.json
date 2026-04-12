@@ -1,0 +1,30 @@
+{
+  "name": "gopoker-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "^3.0.0-beta2",
+    "classnames": "^2.3.2",
+    "eslint": "8.41.0",
+    "eslint-config-next": "^14.1.0",
+    "lodash": "^4.17.21",
+    "next": "^14.1.0",
+    "node-fetch": "^3.3.1",
+    "node-gyp": "^9.3.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-modal": "^3.16.1",
+    "react-select": "^5.7.2",
+    "react-tooltip": "^5.14.0",
+    "react-transition-group": "^4.4.5",
+    "sharp": "^0.32.1",
+    "swr": "^2.1.1",
+    "uuid": "^9.0.0"
+  }
+}

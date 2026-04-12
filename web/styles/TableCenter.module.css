@@ -1,0 +1,39 @@
+.community {
+  display: flex;
+  flex-direction: row;
+  transition: opacity 0.5s;
+}
+
+.preGame button {
+  font-size: 1rem;
+  padding: 7px;
+}
+
+.mainPotContainer {
+  display: flex;
+  flex-direction: row;
+  place-items: flex-end;
+  justify-content: center;
+  padding-top: 15px;
+  gap: 10px;
+}
+
+.mainPot {
+  font-size: 1.3rem;
+}
+
+@media (max-height: 1100px) {
+  .community > img {
+    height: 90px;
+    width: 60px;
+  }
+
+  .mainPotContainer {
+    padding-top: 8px;
+  }
+
+  .mainPotContainer > img {
+    height: 38px;
+    width: 38px;
+  }
+}
