@@ -1,38 +1,59 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# gopoker web
 
-## Getting Started
+Next.js 14 (pages router) + React 18 frontend for gopoker. Talks to the Go server over HTTP (room creation, metadata) and WebSocket (gameplay), using msgpack for the wire format.
 
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+## Setup
+```sh
+$ yarn install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires Node.js and Yarn. The Go server must be running separately — see the top-level README.
 
-You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
+## Development
+```sh
+# point at a running Go server
+$ export NEXT_PUBLIC_GOPOKER_SERVER_ADDR='localhost:7777'
+$ yarn dev      # http://localhost:3000
+```
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.js`.
+Other scripts:
+- `yarn build` — production build
+- `yarn start` — serve the production build
+- `yarn lint` — next lint
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
+## Environment
+Resolved in `serverConfig.js`:
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+- `NEXT_PUBLIC_GOPOKER_SERVER_ADDR` — backend `host:port`. Default `localhost`.
+- `NEXT_PUBLIC_GOPOKER_SERVER_HTTPURL` — full HTTP base URL; overrides the derived value.
+- `NEXT_PUBLIC_GOPOKER_SERVER_WSURL` — full WebSocket base URL; overrides the derived value.
+- `NEXT_PUBLIC_SSL_ENABLED` — `true` to derive `https://` / `wss://` from `…_ADDR`.
+- `NEXT_PUBLIC_SHOW_LOG` — when unset, browser logging is muted.
 
-## Learn More
+If `HTTPURL` / `WSURL` are not set, they're derived from `ADDR` + `SSL_ENABLED`.
 
-To learn more about Next.js, take a look at the following resources:
+## Layout
+```
+pages/
+  index.jsx           landing / room creation
+  rooms.jsx           room list
+  room/[roomID].jsx   table view (WebSocket gameplay)
+  api/                Next.js API routes that proxy the Go server
+    new.js            POST /new
+    check/            room availability
+    roomCount.js, roomList.js, status.js
+components/           Game, Player, TableCenter, Chat, Header, modals, …
+lib/
+  libgopoker.js       WS client, msgpack framing, game-state reducer
+  useDeferredLoading.js, useFlickSpin.js
+GameContext.jsx       React context for shared game state
+serverConfig.js       env-var resolution
+styles/               CSS modules
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Server interaction
+- HTTP requests go through `pages/api/*`, which forward to the Go server so the browser only talks to the Next.js origin.
+- Gameplay uses a WebSocket to `/room/{roomName}/web` on the Go server (direct, not proxied). See `lib/libgopoker.js` for framing and message handling.
+- Payloads are msgpack-encoded (`@msgpack/msgpack`).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+See the top-level README for the Go server's HTTP API and flags.
