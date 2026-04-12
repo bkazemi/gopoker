@@ -44,7 +44,7 @@ pages/
     roomCount.js, roomList.js, status.js
 components/           Game, Player, TableCenter, Chat, Header, modals, …
 lib/
-  libgopoker.js       WS client, msgpack framing, game-state reducer
+  libgopoker.js       protocol constants + msgpack helpers shared with the Go server
   useDeferredLoading.js, useFlickSpin.js
 GameContext.jsx       React context for shared game state
 serverConfig.js       env-var resolution
@@ -53,7 +53,7 @@ styles/               CSS modules
 
 ## Server interaction
 - HTTP requests go through `pages/api/*`, which forward to the Go server so the browser only talks to the Next.js origin.
-- Gameplay uses a WebSocket to `/room/{roomName}/web` on the Go server (direct, not proxied). See `lib/libgopoker.js` for framing and message handling.
+- Gameplay uses a WebSocket to `/room/{roomName}/web` on the Go server (direct, not proxied). The connection is opened in `pages/room/[roomID].jsx` / `components/Game.jsx`; `lib/libgopoker.js` defines the shared protocol constants.
 - Payloads are msgpack-encoded (`@msgpack/msgpack`).
 
 See the top-level README for the Go server's HTTP API and flags.
