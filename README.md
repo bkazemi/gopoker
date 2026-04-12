@@ -1,4 +1,4 @@
-![gopoker](https://github.com/bkazemi/gopoker/blob/web/assets/logo.gif)
+![gopoker](assets/logo.gif)
 # Poker game in Go (WIP)
 
 ### Try it [here](https://poker.shirkadeh.org)
