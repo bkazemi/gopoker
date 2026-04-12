@@ -133,6 +133,15 @@ func (table *Table) SetCurPlayer(player *PlayerNode) {
 	table.curPlayer = player
 }
 
+// IsCurPlayer reports whether p is the player whose turn is active. Uses
+// Name comparison to match the convention used elsewhere (removePlayer,
+// blind handling); pointer identity isn't guaranteed to line up across
+// re-seats.
+func (table *Table) IsCurPlayer(p *Player) bool {
+	curP := table.CurPlayer()
+	return curP != nil && p != nil && curP.Player.Name == p.Name
+}
+
 func (table *Table) Better() *Player {
 	return table.better
 }

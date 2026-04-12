@@ -281,6 +281,72 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 	}
 }
 
+// cleanupPlayerOnExit folds the player's current turn (if any), advances turn
+// state, then removes the player. Called when a client disconnects (isClientExit
+// true) or moves to spectator (isClientExit false).
+func (room *Room) cleanupPlayerOnExit(client *Client, isClientExit bool) {
+	if client == nil {
+		return
+	}
+	// Snapshot: client.Player may be nilled concurrently by another
+	// removePlayer call (e.g. from a different goroutine's cleanup path).
+	player := client.Player
+	if player == nil {
+		return
+	}
+
+	if room.table.ActivePlayers().Len > 1 && room.table.IsCurPlayer(player) {
+		player.Action.Action = playerState.Fold
+		room.table.SetNextPlayerTurn()
+		room.sendPlayerTurnToAll()
+	}
+
+	room.removePlayer(client, isClientExit, !isClientExit)
+}
+
+// addPlayer binds player to client, inserts into CurPlayers/ActivePlayers,
+// fills in dealer/blinds/curPlayer slots if unset, and broadcasts
+// NewPlayer + YourPlayer. Caller looks up the seat and handles any
+// pre-broadcast mutation (e.g. name sync in NetDataNewPlayer). Symmetric
+// with removePlayer.
+//
+// forceFirstAction: creator connection runs before NextTableAction, so the
+// State check below cannot distinguish it — callers that know the player
+// must start with FirstAction (regardless of State) pass true.
+func (room *Room) addPlayer(client *Client, player *poker.Player, netData *NetData, forceFirstAction bool) {
+	client.Player = player
+	room.clients.SetPlayer(client, player)
+
+	if forceFirstAction || room.table.State == poker.TableStateNotStarted {
+		player.Action.Action = playerState.FirstAction
+		room.table.CurPlayers().AddPlayer(player)
+	} else {
+		player.Action.Action = playerState.MidroundAddition
+	}
+	room.table.ActivePlayers().AddPlayer(player)
+
+	if room.table.CurPlayer() == nil {
+		room.table.SetCurPlayer(room.table.CurPlayers().Head)
+	}
+
+	if room.table.Dealer == nil {
+		room.table.Dealer = room.table.ActivePlayers().Head
+	} else if room.table.SmallBlind == nil {
+		room.table.SmallBlind = room.table.Dealer.Next()
+	} else if room.table.BigBlind == nil {
+		room.table.BigBlind = room.table.SmallBlind.Next()
+	}
+
+	netData.Client = room.publicClientInfo(client)
+	netData.Response = NetDataNewPlayer
+	netData.Table = room.table
+	room.sendResponseToAll(netData, client)
+
+	netData.Client = client
+	netData.Response = NetDataYourPlayer
+	netData.Send()
+}
+
 func (room *Room) sendPlayerTurn(client *Client) {
 	if room.table.CurPlayer() == nil {
 		log.Warn().Str("room", room.name).Msg("curPlayer is nil")

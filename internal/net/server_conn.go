@@ -1,14 +1,203 @@
 package net
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/gob"
 	"fmt"
+	"time"
 
-	"github.com/bkazemi/gopoker/internal/playerState"
 	"github.com/bkazemi/gopoker/internal/poker"
 	"github.com/rs/zerolog/log"
 
 	"github.com/gorilla/websocket"
+	"github.com/vmihailenco/msgpack/v5"
 )
+
+// startPingLoop runs a 10s websocket ping keep-alive. Returns a stop function
+// the caller should defer; calling it terminates the goroutine.
+func startPingLoop(conn *websocket.Conn, roomName string) func() {
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+					log.Error().Err(err).Str("room", roomName).Msg("ping error")
+					return
+				}
+			}
+		}
+	}()
+	return func() { close(stop) }
+}
+
+// readNetData blocks on conn.ReadMessage and decodes it per connType.
+// cleanClose is true when the peer closed the socket normally (no error
+// surfaced to the caller). On any decode/read failure it returns err != nil.
+func readNetData(conn *websocket.Conn, connType string, room *Room, maxConnBytes int64) (netData NetData, cleanClose bool, err error) {
+	_, rawData, readErr := conn.ReadMessage()
+	if readErr != nil {
+		tag := connType
+		if websocket.IsUnexpectedCloseError(readErr, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+			log.Error().
+				Str("room", room.name).
+				Err(readErr).
+				Msgf("%s: readConn error on conn %p", tag, conn)
+		} else {
+			log.Debug().
+				Str("room", room.name).
+				Err(readErr).
+				Msgf("%s: readConn conn %p ws closed cleanly", tag, conn)
+			cleanClose = true
+		}
+		return NetData{}, cleanClose, readErr
+	}
+
+	if connType == "cli" {
+		// set Table member to nil otherwise gob will modify our room.table
+		// structure if a user sends that member
+		nd := NetData{Response: NetDataNewConn, Table: nil}
+		if decErr := gob.NewDecoder(bufio.NewReader(bytes.NewReader(rawData))).Decode(&nd); decErr != nil {
+			log.Error().
+				Str("room", room.name).
+				Err(decErr).
+				Msgf("cli: problem decoding gob stream from %p", conn)
+			return NetData{}, false, decErr
+		}
+		nd.Table = room.table
+
+		log.Debug().
+			Str("room", room.name).
+			Str("action", nd.NetActionToString()).
+			Int("bytes", len(rawData)).
+			Msgf("cli: recv from %p", conn)
+
+		if int64(len(rawData)) > maxConnBytes {
+			log.Warn().
+				Str("room", room.name).
+				Int64("max", maxConnBytes).
+				Msgf("cli: conn %p sent too many bytes", conn)
+			return NetData{}, false, fmt.Errorf("cli: too many bytes")
+		}
+		return nd, false, nil
+	}
+
+	// webclient
+	if decErr := msgpack.Unmarshal(rawData, &netData); decErr != nil {
+		log.Error().
+			Str("room", room.name).
+			Err(decErr).
+			Msgf("web: problem decoding msgpack stream from %p", conn)
+		return NetData{}, false, decErr
+	}
+
+	if netData.HasClient() {
+		if netData.Client.conn == nil {
+			netData.Client.conn = conn
+		}
+		if netData.Client.Settings == nil {
+			netData.Client.Settings = &ClientSettings{}
+		}
+	} else {
+		log.Warn().Str("room", room.name).Msgf("web: (%p) netData.HasClient() == false", conn)
+	}
+
+	log.Debug().
+		Str("room", room.name).
+		Str("action", netData.NetActionToString()).
+		Msgf("web: recv msgpack, request=%v", netData.Request)
+	if netData.room == nil {
+		netData.room = room
+	}
+	netData.Table = room.table
+	return netData, false, nil
+}
+
+// handleDisconnect is the deferred cleanup path for a terminated WS client:
+// recover from room panics, schedule reconnect-window cleanup for unclean
+// exits, or remove the last-client room on clean exit.
+func (server *Server) handleDisconnect(room *Room, conn *websocket.Conn, cleanExit bool) {
+	if server.panicked { // room panic was already recovered in previous client handler
+		return
+	}
+
+	if err := recover(); err != nil {
+		server.serverError(poker.PanicRetToError(err), room)
+		return
+	}
+
+	client, ok := room.clients.ByConn(conn)
+	if !ok {
+		log.Warn().Str("room", room.name).Msgf("defer: couldn't find conn %p in connClientMap", conn)
+		return
+	}
+
+	minsToWait := 0 * time.Minute
+
+	client.mtx.Lock()
+
+	// If the client already reconnected on a new socket,
+	// this is a stale cleanup for the old connection — skip it.
+	if client.conn != conn {
+		client.mtx.Unlock()
+		room.clients.RemoveConn(conn)
+		closeConn(conn)
+		return
+	}
+
+	client.isDisconnected = true
+
+	if !cleanExit {
+		log.Debug().
+			Str("client", client.FullName(true)).
+			Msg("unclean exit, waiting 1 min for reconnect until cleanup")
+
+		if client.Player != nil {
+			room.sendResponseToAll(&NetData{
+				Response: NetDataPlayerReconnecting,
+				Client:   room.publicClientInfo(client),
+			}, client)
+		}
+		minsToWait = 1 * time.Minute
+	}
+
+	room.clients.RemoveConn(conn)
+	closeConn(conn)
+
+	if client.reconnectTimer != nil {
+		client.reconnectTimer.Stop()
+	}
+	// the 0 min gofunc is kinda dumb, but they're cheap and it eliminates
+	// some redundancy
+	client.reconnectTimer = time.AfterFunc(minsToWait, func() {
+		client.mtx.Lock()
+		defer client.mtx.Unlock()
+
+		if !client.isDisconnected {
+			return
+		}
+
+		// if IsLocked is true then there must be at least one other client
+		if !room.IsLocked() && room.table.NumConnected == 1 {
+			log.Info().
+				Str("client", client.FullName(true)).
+				Str("room", room.name).
+				Msg("last client left, removing room")
+			server.removeRoom(room)
+			return
+		}
+
+		room.cleanupPlayerOnExit(client, true)
+		room.removeClient(client)
+	})
+
+	client.mtx.Unlock()
+}
 
 func (server *Server) handleNewConn(
 	room *Room, netData NetData, conn *websocket.Conn, connType string,
@@ -71,50 +260,29 @@ func (server *Server) handleNewConn(
 		if !netData.Client.Settings.IsSpectator {
 			seatPos := netData.Client.Settings.SeatPos
 
-			if player := room.table.GetSeat(seatPos); player != nil {
-				client.Player = player
-				room.clients.SetPlayer(client, player)
-
-				processClient()
-
-				log.Info().
-					Str("room", room.name).
-					Str("client", client.ID).
-					Str("name", client.Name).
-					Str("player", player.Name).
-					Uint("tPos", player.TablePos).
-					Msg("adding player (creator)")
-
-				player.Action.Action = playerState.FirstAction
-				room.table.CurPlayers().AddPlayer(player)
-				room.table.ActivePlayers().AddPlayer(player)
-
-				if room.table.CurPlayer() == nil {
-					room.table.SetCurPlayer(room.table.CurPlayers().Head)
-				}
-
-				if room.table.Dealer == nil {
-					room.table.Dealer = room.table.ActivePlayers().Head
-				} else if room.table.SmallBlind == nil {
-					room.table.SmallBlind = room.table.Dealer.Next()
-				} else if room.table.BigBlind == nil {
-					room.table.BigBlind = room.table.SmallBlind.Next()
-				}
-
-				// while unlikely, it is still possible that non-room creators could
-				// join while we are handling the room creator
-				netData.Client = room.publicClientInfo(client)
-				netData.Response = NetDataNewPlayer
-				netData.Table = room.table
-
-				room.sendResponseToAll(&netData, client)
-
-				netData.Client = client
-				netData.Response = NetDataYourPlayer
-				netData.Send()
-			} else { // sanity check
+			// reserve the seat before any broadcasts so a racing non-creator
+			// join can't claim it out from under us.
+			player := room.table.GetSeat(seatPos)
+			if player == nil { // sanity check
 				panic(fmt.Sprintf("Server.handleNewConn(): {%s}: GetSeat(%v) failed for a room creator", room.name, seatPos))
 			}
+			client.Player = player
+			room.clients.SetPlayer(client, player)
+
+			// processClient must run before addPlayer so that the client
+			// receives its NewConn and settings before the NewPlayer broadcast.
+			// client.Player is now bound, so applyClientSettings will sync
+			// the requested name onto player.Name.
+			processClient()
+
+			room.addPlayer(client, player, &netData, true)
+			log.Info().
+				Str("room", room.name).
+				Str("client", client.ID).
+				Str("name", client.Name).
+				Str("player", player.Name).
+				Uint("tPos", player.TablePos).
+				Msg("adding player (creator)")
 
 			room.makeAdmin(client)
 		} else {
@@ -193,10 +361,14 @@ func (server *Server) handleNewConn(
 			netData.Response = NetDataClientSettings
 			netData.Send()
 		} else if player := room.table.GetSeat(client.Settings.SeatPos); player != nil {
+			// bind player and sync the requested name onto player.Name
+			// before addPlayer broadcasts NetDataNewPlayer — otherwise
+			// other clients see the default seat name
 			client.Player = player
-			room.clients.SetPlayer(client, player)
+			player.SetName(client.Settings.Name)
+			client.SetName(player.Name)
 
-			room.applyClientSettings(client, netData.Client.Settings)
+			room.addPlayer(client, player, &netData, false)
 			log.Info().
 				Str("room", room.name).
 				Str("client", client.ID).
@@ -204,36 +376,6 @@ func (server *Server) handleNewConn(
 				Str("player", player.Name).
 				Uint("tPos", player.TablePos).
 				Msg("adding player")
-
-			if room.table.State == poker.TableStateNotStarted {
-				player.Action.Action = playerState.FirstAction
-				room.table.CurPlayers().AddPlayer(player)
-			} else {
-				player.Action.Action = playerState.MidroundAddition
-			}
-			room.table.ActivePlayers().AddPlayer(player)
-
-			if room.table.CurPlayer() == nil {
-				room.table.SetCurPlayer(room.table.CurPlayers().Head)
-			}
-
-			if room.table.Dealer == nil {
-				room.table.Dealer = room.table.ActivePlayers().Head
-			} else if room.table.SmallBlind == nil {
-				room.table.SmallBlind = room.table.Dealer.Next()
-			} else if room.table.BigBlind == nil {
-				room.table.BigBlind = room.table.SmallBlind.Next()
-			}
-
-			netData.Client = room.publicClientInfo(client)
-			netData.Response = NetDataNewPlayer
-			netData.Table = room.table
-
-			room.sendResponseToAll(&netData, client)
-
-			netData.Client = client
-			netData.Response = NetDataYourPlayer
-			netData.Send()
 
 			if room.creatorToken == "" && room.tableAdminID == "" {
 				room.makeAdmin(client)
