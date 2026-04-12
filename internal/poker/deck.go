@@ -1,6 +1,6 @@
 package poker
 
-import math_rand "math/rand"
+import math_rand "math/rand/v2"
 
 type Deck struct {
 	pos   uint
@@ -34,7 +34,7 @@ func NewDeck() *Deck {
 func (deck *Deck) Shuffle() {
 	// Fisher-Yates shuffle
 	for i := 0; i < deck.size; i++ {
-		randIdx := i + math_rand.Intn(deck.size-i)
+		randIdx := i + math_rand.IntN(deck.size-i)
 		// swap
 		deck.cards[randIdx], deck.cards[i] = deck.cards[i], deck.cards[randIdx]
 	}

@@ -2,7 +2,7 @@ package poker
 
 import (
 	"errors"
-	"math/rand"
+	"math/rand/v2"
 
 	"github.com/rivo/uniseg"
 )
@@ -50,7 +50,7 @@ func RandString(n int) string {
 	b := make([]rune, n)
 
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		b[i] = letters[rand.IntN(len(letters))]
 	}
 
 	return string(b)
