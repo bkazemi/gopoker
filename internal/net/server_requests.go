@@ -2,6 +2,7 @@ package net
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/bkazemi/gopoker/internal/poker"
 	"github.com/rs/zerolog/log"
@@ -10,26 +11,24 @@ import (
 )
 
 // wsSession carries the per-connection state that the WSClient read loop and
-// its async request dispatchers need to share. cleanExit is a pointer so the
+// its async request dispatchers need to share. cleanExit is atomic so the
 // top-level defer (handleDisconnect) observes writes from both the dispatch
 // goroutines and the read loop.
 type wsSession struct {
-	server              *Server
-	room                *Room
-	conn                *websocket.Conn
-	connType            string
-	cleanExit           *bool
-	returnFromInputLoop chan bool
+	server    *Server
+	room      *Room
+	conn      *websocket.Conn
+	connType  string
+	cleanExit atomic.Bool
 }
 
 // dispatch routes a decoded NetData to the correct handler. Designed to be
-// called in a goroutine from the read loop; handlers that need to unblock the
-// read loop signal via s.returnFromInputLoop.
+// called in a goroutine from the read loop; exiting the loop is signaled via
+// s.requestInputLoopExit.
 func (s *wsSession) dispatch(client *Client, netData NetData) {
 	switch netData.Request {
 	case NetDataClientExited:
-		*s.cleanExit = true
-		s.returnFromInputLoop <- true
+		s.requestInputLoopExit()
 	case NetDataPlayerLeft: // NOTE: used when a player moves to spectator
 		s.room.cleanupPlayerOnExit(client, false)
 	case NetDataNewPlayer:
@@ -123,7 +122,6 @@ func (s *wsSession) handleClientSettings(client *Client, netData NetData) {
 		netData.Response = NetDataServerMsg
 		netData.Msg = "cannot change your settings right now. please try again later"
 		netData.Send()
-		s.returnFromInputLoop <- false
 		return
 	}
 	defer room.Unlock()
@@ -168,7 +166,6 @@ func (s *wsSession) handleAdminSettings(client *Client, netData NetData) {
 		netData.Response = NetDataServerMsg
 		netData.Msg = "cannot change your settings right now. please try again later"
 		netData.Send()
-		s.returnFromInputLoop <- false
 		return
 	}
 	defer room.Unlock()
@@ -319,7 +316,6 @@ func (s *wsSession) handlePlayerAction(client *Client, netData NetData) {
 		netData.Response = NetDataBadRequest
 		netData.Msg = "that action is not valid at this time"
 		netData.Send()
-		s.returnFromInputLoop <- false
 		return
 	}
 
@@ -332,7 +328,6 @@ func (s *wsSession) handlePlayerAction(client *Client, netData NetData) {
 		netData.Response = NetDataBadRequest
 		netData.Msg = "you are not a player"
 		netData.Send()
-		s.returnFromInputLoop <- false
 		return
 	}
 
@@ -341,7 +336,6 @@ func (s *wsSession) handlePlayerAction(client *Client, netData NetData) {
 		netData.Response = NetDataBadRequest
 		netData.Msg = "a game has not been started yet"
 		netData.Send()
-		s.returnFromInputLoop <- false
 		return
 	}
 
@@ -350,7 +344,6 @@ func (s *wsSession) handlePlayerAction(client *Client, netData NetData) {
 		netData.Response = NetDataBadRequest
 		netData.Msg = "it's not your turn"
 		netData.Send()
-		s.returnFromInputLoop <- false
 		return
 	}
 
@@ -361,11 +354,7 @@ func (s *wsSession) handlePlayerAction(client *Client, netData NetData) {
 	// rejoined on a different seat. Pointer identity confirms this
 	// is still the same player-seat binding.
 	if client.Player != player || player.IsVacant {
-		// Release the room lock before signaling the read loop. The
-		// channel is unbuffered and only drained between ReadMessage
-		// calls, so a send-while-holding-lock can wedge the room.
 		room.Unlock()
-		s.returnFromInputLoop <- false
 		return
 	}
 	defer room.Unlock()

@@ -7,60 +7,37 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func TestRunWSInputLoopReturnsOnClientExitedSignal(t *testing.T) {
+func TestRunWSInputLoopMarksCleanExitOnCleanClose(t *testing.T) {
 	t.Parallel()
 
 	server := &Server{}
-	cleanExit := true
-	sess := &wsSession{
-		cleanExit:           &cleanExit,
-		returnFromInputLoop: make(chan bool, 1),
-	}
-
-	readCalled := make(chan struct{}, 1)
-	sess.returnFromInputLoop <- true
+	sess := &wsSession{}
 
 	server.runWSInputLoop(sess, func(_ *websocket.Conn, _ string, _ *Room, _ int64) (NetData, bool, error) {
-		readCalled <- struct{}{}
-		return NetData{}, false, errors.New("read should not be called after ClientExited")
+		return NetData{}, true, errors.New("peer close")
 	})
 
-	if !cleanExit {
-		t.Fatal("expected cleanExit to be true after ClientExited")
-	}
-
-	select {
-	case <-readCalled:
-		t.Fatal("readFn was called after ClientExited signaled an immediate return")
-	default:
+	if !sess.cleanExit.Load() {
+		t.Fatal("expected cleanExit to be true after a clean close")
 	}
 }
 
-func TestRunWSInputLoopContinuesAfterNonExitSignal(t *testing.T) {
+func TestRunWSInputLoopReturnsOnReadError(t *testing.T) {
 	t.Parallel()
 
 	server := &Server{}
-	cleanExit := false
-	sess := &wsSession{
-		cleanExit:           &cleanExit,
-		returnFromInputLoop: make(chan bool, 1),
-	}
+	sess := &wsSession{}
 
-	readCalled := make(chan struct{}, 1)
-	sess.returnFromInputLoop <- false
-
+	readCalled := 0
 	server.runWSInputLoop(sess, func(_ *websocket.Conn, _ string, _ *Room, _ int64) (NetData, bool, error) {
-		readCalled <- struct{}{}
-		return NetData{}, false, errors.New("stop loop after verifying non-exit signal")
+		readCalled++
+		return NetData{}, false, errors.New("read error")
 	})
 
-	select {
-	case <-readCalled:
-	default:
-		t.Fatal("expected readFn to be called after a non-exit signal")
+	if readCalled != 1 {
+		t.Fatalf("expected readFn called exactly once, got %d", readCalled)
 	}
-
-	if cleanExit {
-		t.Fatal("expected cleanExit to remain false after non-exit signal")
+	if sess.cleanExit.Load() {
+		t.Fatal("expected cleanExit to remain false on non-clean error")
 	}
 }

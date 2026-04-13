@@ -4,8 +4,6 @@ import (
 	"compress/flate"
 	"context"
 	"encoding/json"
-	"errors"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,8 +15,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
-
-const clientExitCloseHandshakeTimeout = 250 * time.Millisecond
 
 type Server struct {
 	rooms map[string]*Room
@@ -190,24 +186,27 @@ func (server *Server) WSClient(w http.ResponseWriter, req *http.Request, room *R
 	conn.EnableWriteCompression(true)
 	conn.SetCompressionLevel(flate.BestCompression)
 
-	cleanExit := false
-	defer func() { server.handleDisconnect(room, conn, cleanExit) }()
+	sess := &wsSession{
+		server:   server,
+		room:     room,
+		conn:     conn,
+		connType: connType,
+	}
+	defer func() { server.handleDisconnect(room, conn, sess.cleanExit.Load()) }()
 
 	log.Info().Str("room", room.name).Str("host", req.Host).Msg("new websocket connection")
 
 	stopPing := startPingLoop(conn, room.name)
 	defer stopPing()
 
-	sess := &wsSession{
-		server:              server,
-		room:                room,
-		conn:                conn,
-		connType:            connType,
-		cleanExit:           &cleanExit,
-		returnFromInputLoop: make(chan bool),
-	}
-
 	server.runWSInputLoop(sess, readNetData)
+}
+
+// requestInputLoopExit marks the session as a clean exit. The read loop
+// isn't actively interrupted; it unblocks when the peer's close frame
+// arrives, or when the ping loop's pong timeout tears down the connection.
+func (s *wsSession) requestInputLoopExit() {
+	s.cleanExit.Store(true)
 }
 
 func (server *Server) runWSInputLoop(
@@ -215,51 +214,23 @@ func (server *Server) runWSInputLoop(
 	readFn func(*websocket.Conn, string, *Room, int64) (NetData, bool, error),
 ) {
 	for {
-		select {
-		case shouldReturn := <-sess.returnFromInputLoop:
-			if shouldReturn {
-				drainPeerCloseFrame(sess.conn)
-				return
+		netData, cleanClose, err := readFn(sess.conn, sess.connType, sess.room, server.MaxConnBytes)
+		if err != nil {
+			if cleanClose {
+				sess.cleanExit.Store(true)
 			}
-		default:
-			netData, cleanClose, err := readFn(sess.conn, sess.connType, sess.room, server.MaxConnBytes)
-			if err != nil {
-				if cleanClose {
-					*sess.cleanExit = true
-				}
-				return
-			}
-
-			switch netData.Request {
-			case NetDataNewConn:
-				server.handleNewConn(sess.room, netData, sess.conn, sess.connType)
-			case NetDataPlayerReconnecting:
-				server.handleReconnect(sess.room, netData, sess.conn, sess.connType)
-			default:
-				client, _ := sess.room.clients.ByConn(sess.conn)
-				go sess.dispatch(client, netData)
-			}
+			return
 		}
-	}
-}
 
-func drainPeerCloseFrame(conn *websocket.Conn) {
-	if conn == nil {
-		return
-	}
-
-	// Current web/CLI clients send NetDataClientExited and then immediately
-	// send a websocket close frame. Give that close handshake a short,
-	// bounded grace period so intentional exits still look clean to the peer.
-	_ = conn.SetReadDeadline(time.Now().Add(clientExitCloseHandshakeTimeout))
-	_, _, err := conn.ReadMessage()
-	if err == nil {
-		return
-	}
-
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return
+		switch netData.Request {
+		case NetDataNewConn:
+			server.handleNewConn(sess.room, netData, sess.conn, sess.connType)
+		case NetDataPlayerReconnecting:
+			server.handleReconnect(sess.room, netData, sess.conn, sess.connType)
+		default:
+			client, _ := sess.room.clients.ByConn(sess.conn)
+			go sess.dispatch(client, netData)
+		}
 	}
 }
 
