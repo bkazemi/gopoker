@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 import Head from 'next/head';
 import dynamic from 'next/dynamic';
@@ -15,6 +15,8 @@ const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice')
 
 import '@/styles/globals.css';
 import homeStyles from '@/styles/Home.module.css';
+import useInitialWindowMetrics from '@/lib/useInitialWindowMetrics';
+import useWindowMetrics from '@/lib/useWindowMetrics';
 
 const MainContent = ({ Component, pageProps, isCompactRoom, router }) => {
   const isInGame = router.pathname === '/room/[roomID]';
@@ -99,8 +101,12 @@ const toggleLogging = (turnOff, dontLog) => {
 };
 
 export default function App({ Component, pageProps, router }) {
-  const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(undefined);
-  const [isCompactRoom, setIsCompactRoom] = useState(false);
+  const { innerWidth } = useWindowMetrics();
+  const { screenWidth: initialScreenWidth } = useInitialWindowMetrics();
+  const isUnsupportedDevice = initialScreenWidth !== null && initialScreenWidth < 375;
+  const isCompactRoom = router.pathname === '/room/[roomID]'
+    && innerWidth !== null
+    && innerWidth <= 1920;
 
   // toggle logging for debugging
   useEffect(() => {
@@ -128,17 +134,6 @@ export default function App({ Component, pageProps, router }) {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
-
-  // check for bare minimum screen width and a small screen size
-  // (which if true will render a smaller game room stylesheet)
-  //
-  // I also treat this like a useEffect with empty deps because that's basically what it is;
-  // then I can set the variables that depend on window before the first render.
-  useEffect(() => {
-    setIsUnsupportedDevice(window?.screen?.width < 375);
-    setIsCompactRoom(router.pathname === '/room/[roomID]'
-      && window?.innerWidth <= 1920);
-  }, [router.pathname]);
 
   return (
     <>

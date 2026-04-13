@@ -266,7 +266,6 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
         ...opts,
         websocketOpts: data,
         roomSettings: !isDirectLink && !isSettings ? nextRoomSettings : opts.roomSettings,
-        reset: false,
       };
 
       return isSettings ? {...newOpts, settingsChange: true} : newOpts;
@@ -287,17 +286,6 @@ function NewGameForm({ isVisible, isSettings, isDirectLink, setModalOpen }) {
       });
     }
   }, [isVisible, newGameFormRef]);
-
-  useEffect(() => {
-    if (gameOpts.reset) {
-      setRoomName('');
-      setName('');
-      setTablePwd('');
-      setTableLock(lockOpts[0]);
-      setMaxPlayers(maxPlayerOpts[maxPlayerOpts.length - 1]);
-      setIsSpectatorChecked(false);
-    }
-  }, [gameOpts.reset]);
 
   return (
     <div

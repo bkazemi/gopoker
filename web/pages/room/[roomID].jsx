@@ -23,6 +23,7 @@ const UnsupportedDevice = dynamic(() => import('@/components/UnsupportedDevice')
 });
 
 import useDeferredLoading from '@/lib/useDeferredLoading';
+import useInitialWindowMetrics from '@/lib/useInitialWindowMetrics';
 import config from '@/serverConfig';
 
 import { NETDATA, NetData } from '@/lib/libgopoker';
@@ -200,19 +201,10 @@ const Connect = ({ roomID }) => {
     // eslint-disable-next-line
     console.log('Connect: roomURL: ', roomURL);
 
-    setGameOpts(opts => ({
-      ...opts,
-      isCompactRoom: window.innerWidth <= 1920,
-    }));
-
     return () => {
       console.log('Connect unmounted');
-      setGameOpts(opts => ({
-        ...opts,
-        isCompactRoom: false,
-      }));
     };
-  }, [setGameOpts]);
+  }, []);
 
   // FIXME: when a player is eliminated, NetDataUpdatePlayer, NetDataPlayerLeft & NetDataEliminated
   // sometimes are being processed out of order, due to async nature of SWR
@@ -347,7 +339,7 @@ function RoomPostDimCheck() {
 
   const {gameOpts, setGameOpts} = useContext(GameContext);
 
-  const { roomURL, websocketOpts, reset, setShowGame } = gameOpts;
+  const { roomURL, websocketOpts, setShowGame } = gameOpts;
 
   const [roomNotFound, setRoomNotFound] = useState(undefined);
   const [checkRoomErr, setCheckRoomErr] = useState('');
@@ -415,7 +407,7 @@ function RoomPostDimCheck() {
   }, [roomID]);
 
   useEffect(() => {
-    if (!reset && websocketOpts && !roomURL) {
+    if (websocketOpts && !roomURL) {
       const roomURL = `${config.gopokerServerWSURL}/room/${encodeURIComponent(roomID)}/web`;
       setGameOpts(gameOpts => ({
         ...gameOpts,
@@ -423,7 +415,7 @@ function RoomPostDimCheck() {
       }));
       window.roomURL = roomURL;
     }
-  }, [websocketOpts, roomURL, reset, setGameOpts]);
+  }, [websocketOpts, roomURL, setGameOpts]);
 
   if (gameOpts.goHome)
     return <TransitionPlaceholder />;
@@ -467,23 +459,12 @@ function RoomPostDimCheck() {
 }
 
 export default function Room() {
-  //const {gameOpts, setGameOpts} = useContext(GameContext);
-  const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(false);
+  const { innerWidth } = useInitialWindowMetrics();
 
-  const [isReadyForRender, setIsReadyForRender] = useState(false);
-
-  useEffect(() => {
-    const screenWidth = window?.innerWidth;
-    setIsUnsupportedDevice(screenWidth < 1080);
-
-    setIsReadyForRender(true);
-  }, []);
-
-  //if (gameOpts.goHome)
-  //  return;
-
-  if (!isReadyForRender)
+  if (innerWidth === null)
     return <Spinner />
+
+  const isUnsupportedDevice = innerWidth < 1080;
 
   return (
     isUnsupportedDevice

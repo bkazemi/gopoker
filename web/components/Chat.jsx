@@ -26,24 +26,23 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
   const chatMsgsRef = useRef(null);
 
   const [msg, setMsg] = useState('');
-  const [netData, setNetData] = useState(new NetData(yourClient, NETDATA.CHAT_MSG, msg));
-  const [chatMsgsStyle, setChatMsgsStyle] = useState({borderColor: 'black', borderWidth: '1px'});
+  const [lastReadMsgCount, setLastReadMsgCount] = useState(msgs.length);
   const [chatMsgsUserScrolled, setChatMsgsUserScrolled] = useState(false);
   const chatMsgsAtBottomRef = useRef(true);
+  const scrollTimerRef = useRef(null);
+  const hasUnreadMsgs = msgs.length > lastReadMsgCount;
 
   const sendMsg = useCallback(() => {
-    if (msg) {
+    if (msg && yourClient) {
       console.warn(`sendMsg: ${msg}`);
-      socket.send(
-        netData.toMsgPack()
-      );
+      socket.send(new NetData(yourClient, NETDATA.CHAT_MSG, msg).toMsgPack());
       setMsg('');
     }
-  }, [socket, msg, netData]);
+  }, [socket, yourClient, msg]);
 
   const handleChatMsgsMouseEnter = useCallback(() => {
-    setChatMsgsStyle({ borderColor: 'black', borderWidth: '1px' });
-  }, [setChatMsgsStyle]);
+    setLastReadMsgCount(msgs.length);
+  }, [msgs.length]);
 
   const scrollToBottomOfChatMsgs = useCallback(() => {
     if (chatMsgsRef.current)
@@ -72,16 +71,17 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
   }, [setChatMsgsUserScrolled]);
 
   useEffect(() => {
-    yourClient && msg && setNetData(_ => {
-      return new NetData(yourClient, NETDATA.CHAT_MSG, msg);
-    });
-  }, [yourClient, msg]);
-
-  useEffect(() => {
     if (msgs.length) {
-      setChatMsgsStyle({ borderColor: 'green', borderWidth: '2px' });
-      chatMsgsAtBottomRef.current && setTimeout(scrollToBottomOfChatMsgs, 100);
+      if (chatMsgsAtBottomRef.current)
+        scrollTimerRef.current = setTimeout(scrollToBottomOfChatMsgs, 100);
     }
+
+    return () => {
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = null;
+      }
+    };
   }, [msgs, scrollToBottomOfChatMsgs]);
 
   return (
@@ -90,7 +90,10 @@ function Chat({ socket, yourClient, msgs, chatInputRef }) {
       <div
         ref={chatMsgsRef}
         className={cx(styles.chatMsgs, vt323.className)}
-        style={chatMsgsStyle}
+        style={{
+          borderColor: hasUnreadMsgs ? 'green' : 'black',
+          borderWidth: hasUnreadMsgs ? '2px' : '1px',
+        }}
         onMouseEnter={handleChatMsgsMouseEnter}
         onScroll={handleChatMsgsScroll}
         onMouseDown={handleChatMsgsUserScroll}

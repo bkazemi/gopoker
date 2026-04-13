@@ -56,6 +56,9 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
   useEffect(() => {
     if (isVisible &&
         gameOpts.roomSettings && !fetchCalled) {
+      const controller = new AbortController();
+      let cancelled = false;
+
       const createNewRoom = async () => {
         const { RoomName, Lock, Password, NumSeats } = gameOpts.roomSettings;
         // eslint-disable-next-line
@@ -64,6 +67,7 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
           const res = await fetch('/api/new', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
+            signal: controller.signal,
             body: JSON.stringify({
               roomName: RoomName || '',
               lock: Lock,
@@ -76,6 +80,9 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
             throw new Error('request failed');
 
           const data = await res.json();
+          if (cancelled)
+            return;
+
           const { creatorToken } = data;
           const roomURL = `${config.gopokerServerWSURL}${data.URL}/web`;
 
@@ -94,12 +101,19 @@ const GamePostDimCheck = React.memo(({ isVisible, setShowGame }) => {
             query: { roomID: data.roomName },
           });
         } catch (err) {
+          if (cancelled)
+            return;
           console.log(`couldn't POST to /api/new: ${err}`);
           setError(err);
         }
       };
 
       createNewRoom();
+
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
     }
   }, [isVisible, fetchCalled, gameOpts.roomSettings,
       router, setGameOpts, setShowGame]);

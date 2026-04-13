@@ -33,7 +33,6 @@ const ModalContent = React.memo(({
       websocketOpts: undefined,
       roomSettings: undefined,
       roomURL: '',
-      reset: true,
       goHome: true,
     }));
     window.roomURL = undefined;

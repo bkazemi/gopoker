@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import cx from 'classnames';
 
 import { NETDATA, NetData, NetDataToString, TABLE_LOCK, TABLE_STATE } from '@/lib/libgopoker';
+import useWindowMetrics from '@/lib/useWindowMetrics';
 
 import { GameContext } from '@/GameContext';
 import TableModal from '@/components/TableModal';
@@ -30,14 +31,7 @@ const PlayerList = React.memo(({
   players, curPlayer, curHand, playerHead, dealerAndBlinds, yourClient,
   isSpectator, sideNum, innerTableItem, tableState, keyPressed, socket
 }) => {
-  let side;
-  sideNum === 0 && (side = 'bottom');
-  sideNum === 1 && (side = 'left');
-  sideNum === 2 && (side = 'top');
-  sideNum === 3 && (side = 'right');
-
-  let gridRow = 1;
-  let gridCol = 1;
+  const side = ['bottom', 'left', 'top', 'right'][sideNum];
 
   return (<>
     {
@@ -45,12 +39,9 @@ const PlayerList = React.memo(({
         .filter(client => client.Player.TablePos % 4 === sideNum)
         .map(client => {
           const isYourPlayer = client.ID && client.ID === yourClient?.ID;
-
-          if (side === 'left' || side === 'right')
-            gridRow = (~~(client.Player.TablePos / 4) % 3) + 1; // modulo 3 is max number
-                                                                // of players on a given side
-          else
-            gridCol = (~~(client.Player.TablePos / 4) % 3) + 1;
+          const gridOffset = (~~(client.Player.TablePos / 4) % 3) + 1;
+          const gridRow = side === 'left' || side === 'right' ? gridOffset : 1;
+          const gridCol = side === 'left' || side === 'right' ? 1 : gridOffset;
 
           return innerTableItem
             ? <PlayerTableItems
@@ -95,6 +86,7 @@ const nullPot = {
 
 export default function Tablenew({ socket, connStatus, netData, setShowGame, roomIDRef }) {
   const {gameOpts, setGameOpts} = useContext(GameContext);
+  const { innerWidth } = useWindowMetrics();
 
   // need this ref so that server response useEffect doesn't trigger when router changes
   const router = useRouter();
@@ -138,21 +130,56 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
   const [modalTxt, setModalTxt] = useState([]);
 
   const chatInputRef = useRef(null);
+  const showModal = useCallback((nextModalType, nextModalTxt) => {
+    setModalType(nextModalType);
+    setModalTxt(nextModalTxt);
+    setModalOpen(true);
+  }, []);
+  const applyYourClient = useCallback((nextClient) => {
+    console.log('yourClient is ', nextClient);
+    yourClientRef.current = nextClient;
+    setYourClient(nextClient);
+    setIsSpectator(!!nextClient?.Settings?.IsSpectator);
+  }, []);
+  const normalizePlayersForSeats = useCallback((seatCount) => {
+    if (!seatCount)
+      return;
 
+    setPlayers(players => {
+      const newPlayerArr = players.filter(p => !p._ID);
+      const playerPosSet = new Set(newPlayerArr.map(c => c.Player.TablePos));
+
+      console.log('numSeats ue: playerPosSet:', playerPosSet);
+
+      let curTablePos = 0;
+      while (newPlayerArr.length < seatCount) {
+        console.log(`numSeats ue: curTablePos before map: ${curTablePos}`);
+        while (playerPosSet.has(curTablePos))
+          curTablePos++;
+        console.log(`numSeats ue: curTablePos after map: ${curTablePos}`);
+        newPlayerArr.push({
+          ...(NewNullClient(curTablePos++)),
+        });
+      }
+
+      console.log('numSeats ue: players =>', newPlayerArr);
+
+      return newPlayerArr;
+    });
+  }, []);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     switch (connStatus) {
     case 'rc':
-      setModalType('reconnect');
-      setModalTxt(['reconnecting...']);
-      setModalOpen(true);
+      showModal('reconnect', ['reconnecting...']);
       break;
     case 'closed':
-      setModalType('preGame');
-      setModalTxt(['could not reconnect. connection closed']);
-      setModalOpen(true);
+      showModal('preGame', ['could not reconnect. connection closed']);
       break;
     }
-  }, [connStatus]);
+  }, [connStatus, showModal]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     routerRef.current = router
@@ -242,31 +269,29 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
   }, []);
 
   useEffect(() => {
-    console.log('yourClient is ', yourClient);
-    setIsSpectator(!!yourClient?.Settings?.IsSpectator);
-    yourClientRef.current = yourClient;
-  }, [yourClient]);
-
-  useEffect(() => {
     console.log('DSB: ', dealer, smallBlind, bigBlind);
   }, [dealer, smallBlind, bigBlind]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-  if (netData.Response) {
-    console.log(`%cresp: ${NetDataToString(netData.Response)} (${netData.Response})`, "background-color:red;color:white;padding:5px;font-size:1.3rem");
-    if (NETDATA.needsTable(netData) && !netData.Table)
-      console.error('table needed but netData.Table is null');
-    if (NETDATA.needsPlayer(netData) && (!netData.Client?.Player || !netData.Client?.ID))
-      console.error(`needsPlayers(): player obj found ? ${!!netData.Client?.Player} ID ? ${!!NETDATA.Client?.ID}`);
+    if (netData.Response) {
+      console.log(`%cresp: ${NetDataToString(netData.Response)} (${netData.Response})`, "background-color:red;color:white;padding:5px;font-size:1.3rem");
+      if (NETDATA.needsTable(netData) && !netData.Table)
+        console.error('table needed but netData.Table is null');
+      if (NETDATA.needsPlayer(netData) && (!netData.Client?.Player || !netData.Client?.ID))
+        console.error(`needsPlayers(): player obj found ? ${!!netData.Client?.Player} ID ? ${!!NETDATA.Client?.ID}`);
 
-    switch (netData.Response) {
+      switch (netData.Response) {
     case NETDATA.NEWCONN: // FIXME: racy
       if (netData.Client) {
         if (!netData.Msg)
           console.error('newconn: no privID sent by server');
-        netData.Client.privID = netData.Msg;
+        const nextClient = {
+          ...netData.Client,
+          privID: netData.Msg,
+        };
         window.privID = netData.Msg;
-        setYourClient(netData.Client);
+        applyYourClient(nextClient);
       }
       setNumConnected(netData.Table.NumConnected);
       if (netData.Table)
@@ -289,7 +314,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
       }));
       break;
     case NETDATA.CLIENT_SETTINGS:
-      setYourClient(netData.Client);
+      applyYourClient(netData.Client);
       if (netData.Client.Player)
         updatePlayer(netData.Client);
       setGameOpts(opts => ({
@@ -304,7 +329,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
       if (netData.Table)
         setNumPlayers(netData.Table.NumPlayers);
 
-      setYourClient(netData.Client);
+      applyYourClient(netData.Client);
       setPlayers(clients => {
         const newClients = [...clients];
 
@@ -358,13 +383,23 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
       });
       break;
     case NETDATA.PLAYER_RECONNECTING:
-      netData.Client.Player.isDisconnected = true;
-      updatePlayer(netData.Client);
+      updatePlayer({
+        ...netData.Client,
+        Player: {
+          ...netData.Client.Player,
+          isDisconnected: true,
+        },
+      });
       break;
     case NETDATA.PLAYER_RECONNECTED:
-      netData.Client.Player.isDisconnected = false;
-      updatePlayer(netData.Client);
-      if (netData.Client.ID === yourClientRef.current.ID)
+      updatePlayer({
+        ...netData.Client,
+        Player: {
+          ...netData.Client.Player,
+          isDisconnected: false,
+        },
+      });
+      if (netData.Client.ID === yourClientRef.current?.ID)
         setModalOpen(false);
 
       break;
@@ -486,8 +521,8 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
       setModalTxt([`bad response: ${netData.Response}`]);
       setModalOpen(true);
       break;
+      }
     }
-  }
   // NOTE: _noShallowCompare is given a new uuid on every new server response
   // passed from Connect component. We do this to ensure this useEffect gets
   // retriggered in cases where say the same user sends the same chat message,
@@ -495,33 +530,14 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
   // My only guess is that it is a useSWRSubscription optimization.
   //
   // updatePlayer, updateRoom, etc. don't actually trigger rerenders.
-  }, [netData._noShallowCompare, yourClientRef, updatePlayer, updateRoom, updateTable]);
+  }, [applyYourClient, netData._noShallowCompare, yourClientRef, updatePlayer, updateRoom, updateTable]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (numSeats) {
-      setPlayers(players => {
-        const newPlayerArr = players.filter(p => !p._ID);
-        const playerPosSet = new Set(newPlayerArr.map(c => c.Player.TablePos));
-
-        console.log('numSeats ue: playerPosSet:', playerPosSet);
-
-        let curTablePos = 0;
-        while (newPlayerArr.length < numSeats) {
-          console.log(`numSeats ue: curTablePos before map: ${curTablePos}`);
-          while (playerPosSet.has(curTablePos))
-            curTablePos++;
-          console.log(`numSeats ue: curTablePos after map: ${curTablePos}`);
-          newPlayerArr.push({
-            ...(NewNullClient(curTablePos++)),
-          });
-        }
-
-        console.log('numSeats ue: players =>', newPlayerArr);
-
-        return newPlayerArr;
-      });
-    }
-  }, [numSeats]);
+    normalizePlayersForSeats(numSeats);
+  }, [normalizePlayersForSeats, numSeats]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {console.log(`players isArray: ${Array.isArray(players)}`); console.log(players); console.log(`pl len: ${players.length}`)}, [players]);
 
@@ -561,6 +577,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
   }, [isSpectator, yourClientRef, socket]);
 
   const dealerAndBlinds = {dealer, smallBlind, bigBlind};
+  const isCompactRoom = innerWidth !== null && innerWidth <= 1920;
 
   const playerListPlayersProps = {
     players, curPlayer, playerHead, yourClient,
@@ -588,7 +605,7 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
       className={cx(
         styles.tableGrid,
         dmMono.className,
-        gameOpts.isCompactRoom && styles.compactTableGrid
+        isCompactRoom && styles.compactTableGrid
       )}
       id='tableGrid'
     >

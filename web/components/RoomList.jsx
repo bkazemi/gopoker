@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 
 import { useRouter } from 'next/router';
 import { Exo } from 'next/font/google';
@@ -13,6 +13,13 @@ import styles from '@/styles/RoomList.module.css';
 
 const exo = Exo({ subsets: ['latin', 'latin-ext'], });
 const literata = Literata({ subsets: ['latin', 'latin-ext'], weight: '500' });
+
+const regexMatches = (regex, value) => {
+  if (!regex)
+    return false;
+
+  return new RegExp(regex.source, regex.flags).test(value);
+};
 
 const RoomInfo = React.memo(({ isVisible, room }) => {
   if (!isVisible)
@@ -85,9 +92,8 @@ const RoomListItem = React.memo(({ room, searchRegex, roomListRef }) => {
             return acc;
           }, [])
           .map((part, idx) => {
-            searchRegex.lastIndex = 0;
             return (
-              searchRegex.test(part) ?
+              regexMatches(searchRegex, part) ?
               <span key={idx} className={styles.searchHighlight}>
                 { part }
               </span>
@@ -130,10 +136,13 @@ function RoomList({ isVisible, mode = 'card' }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
   const [searchValue, setSearchValue] = useState('');
-  const [searchRegex, setSearchRegex] = useState(null);
   const roomListRef = useRef(null);
   const prevIsVisibleRef = useRef(isVisible);
   const becameVisible = isVisible && !prevIsVisibleRef.current;
+  const searchRegex = useMemo(() => {
+    const escapedSearchVal = searchValue?.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    return escapedSearchVal ? new RegExp(`(${escapedSearchVal})`, 'gi') : null;
+  }, [searchValue]);
 
   const filteredRooms = useCallback(() => {
     if (!roomList.length)
@@ -141,7 +150,7 @@ function RoomList({ isVisible, mode = 'card' }) {
 
     const rooms =
       roomList
-        .filter(room => !searchRegex || searchRegex.test(room.roomName))
+        .filter(room => !searchRegex || regexMatches(searchRegex, room.roomName))
         .map(room => {
           return <RoomListItem
                    key={room.roomName}
@@ -203,11 +212,6 @@ function RoomList({ isVisible, mode = 'card' }) {
     else
       fetchCurRoomCnt();
   }, [isVisible]);
-
-  useEffect(() => {
-    const escapedSearchVal = searchValue?.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    setSearchRegex(escapedSearchVal ? new RegExp(`(${escapedSearchVal})`, 'gi') : null);
-  }, [searchValue]);
 
   const showLoading = useDeferredLoading(isVisible && (isLoading || becameVisible));
   const showRoomCntLoading = useDeferredLoading(!isVisible && curRoomCnt === null);

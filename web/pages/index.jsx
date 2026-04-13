@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Tooltip } from 'react-tooltip';
 
 import { GameContext } from '@/GameContext';
+import useInitialWindowMetrics from '@/lib/useInitialWindowMetrics';
 
 import HomeGrid from '@/components/HomeGrid';
 import Game from '@/components/Game';
@@ -52,29 +53,20 @@ const UnsupportedDeviceToolTip = ({ isUnsupportedDevice, showGame }) => {
 
 export default function Home() {
   const { setGameOpts } = useContext(GameContext);
+  const { innerWidth: initialInnerWidth } = useInitialWindowMetrics();
 
   //const [newGameFormData, setNewGameFormData] = useState(null);
-  const [isUnsupportedDevice, setIsUnsupportedDevice] = useState(false);
   const [showGame, setShowGame] = useState(false);
-  const [showGrid, setShowGrid] = useState(true);
+  const isUnsupportedDevice = initialInnerWidth !== null && initialInnerWidth < 1080;
+  const showGrid = !showGame;
 
   useEffect(() => {
-    // eslint-disable-next-line
-    console.log(`Home: showGame: ${showGame} showGrid: ${showGrid}`);
-
     setGameOpts(gameOpts => ({
       ...gameOpts,
       setShowGame,
       goHome: gameOpts.goHome ? false : undefined,
     }));
-
-    const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
-    setIsUnsupportedDevice(screenWidth < 1080);
-  }, []);
-
-  useEffect(() => {
-    setShowGrid(showGame === showGrid ? !showGrid : showGrid);
-  }, [showGame, showGrid]);
+  }, [setGameOpts]);
 
   return (
     <>
@@ -84,7 +76,6 @@ export default function Home() {
         isVisible={showGame}
       />
       <HomeGrid
-        {...{setShowGrid}}
         isVisible={showGrid}
       />
     </>

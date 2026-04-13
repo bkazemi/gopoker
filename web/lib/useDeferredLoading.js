@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 export default function useDeferredLoading(isLoading, delay = 500) {
   const [showLoading, setShowLoading] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!isLoading) {
       setShowLoading(false);
@@ -12,6 +13,7 @@ export default function useDeferredLoading(isLoading, delay = 500) {
     const timer = setTimeout(() => setShowLoading(true), delay);
     return () => clearTimeout(timer);
   }, [isLoading, delay]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  return showLoading;
+  return isLoading ? showLoading : false;
 }
