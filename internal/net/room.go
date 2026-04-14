@@ -533,6 +533,10 @@ func (room *Room) sendCurHands() {
 	}
 
 	for _, client := range room.clients.Players() {
+		if client.Player.Action.Action == playerState.MidroundAddition {
+			continue
+		}
+
 		poker.AssembleBestHand(true, room.table, client.Player)
 
 		netData.Client = client

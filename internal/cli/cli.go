@@ -297,6 +297,8 @@ func (cli *CLI) makeSpectator(sendPlayerLeft bool) {
 
 		cli.unmakeAdmin(false)
 
+		textViewSetLine(cli.yourInfoView, 4, "current hand: ")
+
 		if sendPlayerLeft {
 			cli.outputChan <- &net.NetData{
 				Request: net.NetDataPlayerLeft,
@@ -1098,6 +1100,7 @@ func cliInputLoop(cli *CLI) {
 					}
 				}
 				cli.holeView.Clear()
+				textViewSetLine(cli.yourInfoView, 4, "current hand: ")
 				cli.updateInfoList("all", netData.Table)
 			case net.NetDataEliminated:
 				if netData.Client.ID == cli.yourClient.ID {

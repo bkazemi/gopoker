@@ -139,7 +139,10 @@ export default function Tablenew({ socket, connStatus, netData, setShowGame, roo
     console.log('yourClient is ', nextClient);
     yourClientRef.current = nextClient;
     setYourClient(nextClient);
-    setIsSpectator(!!nextClient?.Settings?.IsSpectator);
+    const nextIsSpectator = !!nextClient?.Settings?.IsSpectator;
+    setIsSpectator(nextIsSpectator);
+    if (nextIsSpectator)
+      setCurHand(null);
   }, []);
   const normalizePlayersForSeats = useCallback((seatCount) => {
     if (!seatCount)
