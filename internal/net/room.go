@@ -158,7 +158,25 @@ func (room *Room) removeClient(client *Client) {
 	room.sendResponseToAll(netData, nil)
 }
 
-func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedToSpectator bool) {
+// playerExitCause describes how a player left their seat. Each value implies
+// a different surrounding flow, which determines whether removePlayer's
+// cleanup defer should drive round finalization and whether the departing
+// client should receive the PlayerLeft broadcast.
+type playerExitCause int
+
+const (
+	// playerExitDisconnect: disconnect timer fired; client is gone.
+	playerExitDisconnect playerExitCause = iota
+	// playerExitToSpectator: player opted out to become a spectator; they stay
+	// connected and should still receive the PlayerLeft broadcast.
+	playerExitToSpectator
+	// playerExitEliminated: busted out mid-round. Caller (roundOver /
+	// postPlayerAction) already owns FinishRound/Reset, so the defer must
+	// not run them a second time.
+	playerExitEliminated
+)
+
+func (room *Room) removePlayer(client *Client, exitCause playerExitCause) {
 	reset := false         // XXX race condition guard
 	noPlayersLeft := false // XXX race condition guard
 
@@ -174,11 +192,9 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 				log.Debug().Str("room", room.name).Msg("no players left, resetting")
 				room.table.Reset(nil)
 				room.sendReset(nil)
-			} else if !calledFromClientExit && !movedToSpectator {
-				// direct removal (e.g. eliminated-player cleanup inside an
-				// already-running round) — the surrounding flow handles
-				// FinishRound/Reset on its own
-				log.Debug().Str("room", room.name).Msg("!calledFromClientExit, returning")
+			} else if exitCause == playerExitEliminated {
+				// surrounding round flow owns FinishRound/Reset
+				log.Debug().Str("room", room.name).Msg("eliminated-player removal, skipping finalize")
 				return
 			} else if room.table.State == poker.TableStateNotStarted {
 				log.Debug().Str("room", room.name).Msg("state == TableStateNotStarted")
@@ -237,7 +253,7 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 			Table:    room.Table(),
 		}
 		exceptClient := client
-		if movedToSpectator {
+		if exitCause == playerExitToSpectator {
 			exceptClient = nil
 		}
 		room.sendResponseToAll(netData, exceptClient)
@@ -273,9 +289,10 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 }
 
 // cleanupPlayerOnExit folds the player's current turn (if any), advances turn
-// state, then removes the player. Called when a client disconnects (isClientExit
-// true) or moves to spectator (isClientExit false).
-func (room *Room) cleanupPlayerOnExit(client *Client, isClientExit bool) {
+// state, then removes the player. exitCause must be playerExitDisconnect or
+// playerExitToSpectator; playerExitEliminated goes through removeEliminatedPlayers
+// directly and does not pass through here.
+func (room *Room) cleanupPlayerOnExit(client *Client, exitCause playerExitCause) {
 	if client == nil {
 		return
 	}
@@ -301,7 +318,7 @@ func (room *Room) cleanupPlayerOnExit(client *Client, isClientExit bool) {
 		room.sendPlayerTurnToAll()
 	}
 
-	room.removePlayer(client, isClientExit, !isClientExit)
+	room.removePlayer(client, exitCause)
 }
 
 // addPlayer binds player to client, inserts into CurPlayers/ActivePlayers,
@@ -610,7 +627,7 @@ func (room *Room) removeEliminatedPlayers() {
 		netData.Msg = fmt.Sprintf("<%s id: %s> was eliminated", client.Player.Name,
 			netData.Client.ID[:7])
 
-		room.removePlayer(client, false, false)
+		room.removePlayer(client, playerExitEliminated)
 		room.sendResponseToAll(netData, nil)
 	}
 }

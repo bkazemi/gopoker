@@ -30,7 +30,7 @@ func (s *wsSession) dispatch(client *Client, netData NetData) {
 	case NetDataClientExited:
 		s.requestInputLoopExit()
 	case NetDataPlayerLeft: // NOTE: used when a player moves to spectator
-		s.room.cleanupPlayerOnExit(client, false)
+		s.room.cleanupPlayerOnExit(client, playerExitToSpectator)
 	case NetDataNewPlayer:
 		s.handleNewPlayer(client, netData)
 	case NetDataClientSettings:

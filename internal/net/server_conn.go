@@ -192,7 +192,7 @@ func (server *Server) handleDisconnect(room *Room, conn *websocket.Conn, cleanEx
 			return
 		}
 
-		room.cleanupPlayerOnExit(client, true)
+		room.cleanupPlayerOnExit(client, playerExitDisconnect)
 		room.removeClient(client)
 	})
 
