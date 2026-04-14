@@ -162,19 +162,22 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 	reset := false         // XXX race condition guard
 	noPlayersLeft := false // XXX race condition guard
 
+	// Caller is expected to hold room.Lock() (cleanupPlayerOnExit and the
+	// eliminated-player path in removeEliminatedPlayers both do). The defer
+	// below mutates table state via FinishRound/Reset/gameOver, which must
+	// not race with concurrent cleanups or dispatch handlers.
 	room.table.Mtx().Lock()
 	defer func() {
 		log.Debug().Str("room", room.name).Msg("cleanup defer called")
 		if reset {
-			if calledFromClientExit || movedToSpectator {
-				room.Lock()
-			}
-
 			if noPlayersLeft {
 				log.Debug().Str("room", room.name).Msg("no players left, resetting")
 				room.table.Reset(nil)
 				room.sendReset(nil)
 			} else if !calledFromClientExit && !movedToSpectator {
+				// direct removal (e.g. eliminated-player cleanup inside an
+				// already-running round) — the surrounding flow handles
+				// FinishRound/Reset on its own
 				log.Debug().Str("room", room.name).Msg("!calledFromClientExit, returning")
 				return
 			} else if room.table.State == poker.TableStateNotStarted {
@@ -189,22 +192,10 @@ func (room *Room) removePlayer(client *Client, calledFromClientExit bool, movedT
 				room.table.State = poker.TableStateGameOver
 				room.gameOver()
 			}
-
-			if calledFromClientExit || movedToSpectator {
-				room.Unlock()
-			}
 		} else if room.table.State == poker.TableStateDoneBetting ||
 			room.table.State == poker.TableStateRoundOver {
-			if calledFromClientExit || movedToSpectator {
-				room.Lock()
-			}
-
 			log.Debug().Str("room", room.name).Msg("defer postPlayerAction")
 			room.postPlayerAction(nil, &NetData{})
-
-			if calledFromClientExit || movedToSpectator {
-				room.Unlock()
-			}
 		}
 	}()
 	defer room.table.Mtx().Unlock()
@@ -288,8 +279,17 @@ func (room *Room) cleanupPlayerOnExit(client *Client, isClientExit bool) {
 	if client == nil {
 		return
 	}
-	// Snapshot: client.Player may be nilled concurrently by another
-	// removePlayer call (e.g. from a different goroutine's cleanup path).
+
+	// Serialize the entire exit flow (fold/advance/remove + the deferred
+	// FinishRound/Reset logic inside removePlayer) against other cleanups
+	// and dispatch handlers. Without this, two near-simultaneous disconnects
+	// can interleave such that removePlayer's cleanup defer calls FinishRound
+	// on an already-empty activePlayers list, tripping GetNonFoldedPlayers.
+	room.Lock()
+	defer room.Unlock()
+
+	// snapshot: client.Player may already be nilled if a prior cleanup path
+	// ran to completion for this client
 	player := client.Player
 	if player == nil {
 		return
